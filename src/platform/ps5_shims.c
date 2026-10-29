@@ -18,6 +18,30 @@ char *nl_langinfo(int item)
     return (char *)"UTF-8";
 }
 
+/* Nightshade Player: EasyRPG Player's libraries call memccpy and libc++'s locale guard calls uselocale; no PS5
+ * module exports either. The app runs in the C locale (newlocale is the platform layer's), so every locale is
+ * the same one: uselocale remembers the one it was given and hands back the one before. */
+#include <string.h>
+#include <xlocale.h>
+void *memccpy(void *restrict dst, const void *restrict src, int c, size_t n)
+{
+    unsigned char *d = dst;
+    const unsigned char *s = src;
+    for (size_t i = 0; i < n; ++i)
+        if ((d[i] = s[i]) == (unsigned char)c)
+            return d + i + 1;
+    return NULL;
+}
+
+locale_t uselocale(locale_t loc)
+{
+    static _Thread_local locale_t current = LC_GLOBAL_LOCALE;
+    locale_t previous = current;
+    if (loc)
+        current = loc;
+    return previous;
+}
+
 /* __builtin_cpu_init/__builtin_cpu_supports normally come from compiler-rt.
  * The cores only use them to warn about a missing SSE2/AVX. The PS5's
  * Zen 2 CPU has CMOV, MMX, POPCNT, SSE..SSE4.2, AVX and AVX2: feature bits
