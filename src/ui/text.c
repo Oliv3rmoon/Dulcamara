@@ -167,8 +167,39 @@ static int cmp_int(const void *a, const void *b)
     return *(const int *)a - *(const int *)b;
 }
 
+/* Nightshade Player: text the interface shows that is not its own, the games' titles (text_want). */
+static char *wanted;
+static size_t wanted_len;
+
+void text_want(const char *utf8)
+{
+    size_t n = strlen(utf8);
+    bool beyond_latin1 = false;
+    for (size_t i = 0; i < n && !beyond_latin1; ++i)
+        beyond_latin1 = (unsigned char)utf8[i] >= 0xC4; /* a lead byte past U+00FF */
+    if (!beyond_latin1)
+        return;
+    char *grown = realloc(wanted, wanted_len + n + 2);
+    if (!grown)
+        return;
+    wanted = grown;
+    memcpy(wanted + wanted_len, utf8, n);
+    wanted_len += n;
+    wanted[wanted_len++] = '\n';
+    wanted[wanted_len] = '\0';
+    free_atlases();
+    extra_dirty = true;
+}
+
+void text_want_clear(void)
+{
+    free(wanted);
+    wanted = NULL;
+    wanted_len = 0;
+}
+
 /* The non-Latin-1 characters the current language needs (always including the
- * language selector's own names). */
+ * language selector's own names), and those of the text wanted. */
 static void collect_extra(void)
 {
     extra_dirty = false;
@@ -180,7 +211,7 @@ static void collect_extra(void)
     {
         if (i >= LANG_COUNT && lang != LANG_JA)
             break;
-        const char *s = i18n_string(lang, i);
+        const char *s = (i == 0 && wanted) ? wanted : i18n_string(lang, i - (wanted ? 1 : 0));
         if (!s)
             break;
         while (*s)

@@ -250,6 +250,9 @@ void app_rescan(void)
     library_scan(&app.library, app.paths.games);
     library_load_played(&app.library, app.paths.played);
     library_sort(&app.library, app.settings.sort_mode);
+    text_want_clear();
+    for (int i = 0; i < app.library.count; ++i)
+        text_want(app.library.games[i].title); /* Japanese titles: their characters into the atlases */
     covers_start(&app.library);
     np_log("library: %d game(s) in %s", app.library.count, app.paths.games);
     shelf_library_changed();
@@ -341,7 +344,13 @@ static void game_screen(PadState *pads, uint32_t pressed)
     host_set_input(&game_pad, &app.settings);
 
     const int runs = app.fast_forward ? FF_SPEEDS[app.settings.ff_speed % 5] : 1;
-    const double seconds = app.dt > 0.05f ? 0.05 : app.dt < 0.001f ? 1.0 / 60.0 : app.dt;
+    /* The game's time: what passed since the last frame. On a 59.94 Hz screen that is a hair more than EasyRPG's
+     * 60 Hz step, which every 16 seconds would give one frame two steps and a stutter: within 2 % of a step, the
+     * step itself (the game runs 0.1 % slow; its sound plays at its own pace either way). */
+    double seconds = app.dt > 0.05f ? 0.05 : app.dt < 0.001f ? 1.0 / 60.0 : app.dt;
+    const double step = 1.0 / host_fps();
+    if (seconds > step * 0.98 && seconds < step * 1.02)
+        seconds = step;
     host_run(runs, seconds);
     host_feed_audio(0.07);
 

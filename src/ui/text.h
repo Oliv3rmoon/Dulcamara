@@ -24,6 +24,10 @@ enum
 bool text_init(void);
 void text_shutdown(void);
 void text_language_changed(void); /* repacks glyphs for the new language */
+/* Text from elsewhere to be drawn (Nightshade Player: the games' titles): its characters beyond Latin-1 that the
+ * Japanese face has are packed into the atlases too. text_want_clear forgets them all. */
+void text_want(const char *utf8);
+void text_want_clear(void);
 /* Another pair of faces (assets paths), for the themes. */
 void text_set_fonts(const char *regular, const char *bold);
 

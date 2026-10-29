@@ -78,7 +78,7 @@ static const int GAME_BUTTON_VALUES[] = {PAD_A, PAD_B, PAD_X, PAD_Y, PAD_START, 
                                          PAD_L3, PAD_R3, PAD_L, PAD_R, PAD_NONE};
 
 #define BUTTON_ROW(name, b)                                                                                        \
-    {name, "The game's button this one presses.", K_CHOICE, 0, GAME_BUTTONS, N(GAME_BUTTONS), GAME_BUTTON_VALUES, \
+    {name, "Which of the game's buttons this one presses.", K_CHOICE, 0, GAME_BUTTONS, N(GAME_BUTTONS), GAME_BUTTON_VALUES, \
      A_NONE, b}
 
 static const Row PICTURE[] = {
