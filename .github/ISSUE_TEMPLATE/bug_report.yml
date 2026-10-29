@@ -1,12 +1,12 @@
 name: Bug report
-description: Something in Nightshade Station doesn't work as it should
+description: Something in Nightshade Player doesn't work as it should
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
         Thanks for reporting! One problem per report, please.
-        **Never attach or link games, BIOS files or keys.** Reports that do are closed.
+        **Never attach or link games, the RTP or keys.** Reports that do are closed.
 
   - type: textarea
     id: what
@@ -21,7 +21,7 @@ body:
     id: steps
     attributes:
       label: How to make it happen
-      description: The steps from starting Nightshade Station. Does it happen every time?
+      description: The steps from starting Nightshade Player. Does it happen every time?
       placeholder: |
         1. Start Toy Story 2
         2. Walk up to Mr. Potato Head and press X
@@ -32,9 +32,9 @@ body:
   - type: input
     id: game
     attributes:
-      label: Game and serial
-      description: Only if it's about a game. The serial is on the shelf under the title (Triangle shows details).
-      placeholder: Toy Story 2 (SLUS-00893)
+      label: Game
+      description: "Only if it's about a game. Its title, and RPG Maker 2000 or 2003 (under its title in the library)."
+      placeholder: My Game (RPG Maker 2000)
 
   - type: dropdown
     id: kind
@@ -44,9 +44,9 @@ body:
         - A game looks wrong (graphics)
         - A game sounds wrong
         - A game crashes, freezes or won't start
-        - Nightshade Station crashes or closes
+        - Nightshade Player crashes or closes
         - The PS5 crashes or freezes
-        - Storage / "can't open /data/SwanStationPS5"
+        - Storage / "can't open /data/Nightshade Player"
         - Controls or button mapping
         - Menus, shelf or settings
         - Covers, cheats or memory cards
@@ -58,7 +58,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Nightshade Station version
+      label: Nightshade Player version
       description: Settings → About → Version
       placeholder: 1.2.0
     validations:
@@ -77,18 +77,18 @@ body:
     id: settings
     attributes:
       label: Settings that might matter
-      description: Anything you changed, especially Internal resolution, Upscale filter, BIOS, Fast CD loading, Widescreen, Rewind. Does it still happen with the default settings?
-      placeholder: Internal resolution 2x, Upscale 4x sharp. With Native it doesn't happen.
+      description: Anything you changed, especially the shader, upscaling and fast-forward. Does it still happen with the default settings?
+      placeholder: CRT Royale on. With the shader off it doesn't happen.
 
   - type: textarea
     id: log
     attributes:
       label: Log
       description: |
-        Attach `/data/SwanStationPS5/logs/SwanStationPS5.log`. Copy it with FTP **right after** the problem,
-        before starting Nightshade Station again (each start replaces it). After a crash it ends with a
+        Attach `/data/nightshade-player/logs/nightshade-player.log`. Copy it with FTP **right after** the problem,
+        before starting Nightshade Player again (each start replaces it). After a crash it ends with a
         `crash:` section; that's the most useful part.
-      placeholder: Drag the SwanStationPS5.log file here.
+      placeholder: Drag the Nightshade Player.log file here.
     validations:
       required: true
 
@@ -105,5 +105,5 @@ body:
       options:
         - label: I searched the existing issues and this isn't one of them.
           required: true
-        - label: My game is my own dump, and I'm not sharing games, BIOS files or keys.
+        - label: My game is my own dump, and I'm not sharing games, the RTP or keys.
           required: true

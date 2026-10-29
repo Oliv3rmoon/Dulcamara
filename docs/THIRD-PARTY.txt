@@ -1,49 +1,49 @@
-SwanStationPS5 - PlayStation X Super 5
-Copyright (C) 2026 the SwanStationPS5 authors. GNU General Public License v3 or later (LICENSE-SwanStationPS5.txt).
-Source code: https://github.com/SynoPiia/SwanStationPS5 (the release's tag holds the exact source,
-with every component below as a submodule or in third_party/).
+Nightshade Player - RPG Maker 2000 / 2003 games on the PS5
+Copyright (C) 2026 Oliv3rmoon, and the authors of what it is built from. GNU General Public License v3 or later
+(LICENSE-Nightshade-Player.txt).
+Source code: https://github.com/Oliv3rmoon/Nightshade-Player (the release's tag holds the exact source, with
+every component below as a submodule, in third_party/, or pinned by its build script).
 
-SwanStationPS5 contains, built into eboot.bin:
+Nightshade Player is built on Nightshade Station (https://github.com/Oliv3rmoon/Nightshade-Station), which is
+darkxex's SwanStationPS5 (https://github.com/darkxex/SwanStationPS5, GPL-3.0-or-later) on BlackBearReloaded's
+ps5-native-app-boilerplate (GPL-3.0-or-later): its platform layer, Vulkan screen, shaders and update check.
 
+Built into eboot.bin:
 
-SwanStation (DuckStation's libretro core)
-  GNU GPL v3
-  LICENSE-swanstation.txt
-  https://github.com/libretro/swanstation
+EasyRPG Player (the libretro core that runs the games)
+  GNU GPL v3 or later - LICENSE-EasyRPG-Player.txt, AUTHORS-EasyRPG-Player.md
+  https://github.com/EasyRPG/Player - by the EasyRPG team (https://easyrpg.org)
+  With it: FMMidi by yuno (Yoshio Uno), BSD-3-Clause; dr_wav by David Reid, public domain or MIT-0; its built-in
+  fonts Shinonome (public domain), Baekmuk (Baekmuk License), ttyp0 (ttyp0 license) and WenQuanYi (GPL-2.0-or-later
+  with font exception); the EasyRPG logos, CC-BY-SA 4.0; libretro-common (rthreads), MIT-style
+  (https://github.com/libretro/libretro-common).
 
-RADV, Mesa's Vulkan driver for AMD GPUs (PS5 port by Mihawk-99)
-  MIT License
-  https://gitlab.freedesktop.org/mesa/mesa
+liblcf (RPG Maker 2000 / 2003 file formats)
+  MIT License - LICENSE-liblcf.txt - https://github.com/EasyRPG/liblcf
+  With Nightshade Player's patch for text encodings through iconv (tools/patches/liblcf-iconv.patch, MIT).
 
-libnfs (NFS client, games on NFS servers)
-  LGPL-2.1-or-later (protocol files BSD-2-Clause), used under GPL-3.0: the sources are in third_party/libnfs
-  https://github.com/sahlberg/libnfs - console configuration and fixes from
-  https://github.com/tutifrutas/SwanStationPS5 (from PS5SX2, https://github.com/Swordpdf/PS5SX2)
+inih (INI reader) - BSD-3-Clause - LICENSE-inih.txt - https://github.com/benhoyt/inih
+pixman (pixel manipulation) 0.46.4 - MIT License - LICENSE-pixman.txt - https://pixman.org
 
-rcheevos (RetroAchievements)
-  MIT License - LICENSE-rcheevos.txt
-  https://github.com/RetroAchievements/rcheevos
+From PacBrew (https://github.com/ps5-payload-dev/pacbrew-repo), each under its own licence:
+  fmt (MIT), libpng (libpng licence), zlib (zlib licence), FreeType (FreeType licence), HarfBuzz (MIT),
+  libogg and libvorbis (BSD-3-Clause), mpg123 (LGPL-2.1), libsndfile (LGPL-2.1-or-later), FLAC (BSD-3-Clause),
+  Opus (BSD-3-Clause), LAME (LGPL-2.0-or-later), bzip2 (bzip2 licence), libsamplerate (BSD-2-Clause),
+  GNU libiconv (LGPL-2.1-or-later), SDL 2 (zlib licence), libcurl (curl licence), OpenSSL (Apache-2.0),
+  zstd (BSD-3-Clause), libpsl (MIT).
+  The LGPL libraries are linked statically into this GPL-3.0 program; its whole source is published, so they can
+  be replaced and the program relinked.
 
-SDL 2 - zlib License - https://www.libsdl.org
-Fonts in assets/fonts - SIL Open Font License 1.1 (notices beside them): Inter, Noto Sans JP,
-  Chakra Petch, IBM Plex Sans, IBM Plex Mono, Fraunces, Work Sans; Tabler Icons - MIT License
-Cheat codes are downloaded on the console from libretro-database
-  (https://github.com/libretro/libretro-database) and DuckStation's chtdb
-  (https://github.com/duckstation/chtdb; copyright of the codes is held by their authors).
-DuckStation's game database (https://github.com/stenzek/duckstation, CC BY-NC-ND 4.0) is
-  downloaded on the console for game information and known fixes; SwanStationPS5 doesn't include it.
-Game artwork borders (The Bezel Project, https://github.com/thebezelproject), title
-  screens and gameplay pictures (libretro-thumbnails, https://github.com/libretro-thumbnails)
-  are downloaded on the console, as covers are; SwanStationPS5 doesn't include them.
+RADV, Mesa's Vulkan driver for AMD GPUs (PS5 port by Mihawk-99) - MIT License - https://gitlab.freedesktop.org/mesa/mesa
+Frame interpolation (PS5SX2 by Swordpdf, AMD FidelityFX SDK) - GPL-3.0-or-later / MIT
+The shaders (CRT Royale, CRT Lottes, CRT Pi, Newpixie, Hyllian NTSC, Mattias, NTSC, LCD3x, zfast LCD,
+  SameBoy's Game Boy LCD, FSR 1) - each under its own licence: THIRD_PARTY_NOTICES.md in the source
+Fonts in assets/fonts - SIL Open Font License 1.1 (notices beside them): Inter, Noto Sans JP (a subset),
+  IBM Plex Mono; Tabler Icons - MIT License
 dlmalloc (Doug Lea) - public domain (CC0)
 miniz - MIT License - https://github.com/richgel999/miniz
-QR Code generator (Nayuki) - MIT License - https://github.com/nayuki/QR-Code-generator
 stb_image, stb_truetype (Sean Barrett) - public domain / MIT
 Lapy helper - MIT License - Lapy-MIT.txt
-libcurl, OpenSSL, libpsl, zstd, libsamplerate (PacBrew packages) - each under its own permissive licence
+The selection music (sce_sys/snd0.at9, "Night Drive") - BlackBearReloaded, GPL-3.0-or-later
 
-Downloaded at run time, not included:
-  covers - xlenore/psx-covers (https://github.com/xlenore/psx-covers)
-  cheats - libretro-database (https://github.com/libretro/libretro-database)
-
-No BIOS, game, key or copyrighted data is included.
+No game, RTP, BIOS, key or other copyrighted game data is included or downloaded: players copy their own games.

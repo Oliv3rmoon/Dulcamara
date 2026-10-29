@@ -1,18 +1,21 @@
 # Contributing
 
-Bug reports, fixes and testing of Nightshade Station are all welcome. Ask for help on the
+Bug reports, fixes and testing of Nightshade Player are all welcome. Ask for help on the
 [nightly Discord](https://discord.gg/pSqgRU3YP9).
 
 **Reporting a bug**
 
-- Include your firmware, how you loaded etaHEN and kstuff, and the game (its name and serial, for example `SLUS-00594`).
-- Attach `/data/SwanStationPS5/logs/SwanStationPS5.log`. After a crash, the log has a `crash:` section with addresses. Those map to functions with the `SwanStationPS5-symbols` artifact of the same build.
+- Include your firmware, how you loaded etaHEN and kstuff, and the game (its title, and RPG Maker 2000 or 2003).
+- Attach `/data/nightshade-player/logs/nightshade-player.log`. After a crash, the log has a `crash:` section with
+  addresses.
+- Never attach games, their files or the RTP.
 
 **Changing the code**
 
-- Every pull request is built by GitHub Actions (`.github/workflows/build.yml`). A change should build there.
+- Every push and pull request is built by GitHub Actions (`.github/workflows/build.yml`), host checks included. A
+  change should build there; `make host-checks` runs the checks on a computer.
 - Keep the SPDX header (`GPL-3.0-or-later`) on new source files.
-- Never commit BIOS files, games, keys, `.env`, `build/` or `dist/`.
-- Release tags are `MAJOR.MINOR.PATCH` (`1.6.0`), matching `SwanStationPS5_VERSION` in `src/SwanStationPS5.h` and the
-  `contentVersion` of `sce_sys/param.json` (`01.006.000`). A tag pushed to Oliv3rmoon/Nightshade-Station builds
-  and publishes the release (`PPSA98510.zip`, `SwanStationPS5-DiscDaemon.elf` and `SHA256SUMS`).
+- Never commit games, test games, the RTP, keys, `.env`, `build/` or `dist/`.
+- Release tags are `MAJOR.MINOR.PATCH` (`0.1.0`), matching `NP_VERSION` in `src/nightshade.h` and the
+  `contentVersion` of `sce_sys/param.json` (`00.001.000`). A tag pushed to Oliv3rmoon/Nightshade-Player builds and
+  publishes the release (`PPSA99010.zip` and `SHA256SUMS`).

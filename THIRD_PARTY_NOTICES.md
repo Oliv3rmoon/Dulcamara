@@ -4,6 +4,10 @@
 
 | Project | Role |
 | --- | --- |
+| [EasyRPG Player](https://github.com/EasyRPG/Player) and [liblcf](https://github.com/EasyRPG/liblcf), by the [EasyRPG](https://easyrpg.org) team | The core that runs the RPG Maker 2000 / 2003 games, and their file formats |
+| [Oliv3rmoon/Nightshade-Station](https://github.com/Oliv3rmoon/Nightshade-Station) | The frontend this app is built from |
+| [darkxex/SwanStationPS5](https://github.com/darkxex/SwanStationPS5) | Nightshade Station's origin: its platform layer, Vulkan screen, shaders and interface |
+| [BlackBearReloaded's ps5-native-app-boilerplate](https://github.com/blackbearreloaded) | The PS5 native app build, runtime, tooling and update check under all of them |
 | [ps5-payload-dev/sdk](https://github.com/ps5-payload-dev/sdk) | Public PS5 headers, libc++ headers, sysroot, and Clang target support |
 | [ps5-payload-dev/pacbrew-repo](https://github.com/ps5-payload-dev/pacbrew-repo) | Optional prebuilt PS5 ports and static libraries |
 | [SvenGDK/SharpProspero](https://github.com/SvenGDK/SharpProspero) | Source of the ELF converter and FSELF writer in `tooling/native/` (GPL-3.0) |
@@ -17,18 +21,49 @@
 | [FFmpeg](https://ffmpeg.org/) | Developer-supplied selection-audio preparation |
 | [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus) | Directory-style deployment and hardware validation |
 | [ArkSama/PS5-Lapy-JB-Daemon](https://github.com/ArkSama/PS5-Lapy-JB-Daemon) | Original Lapy project and owned-root design |
-| [sodaraptor: Hypnagogia 無限の夢 Boundless Dreams Jewel Case](https://sketchfab.com/3d-models/hypnagogia-boundless-dreams-jewel-case-20e4780167b6441fb364060c79870378) | The 3D jewel case of the shelf (`assets/psx_case_NTSC.obj` and the textures made from its atlases by `tools/make_case_textures.py`), CC-BY 4.0; each game's cover replaces the printed art |
 | [mpereiraesaa/PS5-Lapy-JB-Daemon](https://github.com/mpereiraesaa/PS5-Lapy-JB-Daemon) | Exact-title one-shot helper and cooperative elevation protocol |
 
-## Emulation cores shipped
+## Cores shipped
 
-SwanStationPS5 ships **one** emulation core:
+Nightshade Player ships **one** core:
 
 | Core | Upstream | License | Notes |
 | --- | --- | --- | --- |
-| SwanStation (libretro) | [libretro/swanstation](https://github.com/libretro/swanstation), a fork of [DuckStation](https://github.com/stenzek/duckstation) | GPL-3.0 (`third_party/swanstation/LICENSE`) | PlayStation 1. Built from source into the app |
+| EasyRPG Player (libretro) | [EasyRPG/Player](https://github.com/EasyRPG/Player) at `096c004def987f3545198304b1b7a8352f284a50`, with [EasyRPG/liblcf](https://github.com/EasyRPG/liblcf) at `6854310c3432e553fd4ae672ce861899c80c3bd0` | GPL-3.0-or-later (`third_party/easyrpg-player/COPYING`); liblcf MIT (`third_party/liblcf/COPYING`) | RPG Maker 2000 and 2003. Built from source into the app by `tools/build-easyrpg.sh` |
 
-No other core is included, and no non-commercial-licensed core is shipped. SwanStationPS5 is free and has no paid features, ads or in-app purchases.
+EasyRPG Player carries, built in: [FMMidi](http://unhaut.epizy.com/fmmidi) by yuno (Yoshio Uno),
+BSD-3-Clause; [dr_wav](https://github.com/mackron/dr_libs) by David Reid, public domain or MIT-0; the
+Shinonome (public domain), Baekmuk (Baekmuk License), ttyp0 (ttyp0 license) and WenQuanYi
+(GPL-2.0-or-later with font exception) fonts; the EasyRPG logos (CC-BY-SA 4.0); and
+[libretro-common](https://github.com/libretro/libretro-common)'s `rthreads` (its permissive MIT-style
+licence, in each file). Its authors are listed in `third_party/easyrpg-player/docs/AUTHORS.md`, which the app
+folder carries as `licenses/AUTHORS-EasyRPG-Player.md`.
+
+liblcf is patched by `tools/patches/liblcf-iconv.patch` (MIT, as liblcf): with ICU off, its text encodings go
+through iconv, and a game's encoding is guessed from its bytes.
+
+Built with the core, from pinned sources:
+
+| Component | Source | License |
+| --- | --- | --- |
+| [inih](https://github.com/benhoyt/inih) r62 | `third_party/inih` (submodule) | BSD-3-Clause (`third_party/inih/LICENSE.txt`) |
+| [pixman](https://pixman.org) 0.46.4 | the release tarball, SHA-256 `d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c`, downloaded by `tools/build-easyrpg.sh` | MIT (its `COPYING`, in the app folder as `licenses/LICENSE-pixman.txt`) |
+
+From the PacBrew prefix (below), linked into the core: fmt (MIT), libpng (libpng license), zlib (zlib),
+FreeType (FreeType License), HarfBuzz (MIT), libogg and libvorbis (BSD-3-Clause), mpg123 (LGPL-2.1),
+libsndfile (LGPL-2.1-or-later), FLAC (BSD-3-Clause), Opus (BSD-3-Clause), LAME (LGPL-2.0-or-later), bzip2
+(bzip2 license), libsamplerate (BSD-2-Clause) and GNU libiconv (LGPL-2.1-or-later), which the frontend links
+too. The LGPL libraries are linked statically into a GPL-3.0-or-later program whose whole source is published.
+
+The core is free, and Nightshade Player has no paid features, ads or in-app purchases.
+
+### Test data, never shipped
+
+The host checks (`tests/test_core.py`, `tests/test_library.py`) run the core on
+[EasyRPG's TestGame](https://github.com/EasyRPG/TestGame), fetched by `tools/fetch-testgame.sh` at commit
+`4bbedb73492c80b79d8290e0b06ea86875b0bdc8` into the ignored `.deps/testgame`. TestGame is GPL-3.0-or-later
+(its `COPYING`), its graphics and sounds CC-BY-4.0, CC0 or public domain as its `AUTHORS.md` lists them. It is
+not committed here and not part of the app or its release ZIP, which carries no game files of any kind.
 
 ## Native build dependencies
 
@@ -112,19 +147,12 @@ Hinnant's public-domain `civil_from_days` algorithm.
 
 `third_party/miniz/` holds [miniz](https://github.com/richgel999/miniz) 3.0.2
 (commit `293d4db1b7d0ffee9756d035b9ac6f7431ef8492`), MIT, unmodified, with its
-`LICENSE`; `SOURCE.json` records each file's SHA-256. Only the self-update
-helper (`examples/self-update-helper`) and its host test link it; an
-application that ships that helper ships miniz and must carry its notice. The
+`LICENSE`; `SOURCE.json` records each file's SHA-256. Nightshade Player links it
+(`src/vendor.c`) to unpack updates and to read `.zip` / `.easyrpg` games and XYZ
+pictures for the library; the self-update helper (`examples/self-update-helper`)
+and its host test link it too. The
 helper's archive validation and file helpers are original BlackBearReloaded
 code (GPL-3.0-or-later), taken from the ProsperoStore project.
-
-## NTFS reader
-
-`src/ntfs/` (`ntfs.c`, `bdev.c`, `part.c`, `utf.c` and their headers) is the
-read-only NTFS reader of [abcde6543/PS5-NTFS-BROWSER](https://github.com/abcde6543/PS5-NTFS-BROWSER),
-GPL-3.0-or-later, without its writing code, and with its internal symbols
-prefixed `nt_`. `src/ntfs/ntfsfs.cpp` is original code that serves the volumes
-to the app under `/ntfs`.
 
 ## Optional UFS2Tool dependency
 
@@ -162,30 +190,27 @@ The BlackBear icon, selection artwork, and default selection track
 (C) 2026 BlackBearReloaded, and distributed under GPL-3.0-or-later. The track
 is titled `Night Drive`.
 
-In Nightshade Station, Oliv3rmoon's release of SwanStationPS5, the icon and the home-screen
-pictures (`sce_sys/icon0.png`, `pic0.dds` and `pic1.dds` with their source PNGs,
-`background-source.png` and `launch-background-source.png`) take the place of SwanStationPS5's.
-They are drawn by `tools/render-home-art.py`, after Nightshade's (Oliv3rmoon/Nightshade),
-Copyright (C) 2026 Oliv3rmoon, and distributed under GPL-3.0-or-later.
+Nightshade Player's icon and home-screen pictures (`sce_sys/icon0.png`, `pic0.dds` and `pic1.dds`
+with their source PNGs, `background-source.png` and `launch-background-source.png`) are drawn by
+`tools/render-home-art.py`, after Nightshade Station's and Nightshade's (Oliv3rmoon/Nightshade), Copyright
+(C) 2026 Oliv3rmoon, and distributed under GPL-3.0-or-later. The name in them is set in Inter (SIL Open Font
+License 1.1).
 
-No proprietary runtime module, encryption key, or game file is included.
+No proprietary runtime module, encryption key, RTP or game file is included.
 
-## SwanStationPS5 additions
+## From SwanStationPS5 and Nightshade Station
+
+The frontend is Nightshade Station's, which is [darkxex's SwanStationPS5](https://github.com/darkxex/SwanStationPS5)
+(GPL-3.0-or-later, from [SynoPiia's PSXS5](https://github.com/SynoPiia/PSXS5)). What it brings, and still uses:
 
 | Component | Use | License |
 | --- | --- | --- |
-| [stb_image, stb_truetype](https://github.com/nothings/stb) | cover decoding, font rendering (`third_party/stb`) | Public domain / MIT |
+| [stb_image, stb_truetype](https://github.com/nothings/stb) | title picture decoding, font rendering (`third_party/stb`) | Public domain / MIT |
 | [Inter](https://github.com/rsms/inter) | interface font (`assets/fonts`) | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |
-| [xlenore/psx-covers](https://github.com/xlenore/psx-covers) | cover art, downloaded at runtime by serial; not bundled | see that repository |
-| [libretro-database](https://github.com/libretro/libretro-database) | `.cht` cheat files, installed by `tools/SwanStationPS5_sync.py`; not bundled | see that repository |
-| [libnfs](https://github.com/sahlberg/libnfs) 18.0.0 by Ronnie Sahlberg, with the console configuration and fixes of [tutifrutas/SwanStationPS5](https://github.com/tutifrutas/SwanStationPS5) (itself from [PS5SX2](https://github.com/Swordpdf/PS5SX2) by Swordpdf) | NFS client for games on NFS servers (`third_party/libnfs`, built by `tools/build-libnfs.sh`; the app's own layer is `src/nfs`) | LGPL-2.1-or-later, its protocol files BSD-2-Clause |
-| [rcheevos](https://github.com/RetroAchievements/rcheevos) v12.5.0 | RetroAchievements client (`third_party/rcheevos`) | MIT |
 | [SDL2](https://www.libsdl.org/) (PacBrew port) | events, controllers, audio, software renderer | zlib |
 | [dlmalloc](https://gee.cs.oswego.edu/dl/html/malloc.html) 2.8.6 by Doug Lea | allocator for the direct-memory heap (`third_party/dlmalloc`) | Public domain (CC0) |
-| [RetroAchievements](https://retroachievements.org) | achievement sets and accounts, used online; not bundled | service terms of retroachievements.org |
-| [Noto Sans JP](https://github.com/notofonts/noto-cjk) (subset by `tools/make_jp_font.py`) | Japanese interface text (`assets/fonts/NotoSansJP-SwanStationPS5.ttf`) | SIL Open Font License 1.1 (`assets/fonts/OFL-NotoSansJP.txt`) |
-| [Tabler Icons](https://tabler.io/icons) 3.31.0 (subset by `tools/make_icon_font.py`) | interface icons (`assets/fonts/tabler-SwanStationPS5.ttf`) | MIT (`assets/fonts/LICENSE-tabler-icons.txt`) |
-| [QR Code generator](https://www.nayuki.io/page/qr-code-generator-library) by Project Nayuki | the phone page QR code (`third_party/qrcodegen`) | MIT |
+| [Noto Sans JP](https://github.com/notofonts/noto-cjk) (subset made for Nightshade Station) | Japanese text (`assets/fonts/NotoSansJP-subset.ttf`) | SIL Open Font License 1.1 (`assets/fonts/OFL-NotoSansJP.txt`) |
+| [Tabler Icons](https://tabler.io/icons) 3.31.0 (subset by `tools/make_icon_font.py`) | interface icons (`assets/fonts/tabler-icons-subset.ttf`) | MIT (`assets/fonts/LICENSE-tabler-icons.txt`) |
 | [lcd3x](https://github.com/libretro/slang-shaders) by Gigaherz | the LCD3x shader, ported to GLSL in `src/platform/vk/shaders/lcd3x.frag` | Public domain |
 | [crt-royale](https://github.com/libretro/slang-shaders) (crt-royale-fast) by TroggleMonkey, adapted by Hyllian | the CRT Royale Fast shader, compiled to SPIR-V by `tools/make-royale.py` (`third_party/crt-royale`) | GPL-2.0-or-later (`third_party/crt-royale/LICENSE.TXT`) |
 | [crt-royale](https://github.com/libretro/slang-shaders) by TroggleMonkey (the full preset, with his MIT-licensed blur and gamma includes) | the CRT Royale shader, compiled to SPIR-V by `tools/make-crt.py` (`third_party/crt-shaders`); the vertex stage of its two halation blurs was finished by hand, as the libretro copy is half converted from Cg | GPL-2.0-or-later (`third_party/crt-shaders/crt/shaders/crt-royale/LICENSE.TXT`), MIT (the includes) |
@@ -196,18 +221,8 @@ No proprietary runtime module, encryption key, or game file is included.
 | [crt-pi](https://github.com/libretro/glsl-shaders) by davej, as shipped with Apotris | the CRT Pi shader, ported to Vulkan GLSL in `src/platform/vk/shaders/crt_pi.frag` | GPL-2.0-or-later |
 | [SameBoy LCD shader](https://github.com/LIJI32/SameBoy) by Lior Halphon, as shipped with Apotris | the Game Boy LCD shader, ported to Vulkan GLSL in `src/platform/vk/shaders/sameboy_lcd.frag` | MIT |
 | [zfast_lcd](https://github.com/libretro/glsl-shaders) by Greg Hogan (SoltanGris42), as shipped with Apotris | the zfast LCD shader, ported to Vulkan GLSL in `src/platform/vk/shaders/zfast_lcd.frag` | GPL-2.0-or-later |
-| [MMPX](https://casual-effects.com/research/McGuire2021PixelArt/) by Morgan McGuire and Mara Gagiu, and MMPX 3.0 and MMPX 3.2 by [crashGG](https://github.com/crashGG) | the MMPX Basic, MMPX 3.0 and MMPX 3.2 texture filters, as GLSL compiled to SPIR-V (`tools/patches`, `data/shaders/vulkan/batch_textured_mmpx*.frag.glsl`) | MIT |
 | [NTSC shaders](https://github.com/libretro/slang-shaders) (ntsc/shaders/maister) by Hans-Kristian Arntzen (Themaister) | the four NTSC presets (320px / 256px, S-Video / composite), compiled to SPIR-V by `tools/make-ntsc.py` (`third_party/ntsc`) | see the libretro/slang-shaders repository (license to be confirmed) |
 | [AMD FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) (EASU and RCAS), in the libretro [slang-shaders](https://github.com/libretro/slang-shaders) port (`edge-smoothing/fsr`) | the FSR 1 shader, compiled to SPIR-V by `tools/make-ntsc.py` (`third_party/fsr`) | MIT (AMD's headers in `third_party/fsr/shaders`), Unlicense (the port) |
 | Frame interpolation from [PS5SX2](https://github.com/Swordpdf/PS5SX2) by Swordpdf (from his RPCS3-PS5 / ps5-framegen), as integrated in [PSXS5](https://github.com/SynoPiia/PSXS5) by SynoPiia | frame interpolation on Vulkan (`third_party/framegen`, built by `tools/build-framegen.sh`) | GPL-3.0-or-later |
-| [ps-disc-detect](https://github.com/Al-Azif/ps-disc-detect) by Al-Azif, and the disc code of [PS5SX2](https://github.com/Swordpdf/PS5SX2) by Swordpdf (itself based on a PR by Heyde Moura) | the way the disc installation reaches the CD drive through CAM and dumps a CD to `.bin`/`.cue` (`src/cdscsi.c`, `src/discimport.c`, and the disc daemon payload, `payload/discd.c`, which starts the app the way PS5SX2's `disc_launch.c` does; written for SwanStationPS5 following their approach) | GPL-3.0 / GPL-3.0-or-later |
 | [AMD FidelityFX SDK](https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK) 2.3.0 (FSR 3 optical flow and frame interpolation) | the frame interpolation shaders (`third_party/framegen/framegen`) | MIT (`third_party/framegen/framegen/LICENSE.txt`) |
 
-## 3D jewel case
-
-This work is based on "Hypnagogia 無限の夢 Boundless Dreams Jewel Case"
-(https://sketchfab.com/3d-models/hypnagogia-boundless-dreams-jewel-case-20e4780167b6441fb364060c79870378) by
-sodaraptor (https://sketchfab.com/sodaraptor), licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/).
-The model and its textures were adapted: the printed area of the lid (its art and the black banner) is cut out, so each
-game's own cover shows in its place, and the titles and the PAL box on the edges were removed; the rest of the case (the
-plastic, the ribs, the black edges) is the model's.

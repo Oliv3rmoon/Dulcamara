@@ -5,8 +5,8 @@ body:
   - type: input
     id: game
     attributes:
-      label: Game and serial
-      placeholder: Crash Bandicoot (SCUS-94900)
+      label: Game, and RPG Maker 2000 or 2003
+      placeholder: My Game (RPG Maker 2003)
     validations:
       required: true
   - type: dropdown
@@ -24,18 +24,19 @@ body:
     id: notes
     attributes:
       label: Notes
-      description: How far you played, what goes wrong, settings that help (for example "Native resolution fixes the menus").
+      description: How far you played, what goes wrong, settings that help, and whether it runs on EasyRPG Player on a PC.
   - type: input
     id: version
     attributes:
-      label: Nightshade Station version
-      placeholder: 1.2.0
+      label: Nightshade Player version
+      placeholder: 0.1.0
     validations:
       required: true
   - type: dropdown
-    id: bios
+    id: rtp
     attributes:
-      label: BIOS
+      label: RTP
       options:
-        - OpenBios
-        - My own BIOS dump
+        - The game carries everything (no RTP)
+        - The RPG Maker RTP in rtp/2000 or rtp/2003
+        - The EasyRPG RTP replacement
