@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the library's covers (covers.h).
+ * Dulcamara - the library's covers (covers.h).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "covers.h"

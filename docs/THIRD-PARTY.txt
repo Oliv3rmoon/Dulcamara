@@ -1,10 +1,10 @@
-Nightshade Player - RPG Maker 2000 / 2003 games on the PS5
+Dulcamara, a Nightshade app - RPG Maker 2000 / 2003 games on the PS5
 Copyright (C) 2026 Oliv3rmoon, and the authors of what it is built from. GNU General Public License v3 or later
-(LICENSE-Nightshade-Player.txt).
-Source code: https://github.com/Oliv3rmoon/Nightshade-Player (the release's tag holds the exact source, with
+(LICENSE-Dulcamara.txt).
+Source code: https://github.com/Oliv3rmoon/Dulcamara (the release's tag holds the exact source, with
 every component below as a submodule, in third_party/, or pinned by its build script).
 
-Nightshade Player is built on Nightshade Station (https://github.com/Oliv3rmoon/Nightshade-Station), which is
+Dulcamara is built on Mandrake (formerly Nightshade Station, https://github.com/Oliv3rmoon/Mandrake), which is
 darkxex's SwanStationPS5 (https://github.com/darkxex/SwanStationPS5, GPL-3.0-or-later) on BlackBearReloaded's
 ps5-native-app-boilerplate (GPL-3.0-or-later): its platform layer, Vulkan screen, shaders and update check.
 
@@ -20,7 +20,7 @@ EasyRPG Player (the libretro core that runs the games)
 
 liblcf (RPG Maker 2000 / 2003 file formats)
   MIT License - LICENSE-liblcf.txt - https://github.com/EasyRPG/liblcf
-  With Nightshade Player's patch for text encodings through iconv (tools/patches/liblcf-iconv.patch, MIT).
+  With Dulcamara's patch for text encodings through iconv (tools/patches/liblcf-iconv.patch, MIT).
 
 inih (INI reader) - BSD-3-Clause - LICENSE-inih.txt - https://github.com/benhoyt/inih
 pixman (pixel manipulation) 0.46.4 - MIT License - LICENSE-pixman.txt - https://pixman.org

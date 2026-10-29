@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the settings file (config.h): one "key = value" a line.
+ * Dulcamara - the settings file (config.h): one "key = value" a line.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "config.h"
@@ -106,7 +106,7 @@ bool config_save(const Settings *s, const char *path)
     FILE *f = fopen(temp, "w");
     if (!f)
         return false;
-    fprintf(f, "# Nightshade Player %s settings\n", NP_VERSION);
+    fprintf(f, "# Dulcamara %s settings\n", NP_VERSION);
     fprintf(f, "version = %s\n", NP_VERSION);
     fprintf(f, "integer_scale = %d\nsmooth = %d\nshader = %d\naspect = %d\nupscale = %d\nupscale_filter = %d\n",
             s->integer_scale, s->smooth, s->shader, s->aspect, s->upscale, s->upscale_filter);

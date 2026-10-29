@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - host checks for the update's release decision (src/update_release.c).
+ * Dulcamara - host checks for the update's release decision (src/update_release.c).
  * SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -53,22 +53,22 @@ static char *release(const char *tag, const char *flags, const char *assets, con
     size_t size = strlen(assets) + strlen(body) + 4096;
     char *out = malloc(size);
     snprintf(out, size,
-             "{\n  \"url\": \"https://api.github.com/repos/Oliv3rmoon/Nightshade-Player/releases/1\",\n"
-             "  \"html_url\": \"https://github.com/Oliv3rmoon/Nightshade-Player/releases/tag/%s\",\n"
+             "{\n  \"url\": \"https://api.github.com/repos/Oliv3rmoon/Dulcamara/releases/1\",\n"
+             "  \"html_url\": \"https://github.com/Oliv3rmoon/Dulcamara/releases/tag/%s\",\n"
              "  \"id\": 1,\n  \"author\": {\"login\": \"github-actions[bot]\", \"id\": 41898282, \"type\": \"Bot\"},\n"
              "  \"node_id\": \"RE_x\",\n  \"tag_name\": \"%s\",\n  \"target_commitish\": \"main\",\n"
-             "  \"name\": \"Nightshade Player %s\",\n  %s,\n  \"immutable\": false,\n"
+             "  \"name\": \"Dulcamara %s\",\n  %s,\n  \"immutable\": false,\n"
              "  \"created_at\": \"2026-10-28T00:00:00Z\",\n  \"published_at\": \"2026-10-28T00:00:00Z\",\n"
              "  \"assets\": [%s],\n"
-             "  \"tarball_url\": \"https://api.github.com/repos/Oliv3rmoon/Nightshade-Player/tarball/%s\",\n"
-             "  \"zipball_url\": \"https://api.github.com/repos/Oliv3rmoon/Nightshade-Player/zipball/%s\",\n"
+             "  \"tarball_url\": \"https://api.github.com/repos/Oliv3rmoon/Dulcamara/tarball/%s\",\n"
+             "  \"zipball_url\": \"https://api.github.com/repos/Oliv3rmoon/Dulcamara/zipball/%s\",\n"
              "  \"body\": \"%s\",\n  \"reactions\": {\"total_count\": 0, \"+1\": 0}\n}\n",
              tag, tag, tag, flags, assets, tag, tag, body);
     return out;
 }
 
 static const char *const PUBLISHED = "\"draft\": false, \"prerelease\": false";
-static const char *const OURS = "Oliv3rmoon/Nightshade-Player";
+static const char *const OURS = "Oliv3rmoon/Dulcamara";
 
 /* Both files of a release of `repo` at `tag`. */
 static void both(char *out, size_t size, const char *repo, const char *tag, const char *digest)
@@ -111,8 +111,8 @@ static void test_offer(void)
     char *json = release("1.6.1", PUBLISHED, files, "- Fixes.\\r\\n- More fixes.");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_OFFER);
     CHECK(!strcmp(r.version, "1.6.1"));
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Nightshade-Player/releases/download/1.6.1/PPSA99010.zip"));
-    CHECK(!strcmp(r.sums_url, "https://github.com/Oliv3rmoon/Nightshade-Player/releases/download/1.6.1/SHA256SUMS"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/1.6.1/PPSA99010.zip"));
+    CHECK(!strcmp(r.sums_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/1.6.1/SHA256SUMS"));
     CHECK(!strcmp(r.zip_digest, SHA_A));
     CHECK(r.zip_size == 18267896u);
     /* not newer: the same version, an older one */
@@ -125,7 +125,7 @@ static void test_offer(void)
     json = release("v1.7.0", PUBLISHED, files, "");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_OFFER);
     CHECK(!strcmp(r.version, "1.7.0"));
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Nightshade-Player/releases/download/v1.7.0/PPSA99010.zip"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/v1.7.0/PPSA99010.zip"));
     CHECK(r.zip_digest[0] == '\0'); /* no digest from GitHub: SHA256SUMS alone */
     free(json);
 
@@ -164,8 +164,8 @@ static void test_not_offered(void)
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_FOREIGN_FILE);
     free(json);
 
-    /* Nightshade Station's release (another app of the same author): never offered */
-    both(files, sizeof(files), "Oliv3rmoon/Nightshade-Station", "1.9.0", SHA_A);
+    /* Mandrake's release (another app of the same author): never offered */
+    both(files, sizeof(files), "Oliv3rmoon/Mandrake", "1.9.0", SHA_A);
     json = release("1.9.0", PUBLISHED, files, "");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_FOREIGN_FILE);
     free(json);
@@ -177,7 +177,7 @@ static void test_not_offered(void)
     json = release("1.6.1", PUBLISHED, files, "");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_FOREIGN_FILE);
     free(json);
-    asset(one, sizeof(one), "Oliv3rmoon/Nightshade-Player.evil.example/x", "1.6.1", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(one, sizeof(one), "Oliv3rmoon/Dulcamara.evil.example/x", "1.6.1", "PPSA99010.zip", "uploaded", SHA_A);
     snprintf(files, sizeof(files), "%s,%s", one, two);
     json = release("1.6.1", PUBLISHED, files, "");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_FOREIGN_FILE);
@@ -224,16 +224,16 @@ static void test_notes_are_not_fields(void)
                          "\\\"https://evil.example/PPSA99010.zip\\\"}] \\u00e9\\u65e5 \\\\ \\/ done");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_OFFER);
     CHECK(!strcmp(r.version, "1.6.1"));
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Nightshade-Player/releases/download/1.6.1/PPSA99010.zip"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/1.6.1/PPSA99010.zip"));
     free(json);
 
     /* GitHub's own escape of a slash in an address is read as the slash */
     const char *escaped =
         "{\"tag_name\":\"1.6.1\",\"draft\":false,\"prerelease\":false,\"assets\":["
         "{\"name\":\"PPSA99010.zip\",\"state\":\"uploaded\",\"size\":1,\"digest\":null,\"browser_download_url\":"
-        "\"https:\\/\\/github.com\\/Oliv3rmoon\\/Nightshade-Player\\/releases\\/download\\/1.6.1\\/PPSA99010.zip\"},"
+        "\"https:\\/\\/github.com\\/Oliv3rmoon\\/Dulcamara\\/releases\\/download\\/1.6.1\\/PPSA99010.zip\"},"
         "{\"name\":\"SHA256SUMS\",\"state\":\"uploaded\",\"size\":80,\"digest\":null,\"browser_download_url\":"
-        "\"https://github.com/Oliv3rmoon/Nightshade-Player/releases/download/1.6.1/SHA256SUMS\"}]}";
+        "\"https://github.com/Oliv3rmoon/Dulcamara/releases/download/1.6.1/SHA256SUMS\"}]}";
     CHECK(evaluate(escaped, "1.6.0", &r) == RELEASE_OFFER);
 }
 
@@ -320,8 +320,8 @@ int main(int argc, char **argv)
     test_unreadable();
     test_sums();
     test_file_sha256(argc > 1 ? argv[1] : ".");
-    CHECK(!strcmp(UPDATE_REPO, "Oliv3rmoon/Nightshade-Player"));
-    CHECK(!strcmp(UPDATE_LATEST_URL, "https://api.github.com/repos/Oliv3rmoon/Nightshade-Player/releases/latest"));
+    CHECK(!strcmp(UPDATE_REPO, "Oliv3rmoon/Dulcamara"));
+    CHECK(!strcmp(UPDATE_LATEST_URL, "https://api.github.com/repos/Oliv3rmoon/Dulcamara/releases/latest"));
     printf("%s: %d checks, %d failed\n", failures ? "FAIL" : "PASS", checks, failures);
     return failures ? 1 : 0;
 }

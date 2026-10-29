@@ -359,7 +359,7 @@ void plat_default_root(char *out, size_t size)
     str_copy(out, size, NP_DATA);
 #else
     const char *env = SDL_getenv("NP_ROOT");
-    str_copy(out, size, env && *env ? env : "./nightshade-player-data");
+    str_copy(out, size, env && *env ? env : "./dulcamara-data");
 #endif
 }
 
@@ -373,7 +373,7 @@ const char *plat_sandbox_probe(void)
 
 /* Settings > System > "Unlock /data with etaHEN": stored as a marker file so
  * it can be read before any unlock (paths that may work while sandboxed). */
-static const char *const NO_UNLOCK_MARKERS[] = {"/download0/nightshade_player_no_unlock", NP_DATA "/no_unlock"};
+static const char *const NO_UNLOCK_MARKERS[] = {"/download0/dulcamara_no_unlock", NP_DATA "/no_unlock"};
 
 bool plat_unlock_disabled(void)
 {
@@ -1647,7 +1647,7 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
     static const uint8_t scan_strength[] = {0, 110, 200};
     uint8_t scan = scan_strength[settings->crt % 3];
 #if defined(__PROSPERO__)
-    /* Nightshade Player: a CPU core's picture goes through Vulkan too when a shader is chosen, so the shader
+    /* Dulcamara: a CPU core's picture goes through Vulkan too when a shader is chosen, so the shader
      * applies to it; without one it is the interface's texture, below */
     const bool soft_vk = !game_gpu && game_image && gpu_ui && settings->shader &&
                          vkp_set_soft_frame(game_image, game_image_w, game_image_h, game_image_pitch);

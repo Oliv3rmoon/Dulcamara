@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - liblcf's encodings without ICU (tools/patches/liblcf-iconv.patch): the guess at a game's
+ * Dulcamara - liblcf's encodings without ICU (tools/patches/liblcf-iconv.patch): the guess at a game's
  * encoding from its bytes, and the conversion to UTF-8 and back through iconv.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */

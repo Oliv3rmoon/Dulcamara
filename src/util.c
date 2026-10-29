@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - logging and path helpers (from SwanStationPS5).
+ * Dulcamara - logging and path helpers (from SwanStationPS5).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "nightshade.h"
@@ -39,7 +39,7 @@ void np_log(const char *fmt, ...)
 
     size_t len = strlen(line);
     const char *nl = (len > 0 && line[len - 1] == '\n') ? "" : "\n";
-    fprintf(stderr, "[NightshadePlayer] %s%s", line, nl);
+    fprintf(stderr, "[Dulcamara] %s%s", line, nl);
     if (log_file)
     {
         fprintf(log_file, "%s%s", line, nl);

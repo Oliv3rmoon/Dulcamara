@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - interface language. This first release is in English: tr() hands the English text back, and
+ * Dulcamara - interface language. This first release is in English: tr() hands the English text back, and
  * the font atlases need nothing beyond Latin-1. The API is SwanStationPS5's, so translations can come back as a
  * table like its i18n.c.
  * SPDX-License-Identifier: GPL-3.0-or-later

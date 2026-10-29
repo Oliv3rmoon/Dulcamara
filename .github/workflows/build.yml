@@ -1,5 +1,5 @@
-# Nightshade Player - cloud build of the PS5 app, with the host checks (Nightshade Station's workflow).
-# A version tag (X.Y.Z, the NP_VERSION of src/nightshade.h) pushed to Oliv3rmoon/Nightshade-Player also publishes:
+# Dulcamara - cloud build of the PS5 app, with the host checks (Mandrake's workflow).
+# A version tag (X.Y.Z, the NP_VERSION of src/nightshade.h) pushed to Oliv3rmoon/Dulcamara also publishes:
 # job "release" puts the PPSA99010.zip and SHA256SUMS this run built on a GitHub release, the latest, which the
 # app's update check (src/update_release.h) and Nightshade's Settings > Apps then offer. Nothing built anywhere
 # else is ever attached, and a release that already has a ZIP is never changed.
@@ -9,7 +9,7 @@
 #   PPSA99010    PPSA99010.zip, the same zip the releases carry
 #   release      it and SHA256SUMS: what a release publishes
 
-name: Build Nightshade Player
+name: Build Dulcamara
 
 on:
   push:
@@ -139,7 +139,7 @@ jobs:
                   raise SystemExit(f"ZIP check failed: game files in the package: {games[:5]}")
               param = json.loads(archive.read(f"{title}/sce_sys/param.json"))
               name = param["localizedParameters"]["en-US"]["titleName"]
-              if param["titleId"] != title or param["contentVersion"] != content or name != "Nightshade Player":
+              if param["titleId"] != title or param["contentVersion"] != content or name != "Dulcamara":
                   raise SystemExit(f"ZIP check failed: param.json is {param['titleId']} {param['contentVersion']} {name!r}")
               print(f"{len(names)} entries; {title} {content} {name!r}")
           PY
@@ -151,7 +151,7 @@ jobs:
           (cd release && sha256sum PPSA99010.zip > SHA256SUMS && cat SHA256SUMS)
 
       # Signed provenance: this file was built by this workflow from this commit. Anyone can check a downloaded
-      # copy with `gh attestation verify PPSA99010.zip -R Oliv3rmoon/Nightshade-Player`. Not for pull requests
+      # copy with `gh attestation verify PPSA99010.zip -R Oliv3rmoon/Dulcamara`. Not for pull requests
       # (a fork's run cannot sign), and not in a private repository (the plan does not include it).
       - name: Attest the release files
         if: github.event_name != 'pull_request' && !github.event.repository.private
@@ -227,8 +227,8 @@ jobs:
             fi
           elif [[ -f $notes ]]; then
             gh release create "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --latest \
-              --title "Nightshade Player $TAG" --notes-file "$notes"
+              --title "Dulcamara $TAG" --notes-file "$notes"
           else
             gh release create "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --latest \
-              --title "Nightshade Player $TAG" --generate-notes
+              --title "Dulcamara $TAG" --generate-notes
           fi

@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the libretro host: runs the core a game needs (cores.h) and hands its pictures, sound and
+ * Dulcamara - the libretro host: runs the core a game needs (cores.h) and hands its pictures, sound and
  * buttons to and from the platform layer.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */

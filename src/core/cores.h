@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the libretro cores linked into the app, one table entry each.
+ * Dulcamara - the libretro cores linked into the app, one table entry each.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Each core is a static archive built by tools/build-<core>.sh with its libretro API renamed <core>_retro_*, so

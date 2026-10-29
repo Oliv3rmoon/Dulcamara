@@ -1,6 +1,6 @@
 /*
- * Nightshade Player - updates from Oliv3rmoon/Nightshade-Player's GitHub releases (update_release.h), as
- * Nightshade Station (and SwanStationPS5 before it) updates itself.
+ * Dulcamara - updates from Oliv3rmoon/Dulcamara's GitHub releases (update_release.h), as
+ * Mandrake (and SwanStationPS5 before it) updates itself.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Checks api.github.com for the repository's latest release (not a draft or a pre-release);
@@ -262,7 +262,7 @@ static int install_thread(void *unused)
         fail(tr("Couldn't write the new files (is /data unlocked?)"));
         return 0;
     }
-    snprintf(message, sizeof(message), tr("Nightshade Player %s is installed: restart Nightshade Player to use it"), version);
+    snprintf(message, sizeof(message), tr("Dulcamara %s is installed: restart Dulcamara to use it"), version);
     np_log("update: installed %s (%d files)", version, files);
     SDL_AtomicSet(&state, UPDATE_INSTALLED);
     return 0;

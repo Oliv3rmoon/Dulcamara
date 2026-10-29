@@ -1,4 +1,4 @@
-# Nightshade Player - Linux/WSL build entry points (Nightshade Station's, on ps5-native-app-boilerplate).
+# Dulcamara - Linux/WSL build entry points (Mandrake's, on ps5-native-app-boilerplate).
 # Copyright (C) 2026 BlackBearReloaded
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -7,7 +7,7 @@ SHELL := /bin/bash
 
 -include .env
 
-# The screen through Vulkan (the linked RADV driver), as Nightshade Station: the shelf, the menus and the game's
+# The screen through Vulkan (the linked RADV driver), as Mandrake: the shelf, the menus and the game's
 # shaders are drawn by the GPU.
 APP_VULKAN ?= 1
 ifeq ($(APP_VULKAN),1)
@@ -22,7 +22,7 @@ NP_LIBRETRO_INCLUDE := third_party/easyrpg-player/builds/libretro/libretro-commo
 APP_INCLUDE_PATHS ?= $(NP_LIBRETRO_INCLUDE) third_party/stb examples/update-check $(NP_VULKAN_INCLUDE)
 ifeq ($(APP_VULKAN),1)
 # Frame generation (AMD FSR 3's frame interpolation, from PS5SX2), built by tools/build-framegen.sh: the Vulkan
-# screen (src/platform/vk) is Nightshade Station's and links it.
+# screen (src/platform/vk) is Mandrake's and links it.
 NP_FRAMEGEN := build/framegen-ps5/libframegen.a
 endif
 APP_STATIC_ARCHIVES ?= $(NP_EASYRPG) $(NP_FRAMEGEN)
@@ -34,7 +34,7 @@ APP_PARAM ?=
 APP_SCE_SYS ?=
 APP_ASSETS ?= assets
 APP_ROOT_FILES ?=
-# Lapy elevation: needed to list /data/nightshade-player under ShadowMountPlus.
+# Lapy elevation: needed to list /data/dulcamara under ShadowMountPlus.
 APP_LAPY_HELPER ?= 1
 PACBREW_PACKAGES ?= sdl2 libcurl
 PACBREW_INCLUDE_PATHS ?=
@@ -92,7 +92,7 @@ doctor:
 
 test: host-checks test-unit test-integration test-elevation test-update-check test-self-update
 
-# Nightshade Player's own host checks: the library's game detection (tests/test_library.py) and EasyRPG Player's
+# Dulcamara's own host checks: the library's game detection (tests/test_library.py) and EasyRPG Player's
 # core run headless on EasyRPG's TestGame (tests/test_core.py). Neither needs the PS5 SDK.
 .PHONY: host-checks test-library test-core
 host-checks: test-library test-core
@@ -283,7 +283,7 @@ desktop:
 
 help:
 	@printf '%s\n' \
-	  'Nightshade Player:' \
+	  'Dulcamara:' \
 	  'make                 Build the PS5 app folder dist/PPSA99010 (the cores + the frontend)' \
 	  'make host-checks     Game detection tests and EasyRPG Player run headless on TestGame' \
 	  'make desktop         The app for this computer (SDL2 window), for the interface' \

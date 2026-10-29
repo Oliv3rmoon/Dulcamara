@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-# Nightshade Player - Draw the home-screen pictures: the icon, the background and the launch picture.
+# Dulcamara - Draw the home-screen pictures: the icon, the background and the launch picture.
 # SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Draw Nightshade Player's home-screen pictures in Nightshade's style.
+"""Draw Dulcamara's home-screen pictures in Nightshade's style.
 
 usage: python3 tools/render-home-art.py              (needs Pillow and NumPy)
        python3 tools/render-home-art.py --preview DIR  (small copies in DIR; nothing else changes)
 
-Nightshade Station's tools/render-home-art.py (itself Nightshade's, Oliv3rmoon/Nightshade), with an RPG's
-message window in place of Station's disc: the same nightshade flower (five red petals round a pale cone),
+Mandrake's (formerly Nightshade Station's) tools/render-home-art.py (itself Nightshade's, Oliv3rmoon/Nightshade), with an RPG's
+message window in place of Mandrake's disc: the same nightshade flower (five red petals round a pale cone),
 black berries and dark leaves, on near black with a red glow and faint stars, in Nightshade's palette (its
 "nightly" theme). The name is set in Inter (assets/fonts, SIL Open Font License).
 
@@ -221,7 +221,7 @@ def berries(image, x, y, r):
         berry(image, x + dx * r, y + dy * r, r * s)
 
 
-# ---- Nightshade Player's own: an RPG's window and the name -------------------------------------
+# ---- Dulcamara's own: an RPG's window and the name -------------------------------------
 
 
 FONT = root / 'assets' / 'fonts' / 'Inter-600.ttf'
@@ -341,8 +341,8 @@ def background(w=3840, h=2160):
     wx, wy, ww, wh = w * 0.53, h * 0.33, w * 0.38, h * 0.36
     glow(image, wx + ww / 2, wy + wh / 2, None, RED, 0.25, ring=wh * 0.62, width=h * 0.03)
     window(image, wx, wy, ww, wh)
-    text(image, wx + ww / 2, wy + wh * 0.30, 'Nightshade', h * 0.105, TEXT, anchor='mm')
-    text(image, wx + ww / 2, wy + wh * 0.53, 'PLAYER', h * 0.040, RED, spacing=0.55, anchor='mm')
+    text(image, wx + ww / 2, wy + wh * 0.30, 'Dulcamara', h * 0.100, TEXT, anchor='mm')
+    text(image, wx + ww / 2, wy + wh * 0.53, 'A NIGHTSHADE APP', h * 0.032, RED, spacing=0.45, anchor='mm')
     cursor(image, wx + ww * 0.33, wy + wh * 0.70, h * 0.030, PALE)
     lines(image, wx + ww * 0.40, wy + wh * 0.712, ww * 0.30, 2, wh * 0.12, h * 0.010, DIM, (0.9, 0.62))
     # The nightshade climbs from below at the window's left and flowers over its corner.
@@ -372,8 +372,8 @@ def launch(w=3840, h=2160):
     wx, wy, ww, wh = w * 0.29, h * 0.47, w * 0.42, h * 0.27
     glow(image, cx, wy + wh / 2, None, RED, 0.30, ring=wh * 0.75, width=h * 0.035)
     window(image, wx, wy, ww, wh)
-    text(image, cx, wy + wh * 0.40, 'Nightshade', h * 0.10, TEXT, anchor='mm')
-    text(image, cx, wy + wh * 0.74, 'PLAYER', h * 0.040, RED, spacing=0.55, anchor='mm')
+    text(image, cx, wy + wh * 0.40, 'Dulcamara', h * 0.095, TEXT, anchor='mm')
+    text(image, cx, wy + wh * 0.74, 'A NIGHTSHADE APP', h * 0.032, RED, spacing=0.45, anchor='mm')
     stem(image, curve((cx, wy), (cx - w * 0.01, cy - h * 0.12), (cx, cy - h * 0.20)), w * 0.004)
     flower(image, cx, cy - h * 0.22, h * 0.15, -math.pi / 2)
     leaf(image, cx - w * 0.07, wy - h * 0.02, w * 0.08, w * 0.08 * 0.3, -2.8, bend=-0.12, rim=0.5)

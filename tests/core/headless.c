@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - EasyRPG Player's libretro core, headless: a frontend with no screen and no sound card that
+ * Dulcamara - EasyRPG Player's libretro core, headless: a frontend with no screen and no sound card that
  * loads a game, runs it for some frames, presses a few buttons and reports what came out. tests/test_core.py runs
  * it on EasyRPG's TestGame; it fails unless the game loads, every frame has a picture and the pictures change.
  * SPDX-License-Identifier: GPL-3.0-or-later

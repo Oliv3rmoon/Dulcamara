@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - shared types for the frontend (from SwanStationPS5's SwanStationPS5.h).
+ * Dulcamara - shared types for the frontend (from SwanStationPS5's SwanStationPS5.h).
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Everything here is plain C11 so the same sources build for the PS5 and for the desktop test build.
@@ -11,11 +11,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NP_NAME "NightshadePlayer"   /* identifiers: the User-Agent of network requests, the Vulkan application name */
-#define NP_TITLE "Nightshade Player" /* what is shown on screen */
+#define NP_NAME "Dulcamara"   /* identifiers: the User-Agent of network requests, the Vulkan application name */
+#define NP_TITLE "Dulcamara" /* what is shown on screen */
 #define NP_TITLE_ID "PPSA99010"
 #define NP_VERSION "0.1.0"
-#define NP_DATA "/data/nightshade-player" /* the data folder on the console */
+#define NP_DATA "/data/dulcamara" /* the data folder on the console */
 #define NP_PATH_MAX 512
 
 /* Pad bits use RetroPad numbering. PlayStation names: Cross = B, Circle = A, Square = Y, Triangle = X. The buttons a
@@ -38,7 +38,7 @@ enum
     BTN_R2 = 13,
     BTN_L3 = 14,
     BTN_R3 = 15,
-    BTN_MENU = 16, /* touchpad click: opens the Nightshade Player menu */
+    BTN_MENU = 16, /* touchpad click: opens the Dulcamara menu */
 };
 #define BIT(b) (1u << (b))
 #define NP_MAX_PADS 4 /* the platform layer reads four; the games get player 1's */

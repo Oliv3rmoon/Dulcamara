@@ -163,7 +163,7 @@ static struct
     int fg_state;
     double core_hz, display_hz, speed;
     bool nominal;
-    /* Nightshade Player: a core that draws on the CPU (EasyRPG Player). Its frames are copied into this image at
+    /* Dulcamara: a core that draws on the CPU (EasyRPG Player). Its frames are copied into this image at
      * each present, and the image is drawn as a core's Vulkan picture is, so the shaders apply to it. */
     VkImage soft_image;
     VkDeviceMemory soft_memory;

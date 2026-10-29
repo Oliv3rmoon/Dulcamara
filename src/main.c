@@ -1,10 +1,11 @@
 /*
- * Nightshade Player - RPG Maker 2000 / 2003 games on the PS5, on EasyRPG Player's libretro core.
+ * Dulcamara - RPG Maker 2000 / 2003 games on the PS5, on EasyRPG Player's libretro core.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * The app: start-up, the main loop, the game screen, and what the screens share (app.h). Its platform layer, its
- * Vulkan screen and shaders, its interface primitives and its update check come from Nightshade Station (darkxex's
- * SwanStationPS5 on BlackBearReloaded's ps5-native-app-boilerplate).
+ * Dulcamara, a Nightshade app. The app: start-up, the main loop, the game screen, and what the screens share
+ * (app.h). Its platform layer, its Vulkan screen and shaders, its interface primitives and its update check come
+ * from Mandrake, formerly Nightshade Station (darkxex's SwanStationPS5 on BlackBearReloaded's
+ * ps5-native-app-boilerplate).
  */
 #include "app.h"
 
@@ -443,7 +444,7 @@ int main(int argc, char **argv)
 
     make_folders();
     char log_path[NP_PATH_MAX];
-    path_join(log_path, sizeof(log_path), app.paths.logs, "nightshade-player.log");
+    path_join(log_path, sizeof(log_path), app.paths.logs, "dulcamara.log");
     np_log_open(log_path);
     ps5_crash_install(log_path);
 #if defined(__PROSPERO__)
@@ -488,7 +489,7 @@ int main(int argc, char **argv)
             app.dt = 0.1f;
         last = now;
 
-        /* an update found at start installs by itself, once, a second after the app opened (as Nightshade Station) */
+        /* an update found at start installs by itself, once, a second after the app opened (as Mandrake) */
         if (!update_offered && update_state() == UPDATE_AVAILABLE && now - opened >= 1000000 && app.game < 0)
         {
             update_offered = true;

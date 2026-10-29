@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - which GitHub release the in-app update offers, and the checks it passes.
+ * Dulcamara - which GitHub release the in-app update offers, and the checks it passes.
  * SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
  * SPDX-License-Identifier: GPL-3.0-or-later
  *

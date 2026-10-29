@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - third-party C libraries compiled into the app (from SwanStationPS5's):
+ * Dulcamara - third-party C libraries compiled into the app (from SwanStationPS5's):
  *   miniz 3.0.2 (MIT): unzips updates, reads .zip / .easyrpg games for the library and XYZ pictures
  * Their warnings are theirs; keep them out of ours.
  * SPDX-License-Identifier: GPL-3.0-or-later

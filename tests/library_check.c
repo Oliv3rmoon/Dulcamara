@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the library's game detection (src/library.c, src/rpgmaker.c), on the build machine: a games
+ * Dulcamara - the library's game detection (src/library.c, src/rpgmaker.c), on the build machine: a games
  * folder of made-up games is written, scanned and checked, then EasyRPG's TestGame when it is given.
  * tests/test_library.py builds and runs it.
  * SPDX-License-Identifier: GPL-3.0-or-later

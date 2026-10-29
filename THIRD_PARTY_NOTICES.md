@@ -5,8 +5,8 @@
 | Project | Role |
 | --- | --- |
 | [EasyRPG Player](https://github.com/EasyRPG/Player) and [liblcf](https://github.com/EasyRPG/liblcf), by the [EasyRPG](https://easyrpg.org) team | The core that runs the RPG Maker 2000 / 2003 games, and their file formats |
-| [Oliv3rmoon/Nightshade-Station](https://github.com/Oliv3rmoon/Nightshade-Station) | The frontend this app is built from |
-| [darkxex/SwanStationPS5](https://github.com/darkxex/SwanStationPS5) | Nightshade Station's origin: its platform layer, Vulkan screen, shaders and interface |
+| [Oliv3rmoon/Mandrake](https://github.com/Oliv3rmoon/Mandrake), Mandrake (formerly Nightshade Station) | The frontend this app is built from |
+| [darkxex/SwanStationPS5](https://github.com/darkxex/SwanStationPS5) | Mandrake's origin: its platform layer, Vulkan screen, shaders and interface |
 | [BlackBearReloaded's ps5-native-app-boilerplate](https://github.com/blackbearreloaded) | The PS5 native app build, runtime, tooling and update check under all of them |
 | [ps5-payload-dev/sdk](https://github.com/ps5-payload-dev/sdk) | Public PS5 headers, libc++ headers, sysroot, and Clang target support |
 | [ps5-payload-dev/pacbrew-repo](https://github.com/ps5-payload-dev/pacbrew-repo) | Optional prebuilt PS5 ports and static libraries |
@@ -25,7 +25,7 @@
 
 ## Cores shipped
 
-Nightshade Player ships **one** core:
+Dulcamara ships **one** core:
 
 | Core | Upstream | License | Notes |
 | --- | --- | --- | --- |
@@ -55,7 +55,7 @@ libsndfile (LGPL-2.1-or-later), FLAC (BSD-3-Clause), Opus (BSD-3-Clause), LAME (
 (bzip2 license), libsamplerate (BSD-2-Clause) and GNU libiconv (LGPL-2.1-or-later), which the frontend links
 too. The LGPL libraries are linked statically into a GPL-3.0-or-later program whose whole source is published.
 
-The core is free, and Nightshade Player has no paid features, ads or in-app purchases.
+The core is free, and Dulcamara has no paid features, ads or in-app purchases.
 
 ### Test data, never shipped
 
@@ -147,7 +147,7 @@ Hinnant's public-domain `civil_from_days` algorithm.
 
 `third_party/miniz/` holds [miniz](https://github.com/richgel999/miniz) 3.0.2
 (commit `293d4db1b7d0ffee9756d035b9ac6f7431ef8492`), MIT, unmodified, with its
-`LICENSE`; `SOURCE.json` records each file's SHA-256. Nightshade Player links it
+`LICENSE`; `SOURCE.json` records each file's SHA-256. Dulcamara links it
 (`src/vendor.c`) to unpack updates and to read `.zip` / `.easyrpg` games and XYZ
 pictures for the library; the self-update helper (`examples/self-update-helper`)
 and its host test link it too. The
@@ -190,17 +190,17 @@ The BlackBear icon, selection artwork, and default selection track
 (C) 2026 BlackBearReloaded, and distributed under GPL-3.0-or-later. The track
 is titled `Night Drive`.
 
-Nightshade Player's icon and home-screen pictures (`sce_sys/icon0.png`, `pic0.dds` and `pic1.dds`
+Dulcamara's icon and home-screen pictures (`sce_sys/icon0.png`, `pic0.dds` and `pic1.dds`
 with their source PNGs, `background-source.png` and `launch-background-source.png`) are drawn by
-`tools/render-home-art.py`, after Nightshade Station's and Nightshade's (Oliv3rmoon/Nightshade), Copyright
+`tools/render-home-art.py`, after Mandrake's and Nightshade's (Oliv3rmoon/Nightshade), Copyright
 (C) 2026 Oliv3rmoon, and distributed under GPL-3.0-or-later. The name in them is set in Inter (SIL Open Font
 License 1.1).
 
 No proprietary runtime module, encryption key, RTP or game file is included.
 
-## From SwanStationPS5 and Nightshade Station
+## From SwanStationPS5 and Mandrake
 
-The frontend is Nightshade Station's, which is [darkxex's SwanStationPS5](https://github.com/darkxex/SwanStationPS5)
+The frontend is Mandrake's (formerly Nightshade Station), which is [darkxex's SwanStationPS5](https://github.com/darkxex/SwanStationPS5)
 (GPL-3.0-or-later, from [SynoPiia's PSXS5](https://github.com/SynoPiia/PSXS5)). What it brings, and still uses:
 
 | Component | Use | License |
@@ -209,7 +209,7 @@ The frontend is Nightshade Station's, which is [darkxex's SwanStationPS5](https:
 | [Inter](https://github.com/rsms/inter) | interface font (`assets/fonts`) | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |
 | [SDL2](https://www.libsdl.org/) (PacBrew port) | events, controllers, audio, software renderer | zlib |
 | [dlmalloc](https://gee.cs.oswego.edu/dl/html/malloc.html) 2.8.6 by Doug Lea | allocator for the direct-memory heap (`third_party/dlmalloc`) | Public domain (CC0) |
-| [Noto Sans JP](https://github.com/notofonts/noto-cjk) (subset made for Nightshade Station) | Japanese text (`assets/fonts/NotoSansJP-subset.ttf`) | SIL Open Font License 1.1 (`assets/fonts/OFL-NotoSansJP.txt`) |
+| [Noto Sans JP](https://github.com/notofonts/noto-cjk) (subset made for Mandrake) | Japanese text (`assets/fonts/NotoSansJP-subset.ttf`) | SIL Open Font License 1.1 (`assets/fonts/OFL-NotoSansJP.txt`) |
 | [Tabler Icons](https://tabler.io/icons) 3.31.0 (subset by `tools/make_icon_font.py`) | interface icons (`assets/fonts/tabler-icons-subset.ttf`) | MIT (`assets/fonts/LICENSE-tabler-icons.txt`) |
 | [lcd3x](https://github.com/libretro/slang-shaders) by Gigaherz | the LCD3x shader, ported to GLSL in `src/platform/vk/shaders/lcd3x.frag` | Public domain |
 | [crt-royale](https://github.com/libretro/slang-shaders) (crt-royale-fast) by TroggleMonkey, adapted by Hyllian | the CRT Royale Fast shader, compiled to SPIR-V by `tools/make-royale.py` (`third_party/crt-royale`) | GPL-2.0-or-later (`third_party/crt-royale/LICENSE.TXT`) |

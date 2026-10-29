@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the game library (library.h).
+ * Dulcamara - the game library (library.h).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "library.h"

@@ -167,7 +167,7 @@ static int cmp_int(const void *a, const void *b)
     return *(const int *)a - *(const int *)b;
 }
 
-/* Nightshade Player: text the interface shows that is not its own, the games' titles (text_want). */
+/* Dulcamara: text the interface shows that is not its own, the games' titles (text_want). */
 static char *wanted;
 static size_t wanted_len;
 

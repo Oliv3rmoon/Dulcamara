@@ -1,4 +1,4 @@
-# Nightshade Player - EasyRPG Player's libretro core built for this computer, and a headless frontend for it
+# Dulcamara - EasyRPG Player's libretro core built for this computer, and a headless frontend for it
 # (headless.c). tools/build-easyrpg.sh host configures it; tests/test_core.py runs the result on TestGame.
 # SPDX-License-Identifier: GPL-3.0-or-later
 cmake_minimum_required(VERSION 3.22)

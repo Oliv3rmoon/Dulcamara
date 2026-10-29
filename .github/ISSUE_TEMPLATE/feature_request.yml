@@ -21,7 +21,7 @@ body:
     id: idea
     attributes:
       label: Your idea
-      description: What Nightshade Player could do. Screens, buttons, settings, whatever helps explain it.
+      description: What Dulcamara could do. Screens, buttons, settings, whatever helps explain it.
       placeholder: Save automatically when I quit, and offer "Continue" on the shelf.
     validations:
       required: true
@@ -29,7 +29,7 @@ body:
   - type: dropdown
     id: area
     attributes:
-      label: Which part of Nightshade Player?
+      label: Which part of Dulcamara?
       options:
         - Shelf (home screen)
         - In-game menu
@@ -41,7 +41,7 @@ body:
         - Saves, states and memory cards
         - Cheats
         - RetroAchievements
-        - PC tool (Nightshade Player_sync.py)
+        - PC tool (Dulcamara_sync.py)
         - Other
     validations:
       required: true
@@ -53,7 +53,7 @@ body:
       options:
         - Nice to have
         - I'd use it often
-        - It's stopping me from using Nightshade Player for something
+        - It's stopping me from using Dulcamara for something
     validations:
       required: true
 

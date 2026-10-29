@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Nightshade Player - builds EasyRPG Player's libretro core (EasyRPG/Player, GPL-3.0-or-later, and EasyRPG/liblcf,
-# MIT) for the PS5 as one static archive that lives in the same app as the frontend, the way Nightshade Station
+# Dulcamara - builds EasyRPG Player's libretro core (EasyRPG/Player, GPL-3.0-or-later, and EasyRPG/liblcf,
+# MIT) for the PS5 as one static archive that lives in the same app as the frontend, the way Mandrake
 # builds SwanStation.
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
@@ -19,7 +19,7 @@
 # WildMidi and FluidSynth are off: EasyRPG's own FmMidi synthesiser plays the MIDI music. Opus (PacBrew has opus
 # but not opusfile), lhasa (.lzh games), libxmp and nlohmann-json are off too.
 #
-# Like the cores of Nightshade Station, the archive is self-contained: the core and every library it uses are
+# Like the cores of Mandrake, the archive is self-contained: the core and every library it uses are
 # linked into one relocatable object, every symbol but the libretro API is made local, and the API is renamed
 # easyrpg_retro_*. A second core (ScummVM's) can sit beside it the same way.
 

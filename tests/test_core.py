@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Nightshade Player - EasyRPG Player's core, built for this computer and run headless on EasyRPG's TestGame.
+# Dulcamara - EasyRPG Player's core, built for this computer and run headless on EasyRPG's TestGame.
 # SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Builds the libretro core the PS5 app links (tools/build-easyrpg.sh host: the same EasyRPG Player and liblcf

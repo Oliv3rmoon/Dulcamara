@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nightshade Player - fetches EasyRPG's TestGame (github.com/EasyRPG/TestGame) at a pinned commit into the ignored
+# Dulcamara - fetches EasyRPG's TestGame (github.com/EasyRPG/TestGame) at a pinned commit into the ignored
 # cache, for the host checks only: tests/test_core.py runs the core on it, tests/test_library.py finds it.
 # SPDX-License-Identifier: GPL-3.0-or-later
 #

@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the in-game menu (the touchpad): over the game, darkened.
+ * Dulcamara - the in-game menu (the touchpad): over the game, darkened.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "../app.h"

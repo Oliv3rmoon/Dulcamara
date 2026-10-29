@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compiles Nightshade Player and packs the release asset, PPSA99010.zip, in the project root.
+"""Compiles Dulcamara and packs the release asset, PPSA99010.zip, in the project root.
 
     python3 tools/make_release.py                 # make, then PPSA99010.zip
     python3 tools/make_release.py --skip-build    # only pack what dist/ already holds
@@ -8,7 +8,7 @@
 
 The zip holds just the app folder, PPSA99010/: what the in-app updater installs, and what you copy to
 /data/homebrew. The release tag is the version from NP_VERSION in src/nightshade.h, without a "v" (0.1.0).
-(From Nightshade Station's, which is SwanStationPS5's.)
+(From Mandrake's, which is SwanStationPS5's.)
 
 SPDX-License-Identifier: GPL-3.0-or-later
 """
@@ -98,7 +98,7 @@ def main():
     args = ap.parse_args()
 
     version = read_version()
-    print(f"Nightshade Player {version}")
+    print(f"Dulcamara {version}")
     if args.sync_version:
         sync_content_version(version)
         return
@@ -113,10 +113,10 @@ def main():
         deploy(args.ip, args.port)
     # A release is published by the Build workflow from a version tag, with SHA256SUMS
     # (.github/workflows/build.yml); a ZIP made here is for testing.
-    print(f"    publish: push a signed tag {version} to Oliv3rmoon/Nightshade-Player; the Build workflow "
-          f"publishes {out.name} and SHA256SUMS as \"Nightshade Player {version}\"")
+    print(f"    publish: push a signed tag {version} to Oliv3rmoon/Dulcamara; the Build workflow "
+          f"publishes {out.name} and SHA256SUMS as \"Dulcamara {version}\"")
     if args.ip:
-        print(f"    live log (open the app first): nc {args.ip} 3232 | grep --line-buffered NightshadePlayer")
+        print(f"    live log (open the app first): nc {args.ip} 3232 | grep --line-buffered Dulcamara")
 
 
 main()

@@ -291,8 +291,8 @@ if [[ ${APP_VULKAN:-0} == 1 ]]; then
     for input in "${link_inputs[@]}"; do
         [[ $input == -lz || $input == */libz.a ]] || kept+=("$input")
     done
-    # The SDK platform layer wraps fclose and fflush (its open_memstream). Nightshade Station kept them under other
-    # names for its NFS layer, which wrapped them too; Nightshade Player has none, so the SDK's own wraps are used.
+    # The SDK platform layer wraps fclose and fflush (its open_memstream). Mandrake kept them under other
+    # names for its NFS layer, which wrapped them too; Dulcamara has none, so the SDK's own wraps are used.
     link_inputs=("${kept[@]}" "${radv_link_inputs[@]}")
     linker_options+=(--error-limit=0)
     # AGC lives in system modules the SDK has no stubs for: tiny link-only
@@ -359,10 +359,10 @@ assert manifest["target_title"] == app.name and manifest["mode"] == "elf-helper"
 PY
 fi
 
-# Licences of Nightshade Player and what it's built from (GPL: the texts travel with it).
+# Licences of Dulcamara and what it's built from (GPL: the texts travel with it).
 mkdir -p "$app/licenses"
 cp "$root/docs/THIRD-PARTY.txt" "$app/licenses/THIRD-PARTY.txt"
-cp "$root/LICENSE" "$app/licenses/LICENSE-Nightshade-Player.txt"
+cp "$root/LICENSE" "$app/licenses/LICENSE-Dulcamara.txt"
 for pair in "third_party/easyrpg-player/COPYING:LICENSE-EasyRPG-Player.txt" \
     "third_party/easyrpg-player/docs/AUTHORS.md:AUTHORS-EasyRPG-Player.md" \
     "third_party/liblcf/COPYING:LICENSE-liblcf.txt" \

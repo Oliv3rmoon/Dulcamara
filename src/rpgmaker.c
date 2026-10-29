@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - reading RPG Maker 2000 / 2003 games' files for the library (rpgmaker.h).
+ * Dulcamara - reading RPG Maker 2000 / 2003 games' files for the library (rpgmaker.h).
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * RPG_RT.ldb is liblcf's "LcfDataBase": a length-prefixed header, then chunks, each a compressed integer id, a

@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the libretro host (host.h), from SwanStationPS5's: the cores are linked in as static archives
+ * Dulcamara - the libretro host (host.h), from SwanStationPS5's: the cores are linked in as static archives
  * and driven through their CoreInfo (cores.h). Only the environment calls the cores rely on are answered; the rest
  * get "unsupported", as libretro allows.
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -282,7 +282,7 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
         return id < 16 ? (pad_bits >> id) & 1 : 0;
     case RETRO_DEVICE_ANALOG:
         /* the left stick only: EasyRPG reads the right one as the number keys and the triggers as its own
-         * fast-forward and debug keys, which Nightshade Player keeps for itself */
+         * fast-forward and debug keys, which Dulcamara keeps for itself */
         if (index == RETRO_DEVICE_INDEX_ANALOG_LEFT)
             return id == RETRO_DEVICE_ID_ANALOG_X ? pad_lx : id == RETRO_DEVICE_ID_ANALOG_Y ? pad_ly : 0;
         return 0;

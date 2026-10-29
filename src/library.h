@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the game library: what is in /data/nightshade-player/games.
+ * Dulcamara - the game library: what is in /data/dulcamara/games.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * A game is a folder holding RPG_RT.ldb and RPG_RT.lmt (any case), straight in games/ or one folder down

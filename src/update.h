@@ -1,6 +1,6 @@
 /*
  * SwanStationPS5 - updates from the project's GitHub releases.
- * Nightshade Player: Oliv3rmoon/Nightshade-Player's (UPDATE_REPO, update_release.h).
+ * Dulcamara: Oliv3rmoon/Dulcamara's (UPDATE_REPO, update_release.h).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #ifndef NP_UPDATE_H

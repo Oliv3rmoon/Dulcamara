@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the settings file (settings.ini in the data folder) and the data folder's layout.
+ * Dulcamara - the settings file (settings.ini in the data folder) and the data folder's layout.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #ifndef NP_CONFIG_H

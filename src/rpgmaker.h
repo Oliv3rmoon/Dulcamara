@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - what the library reads from an RPG Maker 2000 / 2003 game without running it: its title
+ * Dulcamara - what the library reads from an RPG Maker 2000 / 2003 game without running it: its title
  * (RPG_RT.ini), the picture of its title screen and its engine (RPG_RT.ldb), and RPG Maker's own XYZ pictures.
  * Plain functions over bytes, so tests/library_check.c runs them on the build machine.
  * SPDX-License-Identifier: GPL-3.0-or-later

@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the library: a row of title screens on Nightshade's black-and-red backdrop, the chosen one
+ * Dulcamara - the library: a row of title screens on Nightshade's black-and-red backdrop, the chosen one
  * large in the middle with its title under it.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -32,7 +32,7 @@ static bool positioned;
 /* ---------------------------------------------------------------- the backdrop */
 
 /* Nightshade's: near black, a low red glow rising from below the cards, right of the middle, and a fainter one
- * behind them (Nightshade Station's BACKDROP_GLOW, ui/coverflow.c there). */
+ * behind them (Mandrake's BACKDROP_GLOW, ui/coverflow.c there). */
 void shelf_backdrop(void)
 {
     enum { W = 960, H = 540 };
@@ -163,6 +163,8 @@ static void draw_header(void)
     const float y = 54;
     draw_rrect(TH_MARGIN, y + 6, 10, 34, 5, TH_FOCUS);
     text_draw(TH_MARGIN + 26, y, 40, FONT_BOLD, TH_TEXT, ALIGN_LEFT, NP_TITLE);
+    text_draw(TH_MARGIN + 26 + text_width(40, FONT_BOLD, NP_TITLE) + 18, y + 13, 24, FONT_REGULAR, TH_TEXT_DIM,
+              ALIGN_LEFT, tr("a Nightshade app"));
     char right[96], clock[32];
     plat_clock(clock, sizeof(clock));
     if (app.library.count == 1)
@@ -172,7 +174,7 @@ static void draw_header(void)
     text_draw(plat_width() - TH_MARGIN, y + 8, 28, FONT_REGULAR, TH_TEXT_DIM, ALIGN_RIGHT, right);
     if (update_state() == UPDATE_INSTALLED)
         text_draw(plat_width() - TH_MARGIN, y + 50, 22, FONT_REGULAR, TH_GOOD, ALIGN_RIGHT,
-                  tr("Update installed: restart Nightshade Player to use it"));
+                  tr("Update installed: restart Dulcamara to use it"));
 }
 
 static void draw_empty(void)
@@ -188,7 +190,7 @@ static void draw_empty(void)
         ".zip and .easyrpg archives of a game work as they are.",
         "Games that need the RPG Maker run-time package (RTP): put it in",
         NP_DATA "/rtp/2000 or rtp/2003.",
-        "No games come with Nightshade Player: copy your own.",
+        "No games come with Dulcamara: copy your own.",
     };
     float ly = y + 160;
     for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); ++i, ly += 44)

@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the library's covers: each game's title screen picture (library_title_image), read and
+ * Dulcamara - the library's covers: each game's title screen picture (library_title_image), read and
  * decoded on a background thread (PNG and BMP through stb_image, RPG Maker's XYZ through rpgmaker.c), uploaded on
  * the main thread.
  * SPDX-License-Identifier: GPL-3.0-or-later

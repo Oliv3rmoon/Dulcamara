@@ -18,7 +18,7 @@ char *nl_langinfo(int item)
     return (char *)"UTF-8";
 }
 
-/* Nightshade Player: EasyRPG Player's libraries call memccpy and libc++'s locale guard calls uselocale; no PS5
+/* Dulcamara: EasyRPG Player's libraries call memccpy and libc++'s locale guard calls uselocale; no PS5
  * module exports either. The app runs in the C locale (newlocale is the platform layer's), so every locale is
  * the same one: uselocale remembers the one it was given and hands back the one before. */
 #include <string.h>

@@ -28,7 +28,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Nightshade Player version
+      label: Dulcamara version
       placeholder: 0.1.0
     validations:
       required: true

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# Nightshade Player - the update's release decision, built and run on the host.
+# Dulcamara - the update's release decision, built and run on the host.
 # SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Builds tests/update_release_check.c with src/update_release.c and the boilerplate's SHA-256
 under the address and undefined-behaviour sanitizers, warnings as errors, and runs it. CC names
-another compiler (default: clang). Also checks that the app asks only Oliv3rmoon/Nightshade-Player."""
+another compiler (default: clang). Also checks that the app asks only Oliv3rmoon/Dulcamara."""
 
 import os
 import re
@@ -36,9 +36,9 @@ class UpdateReleaseTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr[-3000:])
         self.assertIn("PASS", result.stdout)
 
-    def test_the_app_asks_only_nightshade_players_releases(self):
+    def test_the_app_asks_only_dulcamaras_releases(self):
         header = (ROOT / "src/update_release.h").read_text(encoding="utf-8")
-        self.assertIn('#define UPDATE_REPO "Oliv3rmoon/Nightshade-Player"', header)
+        self.assertIn('#define UPDATE_REPO "Oliv3rmoon/Dulcamara"', header)
         self.assertIn('#define UPDATE_ZIP "PPSA99010.zip"', header)
         update = (ROOT / "src/update.c").read_text(encoding="utf-8")
         self.assertIn("net_request(UPDATE_LATEST_URL", update)

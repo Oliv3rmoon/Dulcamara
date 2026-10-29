@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the app's state and what the screens share (main.c owns them).
+ * Dulcamara - the app's state and what the screens share (main.c owns them).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #ifndef NP_APP_H

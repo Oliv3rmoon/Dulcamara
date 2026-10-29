@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Nightshade Player - the library's game detection, built and run on the host.
+# Dulcamara - the library's game detection, built and run on the host.
 # SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Builds tests/library_check.c with src/library.c, src/rpgmaker.c and miniz under the address and
@@ -53,11 +53,11 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr[-3000:])
         self.assertIn("PASS", result.stdout)
 
-    def test_the_app_is_nightshade_player(self):
+    def test_the_app_is_dulcamara(self):
         header = (ROOT / "src/nightshade.h").read_text(encoding="utf-8")
-        self.assertIn('#define NP_TITLE "Nightshade Player"', header)
+        self.assertIn('#define NP_TITLE "Dulcamara"', header)
         self.assertIn('#define NP_TITLE_ID "PPSA99010"', header)
-        self.assertIn('#define NP_DATA "/data/nightshade-player"', header)
+        self.assertIn('#define NP_DATA "/data/dulcamara"', header)
 
 
 if __name__ == "__main__":

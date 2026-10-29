@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - the cores' table (cores.h).
+ * Dulcamara - the cores' table (cores.h).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "cores.h"

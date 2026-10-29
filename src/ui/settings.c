@@ -1,5 +1,5 @@
 /*
- * Nightshade Player - Settings: tabs (L1 / R1) of rows (up / down), each changed with left / right or Cross.
+ * Dulcamara - Settings: tabs (L1 / R1) of rows (up / down), each changed with left / right or Cross.
  * Opened from a game, the game shows behind it, so a shader or a scale is seen as it is chosen.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -53,7 +53,7 @@ typedef struct
 #define FIELD(f) offsetof(Settings, f)
 #define N(a) (int)(sizeof(a) / sizeof((a)[0]))
 
-/* vk_present.c's shader numbers (Nightshade Station's list, without its 256-pixel NTSC ones) */
+/* vk_present.c's shader numbers (Mandrake's list, without its 256-pixel NTSC ones) */
 static const char *const SHADERS[] = {"Off",           "CRT Royale",       "CRT Royale Fast", "CRT Lottes",
                                       "CRT Pi",        "CRT Newpixie",     "CRT Hyllian NTSC", "CRT Mattias",
                                       "NTSC S-Video",  "NTSC Composite",   "LCD3x",           "zfast LCD",
@@ -121,7 +121,7 @@ static const Row CONTROLS[] = {
     BUTTON_ROW("OPTIONS", BTN_START),
     {"Default buttons", "Cross Decision, Circle Cancel, Triangle the menu, Square Shift, OPTIONS EasyRPG's settings.",
      K_ACTION, 0, NULL, 0, NULL, A_DEFAULT_BUTTONS, -1},
-    {"The D-pad and the left stick move; R2 fast-forwards; the touchpad opens Nightshade Player's menu.", NULL, K_INFO,
+    {"The D-pad and the left stick move; R2 fast-forwards; the touchpad opens Dulcamara's menu.", NULL, K_INFO,
      0, NULL, 0, NULL, A_NONE, -1},
 };
 
@@ -137,26 +137,26 @@ static const Row LIBRARY_ROWS[] = {
 };
 
 static const Row SYSTEM[] = {
-    {"Check for updates at start", "Asks github.com/Oliv3rmoon/Nightshade-Player for a newer release when the app "
+    {"Check for updates at start", "Asks github.com/Oliv3rmoon/Dulcamara for a newer release when the app "
                                    "opens, and installs it (checked against its SHA256SUMS) for the next start.",
      K_TOGGLE, FIELD(update_check), NULL, 0, NULL, A_NONE, -1},
     {"Check for updates now", "Asks GitHub now.", K_ACTION, 0, NULL, 0, NULL, A_CHECK_UPDATE, -1},
-    {"Close Nightshade Player", "Closes the app. Save in the game first.", K_ACTION, 0, NULL, 0, NULL, A_CLOSE_APP, -1},
+    {"Close Dulcamara", "Closes the app. Save in the game first.", K_ACTION, 0, NULL, 0, NULL, A_CLOSE_APP, -1},
 };
 
 static const Row ABOUT[] = {
-    {NP_TITLE " " NP_VERSION ", by Oliv3rmoon. Free software: GPL-3.0-or-later.", NULL, K_INFO, 0, NULL, 0, NULL,
+    {NP_TITLE " " NP_VERSION ", a Nightshade app by Oliv3rmoon. Free software: GPL-3.0-or-later.", NULL, K_INFO, 0, NULL, 0, NULL,
      A_NONE, -1},
     {"Games run on EasyRPG Player (GPL-3.0-or-later) and liblcf (MIT), by the EasyRPG team.", NULL, K_INFO, 0, NULL,
      0, NULL, A_NONE, -1},
-    {"Built on Nightshade Station: darkxex's SwanStationPS5 and BlackBearReloaded's PS5 boilerplate.", NULL, K_INFO,
+    {"Built on Mandrake (formerly Nightshade Station): darkxex's SwanStationPS5 on BlackBearReloaded's boilerplate.", NULL, K_INFO,
      0, NULL, 0, NULL, A_NONE, -1},
     {"Games: " NP_DATA "/games, one folder (or .zip, .easyrpg) each.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
     {"RTP: " NP_DATA "/rtp/2000 and rtp/2003. Saves stay in each game's folder.", NULL, K_INFO, 0, NULL, 0, NULL,
      A_NONE, -1},
     {"Licences and credits: the licenses folder of the app, and THIRD_PARTY_NOTICES.md on GitHub.", NULL, K_INFO, 0,
      NULL, 0, NULL, A_NONE, -1},
-    {"No games come with Nightshade Player: copy your own.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"No games come with Dulcamara: copy your own.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
 };
 
 typedef struct
