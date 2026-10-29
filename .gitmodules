@@ -1,0 +1,9 @@
+[submodule "third_party/easyrpg-player"]
+	path = third_party/easyrpg-player
+	url = https://github.com/EasyRPG/Player.git
+[submodule "third_party/liblcf"]
+	path = third_party/liblcf
+	url = https://github.com/EasyRPG/liblcf.git
+[submodule "third_party/inih"]
+	path = third_party/inih
+	url = https://github.com/benhoyt/inih.git

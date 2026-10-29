@@ -1,0 +1,417 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5ad2d45..7769cab 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -11,6 +11,7 @@ option(BUILD_SHARED_LIBS "Build shared library, disable for building the static
+ option(LIBLCF_WITH_INI "INI parsing support (inih, required when building EasyRPG Player, default: ON)" ON)
+ option(LIBLCF_WITH_ICU "ICU encoding handling (when disabled only windows-1252 is supported, default: ON)" ON)
+ option(LIBLCF_WITH_XML "XML reading support (expat, default: ON)" ON)
++option(LIBLCF_WITH_ICONV "iconv encoding handling and a byte-based encoding guess when ICU is off (default: OFF)" OFF)
+ option(LIBLCF_UPDATE_MIMEDB "Whether to run update-mime-database after install (default: ON)" ON)
+ option(LIBLCF_ENABLE_TOOLS "Whether to build the tools (default: ON)" ${LIBLCF_MAIN_PROJECT})
+ option(LIBLCF_ENABLE_TESTS "Whether to build the unit tests (default: ON)" ${LIBLCF_MAIN_PROJECT})
+@@ -391,6 +392,14 @@ if(LIBLCF_WITH_ICU)
+ 	endif()
+ endif()
+ 
++# iconv: the encodings without ICU
++set(LCF_SUPPORT_ICONV 0)
++if(NOT LCF_SUPPORT_ICU AND LIBLCF_WITH_ICONV)
++	find_package(Iconv REQUIRED)
++	target_link_libraries(lcf Iconv::Iconv)
++	set(LCF_SUPPORT_ICONV 1)
++endif()
++
+ # expat
+ set(LCF_SUPPORT_XML 0)
+ if(LIBLCF_WITH_XML)
+diff --git a/builds/cmake/liblcf-config.cmake.in b/builds/cmake/liblcf-config.cmake.in
+index 2ef5302..11414e0 100644
+--- a/builds/cmake/liblcf-config.cmake.in
++++ b/builds/cmake/liblcf-config.cmake.in
+@@ -13,6 +13,10 @@ if(@LCF_SUPPORT_ICU@ EQUAL 1)
+ 	find_dependency(ICU COMPONENTS i18n uc data REQUIRED)
+ endif()
+ 
++if(@LCF_SUPPORT_ICONV@ EQUAL 1)
++	find_dependency(Iconv REQUIRED)
++endif()
++
+ if(@LCF_SUPPORT_XML@ EQUAL 1)
+ 	find_dependency(expat CONFIG REQUIRED)
+ elseif(@LCF_SUPPORT_XML@ EQUAL 2)
+diff --git a/builds/config.h.in b/builds/config.h.in
+index b8b6bcb..6f28bba 100644
+--- a/builds/config.h.in
++++ b/builds/config.h.in
+@@ -3,6 +3,9 @@
+ /* Enable encoding detection (ICU) */
+ #define LCF_SUPPORT_ICU @LCF_SUPPORT_ICU@
+ 
++/* Without ICU: encodings through iconv, and a guess at the encoding from the bytes */
++#define LCF_SUPPORT_ICONV @LCF_SUPPORT_ICONV@
++
+ /* Enable XML reading support (expat) */
+ #define LCF_SUPPORT_XML @LCF_SUPPORT_XML@
+ 
+diff --git a/src/encoder.cpp b/src/encoder.cpp
+index 7773f62..24be918 100644
+--- a/src/encoder.cpp
++++ b/src/encoder.cpp
+@@ -26,6 +26,12 @@
+ #   include <cstdint>
+ #endif
+ 
++#if LCF_SUPPORT_ICONV
++#   include <cerrno>
++#   include <cstring>
++#   include <iconv.h>
++#endif
++
+ #ifdef _WIN32
+ #   include <windows.h>
+ #else
+@@ -34,6 +40,56 @@
+ 
+ namespace lcf {
+ 
++#if LCF_SUPPORT_ICONV
++/* The names liblcf and EasyRPG Player use for the encodings (ICU's), as iconv knows them. */
++static std::string iconvName(const std::string& enc) {
++	static const struct { const char* icu; const char* iconv; } names[] = {
++		{"ibm-943_P15A-2003", "CP932"},  // Japanese, \ as backslash
++		{"windows-949-2000", "CP949"},   // Korean
++		{"windows-936-2000", "CP936"},   // Simplified Chinese
++		{"Big5", "CP950"},               // Traditional Chinese
++		{"ibm-5348_P100-1997", "CP1252"}, // Western with Euro
++		{"ibm-5346_P100-1998", "CP1250"}, // Central European
++		{"ibm-5347_P100-1998", "CP1251"}, // Cyrillic
++		{"ibm-5349_P100-1998", "CP1253"}, // Greek
++		{"ibm-9447_P100-2002", "CP1255"}, // Hebrew
++		{"ibm-9448_X100-2005", "CP1256"}, // Arabic
++	};
++	for (const auto& n: names) {
++		if (enc == n.icu) {
++			return n.iconv;
++		}
++	}
++	if (enc.rfind("windows-", 0) == 0) {
++		// windows-1252, windows-949-2000...: CP and the number
++		auto number = enc.substr(8);
++		auto dash = number.find('-');
++		return "CP" + number.substr(0, dash);
++	}
++	return enc;
++}
++
++/* Some iconv builds lack a CP name that another spelling of the same encoding has. */
++static iconv_t iconvOpen(const std::string& to, const std::string& from) {
++	iconv_t cd = iconv_open(to.c_str(), from.c_str());
++	if (cd != (iconv_t)-1) {
++		return cd;
++	}
++	static const struct { const char* cp; const char* other; } others[] = {
++		{"CP932", "SHIFT_JIS"}, {"CP949", "UHC"}, {"CP936", "GBK"}, {"CP950", "BIG5"},
++	};
++	for (const auto& o: others) {
++		if (to == o.cp) {
++			return iconv_open(o.other, from.c_str());
++		}
++		if (from == o.cp) {
++			return iconv_open(to.c_str(), o.other);
++		}
++	}
++	return (iconv_t)-1;
++}
++#endif
++
+ static std::string filterUtf8Compatible(std::string enc) {
+ #if LCF_SUPPORT_ICU
+ 	if (ucnv_compareNames(enc.c_str(), "UTF-8") == 0) {
+@@ -109,6 +165,22 @@ void Encoder::Init() {
+ 
+ 	_conv_runtime = conv_runtime;
+ 	_conv_storage = conv_storage;
++#elif LCF_SUPPORT_ICONV
++	const auto name = iconvName(storage_encoding);
++	iconv_t to_runtime = iconvOpen("UTF-8", name);
++	if (to_runtime == (iconv_t)-1) {
++		Log::Error("iconv_open() error for encoding \"%s\" (%s): %s", storage_encoding.c_str(), name.c_str(), strerror(errno));
++		return;
++	}
++	iconv_t to_storage = iconvOpen(name, "UTF-8");
++	if (to_storage == (iconv_t)-1) {
++		Log::Error("iconv_open() error for dest encoding \"%s\" (%s): %s", storage_encoding.c_str(), name.c_str(), strerror(errno));
++		iconv_close(to_runtime);
++		return;
++	}
++	_conv_runtime = to_runtime;
++	_conv_storage = to_storage;
++	_single_byte = name.rfind("CP12", 0) == 0 || name == "CP874";
+ #else
+ 	if (storage_encoding != "windows-1252") {
+ 		return;
+@@ -155,6 +227,75 @@ void Encoder::Convert(std::string& str, UConverter* conv_dst, UConverter* conv_s
+ 
+ 	str.assign(_buffer.data(), dst_p);
+ }
++#elif LCF_SUPPORT_ICONV
++void Encoder::Reset() {
++	if (_conv_runtime) {
++		iconv_close(static_cast<iconv_t>(_conv_runtime));
++		_conv_runtime = nullptr;
++	}
++
++	if (_conv_storage) {
++		iconv_close(static_cast<iconv_t>(_conv_storage));
++		_conv_storage = nullptr;
++	}
++}
++
++void Encoder::Convert(std::string& str, void* conv_dst, void*) {
++	auto cd = static_cast<iconv_t>(conv_dst);
++	iconv(cd, nullptr, nullptr, nullptr, nullptr); // back to the initial state
++
++	_buffer.resize(str.size() * 4 + 16);
++	std::string src = str;
++	char* in = &src[0];
++	size_t in_left = src.size();
++	char* out = _buffer.data();
++	size_t out_left = _buffer.size();
++
++	auto grow = [&]() {
++		const size_t used = out - _buffer.data();
++		_buffer.resize(_buffer.size() * 2);
++		out = _buffer.data() + used;
++		out_left = _buffer.size() - used;
++	};
++
++	// A byte the encoding has no character for: in a one-byte Windows code page converted to UTF-8, the Latin-1
++	// character of that byte (what liblcf's own windows-1252 conversion gives, and ICU's tables map most of them
++	// to); otherwise '?', as ICU substitutes. The first few are logged.
++	static int reports = 0;
++	const bool latin1 = _single_byte && conv_dst == _conv_runtime;
++	while (in_left > 0) {
++		if (iconv(cd, &in, &in_left, &out, &out_left) != (size_t)-1) {
++			break;
++		}
++		if (errno == E2BIG) {
++			grow();
++			continue;
++		}
++		if (!latin1 && reports < 5) {
++			Log::Warning("iconv() could not convert a character of \"%s\": %s", str.c_str(), strerror(errno));
++			++reports;
++		}
++		if (out_left < 2) {
++			grow();
++		}
++		const unsigned char byte = static_cast<unsigned char>(*in);
++		if (latin1 && byte >= 0x80) {
++			*out++ = static_cast<char>(0xC0 | (byte >> 6));
++			*out++ = static_cast<char>(0x80 | (byte & 0x3F));
++			out_left -= 2;
++		} else {
++			*out++ = '?';
++			--out_left;
++		}
++		++in;
++		--in_left;
++	}
++	while (iconv(cd, nullptr, nullptr, &out, &out_left) == (size_t)-1 && errno == E2BIG) {
++		grow();
++	}
++
++	str.assign(_buffer.data(), out - _buffer.data());
++}
+ #else
+ void Encoder::Convert(std::string& str, int conv_dst, int) {
+ 	if (str.empty()) {
+diff --git a/src/lcf/encoder.h b/src/lcf/encoder.h
+index d9d1db5..2c85a25 100644
+--- a/src/lcf/encoder.h
++++ b/src/lcf/encoder.h
+@@ -54,6 +54,15 @@ class Encoder {
+ 
+ 		UConverter* _conv_storage = nullptr;
+ 		UConverter* _conv_runtime = nullptr;
++#elif LCF_SUPPORT_ICONV
++		void Init();
++		void Reset();
++		/* conv_dst: the iconv_t that converts into the destination encoding */
++		void Convert(std::string& str, void* conv_dst, void* conv_src);
++
++		void* _conv_storage = nullptr; // iconv_t: UTF-8 -> storage encoding
++		void* _conv_runtime = nullptr; // iconv_t: storage encoding -> UTF-8
++		bool _single_byte = false; // a Windows code page of one byte a character
+ #else
+ 		void Init();
+ 		void Reset() {}
+diff --git a/src/reader_util.cpp b/src/reader_util.cpp
+index 8c084b0..6f44e97 100644
+--- a/src/reader_util.cpp
++++ b/src/reader_util.cpp
+@@ -45,6 +45,145 @@ namespace lcf {
+ namespace ReaderUtil {
+ }
+ 
++#if LCF_SUPPORT_ICONV
++/*
++ * Without ICU's charset detector: a guess from the bytes alone, best first, in the names ICU's detector gives
++ * (the ones EasyRPG Player knows). The Player tries each in turn against the game's files and keeps the first
++ * one whose file names it finds, so a plausible second choice still helps.
++ */
++static std::vector<std::string> GuessEncodings(std::string_view text) {
++	const auto* b = reinterpret_cast<const unsigned char*>(text.data());
++	const size_t n = text.size();
++
++	size_t high = 0;
++	for (size_t i = 0; i < n; ++i) {
++		high += b[i] >= 0x80;
++	}
++	if (high == 0) {
++		return {"ibm-5348_P100-1997"};
++	}
++
++	// UTF-8: only valid sequences
++	bool utf8 = true;
++	for (size_t i = 0; i < n && utf8;) {
++		const unsigned char c = b[i];
++		const size_t len = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 0;
++		if (len == 0 || (len == 2 && c < 0xC2) || i + len > n) {
++			utf8 = false;
++			break;
++		}
++		for (size_t k = 1; k < len; ++k) {
++			if ((b[i + k] & 0xC0) != 0x80) {
++				utf8 = false;
++			}
++		}
++		i += len;
++	}
++
++	// Shift-JIS (CP932): lead 81-9F / E0-FC, trail 40-7E / 80-FC; A1-DF are half-width katakana. Japanese text is
++	// mostly hiragana, katakana and punctuation, whose leads are 81-83: Cyrillic letters (C0-FF) also pair up, but
++	// never with a lead below A0
++	size_t sjis_pairs = 0, sjis_low_leads = 0, sjis_kana = 0, sjis_bad = 0;
++	for (size_t i = 0; i < n; ++i) {
++		const unsigned char c = b[i];
++		if (c < 0x80) {
++			continue;
++		}
++		if (c >= 0xA1 && c <= 0xDF) {
++			++sjis_kana;
++		} else if (((c >= 0x81 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFC)) && i + 1 < n &&
++				((b[i + 1] >= 0x40 && b[i + 1] <= 0x7E) || (b[i + 1] >= 0x80 && b[i + 1] <= 0xFC))) {
++			++sjis_pairs;
++			sjis_low_leads += c <= 0x9F;
++			++i;
++		} else {
++			++sjis_bad;
++		}
++	}
++
++	// The EUC-style double-byte encodings (CP949, CP936, CP950): lead and trail both A1-FE in their common range
++	size_t euc_pairs = 0, euc_bad = 0, hangul_leads = 0, big5_pairs = 0, big5_bad = 0;
++	for (size_t i = 0; i < n; ++i) {
++		const unsigned char c = b[i];
++		if (c < 0x80) {
++			continue;
++		}
++		if (c >= 0x81 && c <= 0xFE && i + 1 < n && b[i + 1] >= 0x41 && b[i + 1] <= 0xFE) {
++			++euc_pairs;
++			hangul_leads += c >= 0xB0 && c <= 0xC8 && b[i + 1] >= 0xA1;
++			++i;
++		} else {
++			++euc_bad;
++		}
++	}
++	for (size_t i = 0; i < n; ++i) {
++		const unsigned char c = b[i];
++		if (c < 0x80) {
++			continue;
++		}
++		if (c >= 0xA1 && c <= 0xF9 && i + 1 < n &&
++				((b[i + 1] >= 0x40 && b[i + 1] <= 0x7E) || (b[i + 1] >= 0xA1 && b[i + 1] <= 0xFE))) {
++			++big5_pairs;
++			++i;
++		} else {
++			++big5_bad;
++		}
++	}
++
++	// The single-byte ones: Cyrillic letters are C0-FF in windows-1251, Western text has few high bytes and
++	// mostly accented letters
++	size_t letters_c0 = 0;
++	for (size_t i = 0; i < n; ++i) {
++		letters_c0 += b[i] >= 0xC0;
++	}
++
++	std::vector<std::string> result;
++	auto add = [&](const char* enc) {
++		if (std::find(result.begin(), result.end(), enc) == result.end()) {
++			result.emplace_back(enc);
++		}
++	};
++
++	if (utf8) {
++		add("UTF-8");
++	}
++	// Japanese: every high byte in a valid pair, and few half-width katakana (Cyrillic and Western text read as
++	// Shift-JIS turns into mostly katakana)
++	const bool sjis = sjis_bad == 0 && sjis_pairs > 0 && sjis_kana * 4 <= sjis_pairs && sjis_low_leads * 2 >= sjis_pairs;
++	const bool euc = euc_bad == 0 && euc_pairs > 0;
++	const bool korean = euc && hangul_leads * 10 >= euc_pairs * 7;
++	const bool cyrillic = letters_c0 * 10 >= high * 7 && high * 2 >= n && high >= 3;
++	if (sjis) {
++		add("ibm-943_P15A-2003");
++	}
++	if (korean) {
++		add("windows-949-2000");
++	}
++	if (cyrillic) {
++		add("ibm-5347_P100-1998");
++	}
++	if (euc && !korean) {
++		add("windows-936-2000");
++	}
++	if (big5_bad == 0 && big5_pairs > 0 && !korean) {
++		add("Big5");
++	}
++	// what is left, the likely ones first
++	add("ibm-5348_P100-1997");
++	if (sjis_bad == 0 && sjis_pairs > 0) {
++		add("ibm-943_P15A-2003");
++	}
++	if (euc) {
++		add(korean ? "windows-936-2000" : "windows-949-2000");
++	}
++	if (!cyrillic) {
++		add("ibm-5347_P100-1998");
++	}
++	add("ibm-5346_P100-1998");
++	return result;
++}
++#endif
++
+ std::string ReaderUtil::CodepageToEncoding(int codepage) {
+ 	if (codepage == 0)
+ 		return {};
+@@ -70,7 +209,7 @@ std::string ReaderUtil::DetectEncoding(lcf::rpg::Database& db) {
+ }
+ 
+ std::vector<std::string> ReaderUtil::DetectEncodings(lcf::rpg::Database& db) {
+-#if LCF_SUPPORT_ICU
++#if LCF_SUPPORT_ICU || LCF_SUPPORT_ICONV
+ 	std::ostringstream text;
+ 
+ 	auto append = [](const auto& s) {
+@@ -199,6 +338,8 @@ std::vector<std::string> ReaderUtil::DetectEncodings(std::string_view string) {
+ 		}
+ 		ucsdet_close(detector);
+ 	}
++#elif LCF_SUPPORT_ICONV
++	encodings = GuessEncodings(string);
+ #else
+ 	encodings.push_back("windows-1252");
+ #endif
