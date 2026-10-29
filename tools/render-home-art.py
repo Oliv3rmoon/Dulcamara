@@ -1,29 +1,27 @@
 #!/usr/bin/env python3
-# Nightshade Station - Draw the home-screen pictures: the icon, the background and the launch picture.
+# Nightshade Player - Draw the home-screen pictures: the icon, the background and the launch picture.
 # SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Draw Nightshade Station's home-screen pictures in Nightshade's style.
+"""Draw Nightshade Player's home-screen pictures in Nightshade's style.
 
 usage: python3 tools/render-home-art.py              (needs Pillow and NumPy)
        python3 tools/render-home-art.py --preview DIR  (small copies in DIR; nothing else changes)
 
-Nightshade's tools/render-home-art.py (Oliv3rmoon/Nightshade), as Nightshade TV draws it, with a
-PlayStation disc in place of the television: the same nightshade flower (five red petals round a
-pale cone), black berries and dark leaves, on near black with a red glow and faint stars, in
-Nightshade's palette (its "nightly" theme).
+Nightshade Station's tools/render-home-art.py (itself Nightshade's, Oliv3rmoon/Nightshade), with an RPG's
+message window in place of Station's disc: the same nightshade flower (five red petals round a pale cone),
+black berries and dark leaves, on near black with a red glow and faint stars, in Nightshade's palette (its
+"nightly" theme). The name is set in Inter (assets/fonts, SIL Open Font License).
 
 Writes, in sce_sys/:
-  icon0.png                     512x512: a black disc lit red, the flower at its hub and berries
-                                at its edge
-  background-source.png         3840x2160 (pic0, on the home screen): a disc risen at the right
-                                like an eclipsed moon, with the nightshade climbing to flower
-                                beside it
-  launch-background-source.png  3840x2160 (pic1, while the app starts): a disc-shaped ring of red
-                                light round the flower
+  icon0.png                     512x512: an RPG's menu window, the cursor at its first entry, with the
+                                nightshade blooming over it
+  background-source.png         3840x2160 (pic0, on the home screen): the window of a title screen at the
+                                right with the name in it, the nightshade climbing to flower over its corner
+  launch-background-source.png  3840x2160 (pic1, while the app starts): the flower over a window holding
+                                the name
   pic0.dds, pic1.dds            those two as BC7 (one 3840x2160 BC7_UNORM DX10 texture, no
                                 mipmaps, as tools/validate-assets.sh asks)
-Everything is procedural; the same seeds give the same files every time. tools/make_art.py
-still draws SwanStationPS5's original art; this replaces it for Nightshade Station.
+Everything is procedural; the same seeds give the same files every time.
 """
 import io
 import math
@@ -43,9 +41,12 @@ DEEP = (0x5a, 0x14, 0x19)
 RED = (0xe5, 0x48, 0x4d)
 PALE = (0xf3, 0xa9, 0xad)
 LEAF = (0x17, 0x08, 0x0b)
-# A PS1 disc's black data side and its clear hub: Nightshade's glass and panel edge.
-VINYL = (0x0c, 0x0b, 0x0e)
+# Nightshade's panel and text colours (its "nightly" theme): the windows' glass, the name, the dim lines.
+PANEL = (0x14, 0x14, 0x17)
 EDGE = (0x2b, 0x2b, 0x31)
+TEXT = (0xed, 0xed, 0xf0)
+SOFT = (0xb4, 0xb4, 0xbc)
+DIM = (0x8f, 0x8f, 0x98)
 
 
 def rgb(color):
@@ -220,58 +221,78 @@ def berries(image, x, y, r):
         berry(image, x + dx * r, y + dy * r, r * s)
 
 
-# ---- Nightshade Station's own: the disc and its light -----------------------------------------
+# ---- Nightshade Player's own: an RPG's window and the name -------------------------------------
 
 
-def disc(image, cx, cy, radius, light_angle=-2.35):
-    """A PS1 disc, black side up: a clear hub round the hole, a stacking ring, the black data area
-    with faint grooves, and red light caught on it: a sheen across the grooves towards light_angle
-    and a rim lit from that side. The hole shows what is behind."""
+FONT = root / 'assets' / 'fonts' / 'Inter-600.ttf'
+
+
+def rounded_mask(width, height, radius, scale=4):
+    """A rounded rectangle's coverage, width x height, drawn large and shrunk for soft edges."""
+    big = Image.new('L', (width * scale, height * scale), 0)
+    ImageDraw.Draw(big).rounded_rectangle((0, 0, width * scale - 1, height * scale - 1), radius * scale, fill=255)
+    return np.asarray(big.resize((width, height), Image.LANCZOS), np.float32) / 255.0
+
+
+def window(image, x, y, w, h):
+    """An RPG's message window in Nightshade's colours: a dark glassy panel, lighter at the top, inside a pale
+    line and a red one, as RPG Maker 2000 draws its windows from a system graphic."""
+    x, y, w, h = int(x), int(y), int(w), int(h)
+    r = max(4, int(min(w, h) * 0.06))
+    edge = max(2, int(min(w, h) * 0.018))
+    outer = rounded_mask(w, h, r)
+    inner = np.zeros_like(outer)
+    inner[edge:h - edge, edge:w - edge] = rounded_mask(w - 2 * edge, h - 2 * edge, max(2, r - edge))
+    core = np.zeros_like(outer)
+    e2 = edge * 2
+    core[e2:h - e2, e2:w - e2] = rounded_mask(w - 2 * e2, h - 2 * e2, max(2, r - e2))
+    region = image[y:y + h, x:x + w]
+    t = np.linspace(0, 1, h, dtype=np.float32)[:, None, None]
+    fill = rgb(PANEL) * (1.25 - 0.45 * t) + rgb(DEEP) * 0.10 * (1 - t)
+    region[:] = region * (1 - outer[..., None]) + rgb(PALE) * 0.75 * outer[..., None]       # the pale line
+    region[:] = region * (1 - inner[..., None]) + rgb(RED) * inner[..., None]               # the red line
+    region[:] = region * (1 - core[..., None] * 0.94) + fill * core[..., None] * 0.94       # the panel
+    # a sheen along the top of the panel
+    sheen = np.exp(-((t[..., 0] - 0.06) / 0.05) ** 2) * core
+    region += sheen[..., None] * rgb(PALE) * 0.05
+
+
+def cursor(image, x, y, size, color=None):
+    """The menu cursor of an RPG: a small triangle pointing right, in square pixels."""
+    color = rgb(color or RED)
+    px = max(1, int(size / 7))
+    for row in range(7):
+        span = 4 - abs(3 - row)
+        for col in range(span):
+            x0, y0 = int(x + col * px), int(y + row * px)
+            image[y0:y0 + px, x0:x0 + px] = color
+
+
+def text(image, x, y, words, size, color, spacing=0.0, anchor='la', weight=1.0):
+    """Words in Inter (assets/fonts, SIL OFL), as a mask over the picture."""
+    from PIL import ImageFont
+    font = ImageFont.truetype(str(FONT), int(size))
     height, width = image.shape[:2]
-    pad = int(radius * 0.1) + 4  # room for the rim's light
-    x0, y0 = max(0, int(cx - radius) - pad), max(0, int(cy - radius) - pad)
-    x1, y1 = min(width, int(cx + radius) + pad), min(height, int(cy + radius) + pad)
-    yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
-    dx, dy = xx - cx, yy - cy
-    d = np.sqrt(dx * dx + dy * dy) / radius
-    a = np.arctan2(dy, dx)
-    aa = max(1.0, radius * 0.006)  # the edges' softness, in radii
-    soft = lambda edge, inside: np.clip((edge - d) * radius / aa if inside else (d - edge) * radius / aa, 0, 1)
-    outer, hole = soft(1.0, True), soft(0.115, False)
-    data = soft(0.97, True) * soft(0.33, False)
-    hub = soft(0.33, True) * hole
-    # the data area: black, the faintest grooves, a sheen of red light across them, darker to the edge
-    grooves = 0.5 + 0.5 * np.sin(d * radius * 0.35)
-    off = np.angle(np.exp(1j * (a - light_angle))).astype(np.float32)
-    sheen = np.exp(-(off / 0.42) ** 2) + 0.55 * np.exp(-((np.abs(off) - math.pi) / 0.35) ** 2)
-    across = np.clip((d - 0.33) / 0.64, 0, 1)
-    color = (rgb(VINYL)[None, None] * (1.0 - 0.25 * across[..., None])
-             + sheen[..., None] * (0.30 + 0.03 * grooves[..., None]) * (0.35 + 0.65 * across[..., None]) * rgb(RED)
-             + sheen[..., None] * np.clip(across - 0.55, 0, 1)[..., None] * 0.45 * rgb(PALE)
-             + grooves[..., None] * 0.004)
-    # the hub: smoky clear plastic, a darker stacking ring, and its own small highlight
-    ring = np.exp(-((d - 0.24) / 0.018) ** 2)
-    hub_color = (rgb(EDGE)[None, None] * (0.55 + 0.25 * np.cos(a - light_angle)[..., None])
-                 - ring[..., None] * 0.06 + sheen[..., None] * 0.08 * rgb(PALE))
-    region = image[y0:y1, x0:x1]
-    region[:] = region * (1 - data[..., None]) + color * data[..., None]
-    region[:] = region * (1 - hub[..., None] * 0.85) + hub_color * hub[..., None] * 0.85
-    # the outer edge between data area and rim, and the rim's red light on the lit side
-    band = outer * soft(0.97, False)
-    lit = np.clip(np.cos(a - light_angle), 0, 1)[..., None]
-    region[:] = region * (1 - band[..., None]) + (rgb(EDGE) * 0.6 + lit * rgb(RED) * 0.9) * band[..., None]
-    region += np.exp(-((d - 1.0) / 0.02) ** 2)[..., None] * lit * rgb(RED) * 0.35
+    mask = Image.new('L', (width, height), 0)
+    draw = ImageDraw.Draw(mask)
+    if spacing:
+        # letter by letter, for the spaced-out word
+        total = sum(draw.textlength(c, font=font) for c in words) + spacing * size * (len(words) - 1)
+        cx = x - total / 2 if anchor[0] == 'm' else x - total if anchor[0] == 'r' else x
+        for c in words:
+            draw.text((cx, y), c, font=font, fill=255, anchor='l' + anchor[1])
+            cx += draw.textlength(c, font=font) + spacing * size
+    else:
+        draw.text((x, y), words, font=font, fill=255, anchor=anchor)
+    a = np.asarray(mask, np.float32)[..., None] / 255.0 * weight
+    image[:] = image * (1 - a) + rgb(color) * a
 
 
-def eclipse(image, cx, cy, radius, strength=1.0):
-    """A ring of red light the size of a disc round a dark inside, as Nightshade's eclipse."""
-    height, width = image.shape[:2]
-    y, x = np.ogrid[:height, :width]
-    d = (np.sqrt((x - cx) ** 2 + (y - cy) ** 2) - radius).astype(np.float32)
-    image += np.exp(-(d / (height * 0.010)) ** 2)[..., None] * rgb(RED) * 0.8 * strength
-    image += np.exp(-(d / (height * 0.055)) ** 2)[..., None] * rgb(RED) * 0.25 * strength
-    inside = np.clip(-d / 3, 0, 1)[..., None]
-    image[:] = image * (1 - inside * 0.92) + rgb(BASE) * inside * 0.92
+def lines(image, x, y, w, count, gap, thickness, color, lengths):
+    """Text lines in a window, as bars: a menu's entries seen from afar."""
+    for i in range(count):
+        y0 = int(y + i * gap)
+        image[y0:y0 + int(thickness), int(x):int(x + w * lengths[i % len(lengths)])] = rgb(color)
 
 
 def vine(image, x0, y0, x1, y1, sway, turns, thickness):
@@ -286,44 +307,54 @@ def vine(image, x0, y0, x1, y1, sway, turns, thickness):
 
 def icon(n=512):
     image = canvas(n, n)
-    glow(image, n * 0.5, n * 0.5, n * 0.5, DEEP, 0.85)
-    glow(image, n * 0.5, n * 0.5, n * 0.2, RED, 0.12)
-    cx, cy, r = n * 0.5, n * 0.5, n * 0.40
-    disc(image, cx, cy, r)
-    # the flower at the hub, over the hole, and berries hanging at the disc's lower right
-    flower(image, cx, cy, n * 0.135, -math.pi / 2)
-    stem(image, curve((cx + n * 0.02, cy + n * 0.03), (cx + n * 0.17, cy + n * 0.16), (cx + n * 0.27, cy + n * 0.25)),
-         n * 0.008)
-    leaf(image, cx + n * 0.16, cy + n * 0.15, n * 0.12, n * 0.12 * 0.3, -0.35, bend=0.12, rim=0.5)
-    berries(image, cx + n * 0.25, cy + n * 0.24, n * 0.035)
-    vignette(image, 0.6)
+    glow(image, n * 0.5, n * 0.48, n * 0.55, DEEP, 0.85)
+    glow(image, n * 0.5, n * 0.38, n * 0.22, RED, 0.12)
+    # an RPG's menu window in the lower half, the cursor at its first entry
+    wx, wy, ww, wh = n * 0.12, n * 0.50, n * 0.76, n * 0.36
+    window(image, wx, wy, ww, wh)
+    cursor(image, wx + n * 0.07, wy + n * 0.075, n * 0.06, PALE)
+    lines(image, wx + n * 0.17, wy + n * 0.092, n * 0.48, 1, n * 0.085, n * 0.028, TEXT, (0.82,))
+    lines(image, wx + n * 0.17, wy + n * 0.177, n * 0.48, 2, n * 0.085, n * 0.028, SOFT, (0.62, 0.45))
+    # the nightshade blooming over the window, berries hanging at its corner
+    stem(image, curve((n * 0.50, n * 0.50), (n * 0.49, n * 0.43), (n * 0.50, n * 0.36)), n * 0.010)
+    leaf(image, n * 0.30, n * 0.43, n * 0.15, n * 0.15 * 0.3, -2.75, bend=-0.12, rim=0.5)
+    leaf(image, n * 0.70, n * 0.42, n * 0.14, n * 0.14 * 0.3, -0.35, bend=0.12, rim=0.5)
+    flower(image, n * 0.50, n * 0.30, n * 0.15, -math.pi / 2)
+    stem(image, curve((n * 0.80, n * 0.84), (n * 0.84, n * 0.88), (n * 0.83, n * 0.92)), n * 0.008)
+    berries(image, n * 0.83, n * 0.91, n * 0.035)
+    vignette(image, 0.55)
     return image
 
 
 def background(w=3840, h=2160):
     image = canvas(w, h)
-    cx, cy, r = w * 0.73, h * 0.47, h * 0.30
-    glow(image, cx, cy, w * 0.34, DEEP, 0.85)
-    glow(image, cx, cy, w * 0.12, RED, 0.10)
+    cx, cy = w * 0.72, h * 0.47
+    glow(image, cx, cy, w * 0.36, DEEP, 0.85)
+    glow(image, cx, cy, w * 0.13, RED, 0.08)
     glow(image, w * 0.05, h * 1.05, w * 0.3, DEEP, 0.45)
-    stars(image, 900, 1009, avoid=(cx, cy, r * 1.3))
+    stars(image, 900, 1009, avoid=(cx, cy, h * 0.42))
     for x, y, length, angle, bend in ((w * 1.02, h * 0.08, w * 0.24, 2.55, 0.10), (w * 1.03, h * 0.62, w * 0.2, 3.35, -0.12),
                                       (w * 0.94, h * 1.06, w * 0.22, 3.9, 0.08), (w * 0.6, h * 1.08, w * 0.17, 4.5, -0.1),
                                       (-w * 0.02, h * 1.04, w * 0.2, 5.6, 0.1)):
         leaf(image, x, y, length, length * 0.24, angle, bend=bend)
-    # The disc risen at the right, a red ring of light behind it like an eclipse's.
-    glow(image, cx, cy, None, RED, 0.35, ring=r * 1.02, width=h * 0.03)
-    disc(image, cx, cy, r)
-    # The nightshade climbs from below at the disc's left and flowers beside it.
-    points = vine(image, w * 0.60, h * 1.02, w * 0.585, h * 0.50, w * 0.010, 2.6, w * 0.0032)
+    # The window of an RPG's title screen at the right, the name in it and its menu under the name.
+    wx, wy, ww, wh = w * 0.53, h * 0.33, w * 0.38, h * 0.36
+    glow(image, wx + ww / 2, wy + wh / 2, None, RED, 0.25, ring=wh * 0.62, width=h * 0.03)
+    window(image, wx, wy, ww, wh)
+    text(image, wx + ww / 2, wy + wh * 0.30, 'Nightshade', h * 0.105, TEXT, anchor='mm')
+    text(image, wx + ww / 2, wy + wh * 0.53, 'PLAYER', h * 0.040, RED, spacing=0.55, anchor='mm')
+    cursor(image, wx + ww * 0.33, wy + wh * 0.70, h * 0.030, PALE)
+    lines(image, wx + ww * 0.40, wy + wh * 0.712, ww * 0.30, 2, wh * 0.12, h * 0.010, DIM, (0.9, 0.62))
+    # The nightshade climbs from below at the window's left and flowers over its corner.
+    points = vine(image, w * 0.50, h * 1.02, w * 0.515, h * 0.36, w * 0.010, 2.6, w * 0.0032)
     for t, angle, side in ((0.22, 3.6, -1), (0.46, 5.9, 1), (0.70, 3.3, -1)):
         px, py = points[int(t * (len(points) - 1))]
         leaf(image, px, py, w * 0.05, w * 0.05 * 0.32, angle, bend=0.15 * side, rim=0.45)
-    stem(image, curve((w * 0.585, h * 0.50), (w * 0.59, h * 0.43), (w * 0.605, h * 0.40)), w * 0.003)
-    flower(image, w * 0.61, h * 0.385, w * 0.07, -math.pi / 2 - 0.25)
-    stem(image, curve((w * 0.592, h * 0.62), (w * 0.62, h * 0.66), (w * 0.625, h * 0.70)), w * 0.0025)
-    berries(image, w * 0.62, h * 0.70, w * 0.016)
-    flower(image, w * 0.86, h * 0.17, w * 0.035, -math.pi / 2 + 0.4)
+    stem(image, curve((w * 0.515, h * 0.36), (w * 0.52, h * 0.31), (w * 0.535, h * 0.29)), w * 0.003)
+    flower(image, w * 0.54, h * 0.28, w * 0.06, -math.pi / 2 - 0.25)
+    stem(image, curve((w * 0.905, h * 0.69), (w * 0.92, h * 0.72), (w * 0.918, h * 0.76)), w * 0.0025)
+    berries(image, w * 0.918, h * 0.76, w * 0.016)
+    flower(image, w * 0.88, h * 0.18, w * 0.03, -math.pi / 2 + 0.4)
     vignette(image, 0.55)
     return image
 
@@ -331,19 +362,23 @@ def background(w=3840, h=2160):
 def launch(w=3840, h=2160):
     image = canvas(w, h)
     cx, cy = w * 0.5, h * 0.5
-    glow(image, cx, cy, h * 0.55, DEEP, 0.75)
-    stars(image, 1100, 1010, avoid=(cx, cy, h * 0.46))
-    # A disc in the dark: only its light, a ring round the flower, as Nightshade's eclipse is round
-    # its flower, with the hub's ring faint inside it.
-    eclipse(image, cx, cy, h * 0.33)
-    glow(image, cx, cy, None, DEEP, 0.35, ring=h * 0.33 * 0.33, width=h * 0.006)
+    glow(image, cx, cy, h * 0.6, DEEP, 0.75)
+    stars(image, 1100, 1010, avoid=(cx, cy, h * 0.5))
     for x, y, length, angle, bend in ((-w * 0.02, h * 0.02, w * 0.26, 0.55, 0.08), (-w * 0.03, h * 0.7, w * 0.23, -0.2, -0.1),
                                       (w * 0.1, h * 1.08, w * 0.2, -1.0, 0.1), (w * 1.02, h * 0.04, w * 0.26, 2.6, -0.08),
                                       (w * 1.03, h * 0.72, w * 0.23, 3.35, 0.1), (w * 0.9, h * 1.08, w * 0.2, 4.15, -0.1)):
         leaf(image, x, y, length, length * 0.24, angle, bend=bend)
-    stem(image, curve((cx, cy), (cx + w * 0.03, cy + h * 0.15), (cx + w * 0.065, cy + h * 0.17)), w * 0.004)
-    flower(image, cx, cy, h * 0.17, -math.pi / 2)
-    berries(image, cx + w * 0.065, cy + h * 0.165, h * 0.033)
+    # The flower over a window holding the name, in the middle of the dark.
+    wx, wy, ww, wh = w * 0.29, h * 0.47, w * 0.42, h * 0.27
+    glow(image, cx, wy + wh / 2, None, RED, 0.30, ring=wh * 0.75, width=h * 0.035)
+    window(image, wx, wy, ww, wh)
+    text(image, cx, wy + wh * 0.40, 'Nightshade', h * 0.10, TEXT, anchor='mm')
+    text(image, cx, wy + wh * 0.74, 'PLAYER', h * 0.040, RED, spacing=0.55, anchor='mm')
+    stem(image, curve((cx, wy), (cx - w * 0.01, cy - h * 0.12), (cx, cy - h * 0.20)), w * 0.004)
+    flower(image, cx, cy - h * 0.22, h * 0.15, -math.pi / 2)
+    leaf(image, cx - w * 0.07, wy - h * 0.02, w * 0.08, w * 0.08 * 0.3, -2.8, bend=-0.12, rim=0.5)
+    leaf(image, cx + w * 0.07, wy - h * 0.03, w * 0.07, w * 0.07 * 0.3, -0.3, bend=0.12, rim=0.5)
+    berries(image, wx + ww - w * 0.01, wy + wh + h * 0.02, h * 0.03)
     vignette(image, 0.6)
     return image
 
