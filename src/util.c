@@ -1,8 +1,8 @@
 /*
- * SwanStationPS5 - logging and path helpers.
+ * Nightshade Player - logging and path helpers (from SwanStationPS5).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#include "SwanStationPS5.h"
+#include "nightshade.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -14,11 +14,11 @@
 
 static FILE *log_file;
 
-void SwanStationPS5_log_open(const char *path)
+void np_log_open(const char *path)
 {
     if (log_file)
         fclose(log_file);
-    char old_path[SwanStationPS5_PATH_MAX];
+    char old_path[NP_PATH_MAX];
     size_t n = strlen(path);
     if (n > 4 && !strcmp(path + n - 4, ".log") && n + 5 < sizeof(old_path))
     {
@@ -29,7 +29,7 @@ void SwanStationPS5_log_open(const char *path)
     log_file = fopen(path, "w");
 }
 
-void SwanStationPS5_log(const char *fmt, ...)
+void np_log(const char *fmt, ...)
 {
     char line[1024];
     va_list args;
@@ -39,7 +39,7 @@ void SwanStationPS5_log(const char *fmt, ...)
 
     size_t len = strlen(line);
     const char *nl = (len > 0 && line[len - 1] == '\n') ? "" : "\n";
-    fprintf(stderr, "[SwanStationPS5] %s%s", line, nl);
+    fprintf(stderr, "[NightshadePlayer] %s%s", line, nl);
     if (log_file)
     {
         fprintf(log_file, "%s%s", line, nl);
@@ -81,7 +81,7 @@ bool path_is_dir(const char *path)
 
 bool make_dirs(const char *path)
 {
-    char tmp[SwanStationPS5_PATH_MAX];
+    char tmp[NP_PATH_MAX];
     str_copy(tmp, sizeof(tmp), path);
     for (char *p = tmp + 1; *p; ++p)
     {

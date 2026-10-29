@@ -2,10 +2,10 @@
  * SwanStationPS5 - minimal HTTPS download (libcurl).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#ifndef SwanStationPS5_NET_H
-#define SwanStationPS5_NET_H
+#ifndef NP_NET_H
+#define NP_NET_H
 
-#include "SwanStationPS5.h"
+#include "nightshade.h"
 
 typedef enum
 {

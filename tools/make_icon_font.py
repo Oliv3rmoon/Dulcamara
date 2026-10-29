@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
 Keeps only the icons SwanStationPS5 draws and writes:
-  assets/fonts/tabler-SwanStationPS5.ttf   the glyphs
+  assets/fonts/tabler-icons-subset.ttf   the glyphs
   src/ui/icons_list.h             ICON_<NAME> = codepoint, for src/ui/icons.c
 
   pip install fonttools
@@ -55,7 +55,7 @@ def main() -> None:
     sub = subset.Subsetter(options)
     sub.populate(unicodes=[codes[n] for n in ICONS])
     sub.subset(font)
-    out = ROOT / "assets" / "fonts" / "tabler-SwanStationPS5.ttf"
+    out = ROOT / "assets" / "fonts" / "tabler-icons-subset.ttf"
     font.save(out)
 
     header = ROOT / "src" / "ui" / "icons_list.h"

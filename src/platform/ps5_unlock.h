@@ -2,8 +2,8 @@
  * SwanStationPS5 - asking the HEN to let SwanStationPS5 list /data.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#ifndef SwanStationPS5_PS5_UNLOCK_H
-#define SwanStationPS5_PS5_UNLOCK_H
+#ifndef NP_PS5_UNLOCK_H
+#define NP_PS5_UNLOCK_H
 
 #include <stdbool.h>
 

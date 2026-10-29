@@ -75,7 +75,7 @@ int sceImeDialogGetStatus(void) { return 0; /* SCE_IME_DIALOG_STATUS_NONE */ }
 int sceImeDialogGetResult(void *result) { (void)result; return SCE_UNAVAILABLE; }
 int sceImeDialogTerm(void) { return SCE_UNAVAILABLE; }
 
-#if defined(SwanStationPS5_VULKAN)
+#if defined(NP_VULKAN)
 /* RADV (its shader cache) calls dirfd, which the PS5's libc doesn't export.
  * SwanStationPS5 keeps libc's opendir, whose DIR is FreeBSD's struct _dirdesc: the
  * descriptor is its first member. */

@@ -2,10 +2,10 @@
  * SwanStationPS5 - shape helpers built on plat_draw_mesh.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#ifndef SwanStationPS5_DRAW_H
-#define SwanStationPS5_DRAW_H
+#ifndef NP_DRAW_H
+#define NP_DRAW_H
 
-#include "../SwanStationPS5.h"
+#include "../nightshade.h"
 
 enum PadGlyph
 {

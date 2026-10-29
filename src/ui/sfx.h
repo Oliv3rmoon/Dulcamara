@@ -2,10 +2,10 @@
  * SwanStationPS5 - interface sounds, synthesised at start-up (no sample files).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#ifndef SwanStationPS5_SFX_H
-#define SwanStationPS5_SFX_H
+#ifndef NP_SFX_H
+#define NP_SFX_H
 
-#include "../SwanStationPS5.h"
+#include "../nightshade.h"
 
 typedef enum
 {

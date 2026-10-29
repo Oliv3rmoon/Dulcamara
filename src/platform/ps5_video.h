@@ -2,8 +2,8 @@
  * SwanStationPS5 - PS5 screen output without SDL's video driver.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#ifndef SwanStationPS5_PS5_VIDEO_H
-#define SwanStationPS5_PS5_VIDEO_H
+#ifndef NP_PS5_VIDEO_H
+#define NP_PS5_VIDEO_H
 
 #include <stdbool.h>
 #include <stddef.h>

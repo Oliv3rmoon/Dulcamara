@@ -24,10 +24,10 @@
 #include <sys/stat.h>
 int sceKernelSendNotificationRequest(uint32_t device, void *request, size_t size, int blocking);
 int sceSystemServiceHideSplashScreen(void);
-int SwanStationPS5_elevate(const char **route); /* elevation_shim.cpp */
+int np_elevate(const char **route); /* elevation_shim.cpp */
 #else
 static bool init_desktop_window(void);
-#if defined(SwanStationPS5_PREVIEW)
+#if defined(NP_PREVIEW)
 static bool init_preview_screen(void);
 #endif
 #endif
@@ -45,8 +45,8 @@ static int out_w = 1920, out_h = 1080;
 static SDL_AudioDeviceID audio_device;
 static int audio_rate;
 
-static SDL_GameController *controllers[SwanStationPS5_MAX_PADS];
-static uint16_t rumble_strong[SwanStationPS5_MAX_PADS], rumble_weak[SwanStationPS5_MAX_PADS];
+static SDL_GameController *controllers[NP_MAX_PADS];
+static uint16_t rumble_strong[NP_MAX_PADS], rumble_weak[NP_MAX_PADS];
 
 static void set_draw_color(uint32_t argb)
 {
@@ -71,7 +71,7 @@ const char *plat_screen_info(void)
 static bool init_failed(const char *stage)
 {
     snprintf(init_error, sizeof(init_error), "%s failed: %s", stage, SDL_GetError());
-    SwanStationPS5_log("%s", init_error);
+    np_log("%s", init_error);
     return false;
 }
 
@@ -124,7 +124,7 @@ static bool use_vulkan;    /* v2: shown by vk_present instead */
 static bool init_ps5_screen(void)
 {
     char error[160];
-#if defined(SwanStationPS5_VULKAN)
+#if defined(NP_VULKAN)
     /* v2: the screen through Vulkan, always; the old VideoOut path stays only as the fallback for when Vulkan can't open */
     /* a bigger output is for the GPU interface, which draws at any size (the CPU canvas would only be stretched) */
     static const int OUTPUT_W[] = {1920, 2560, 3840}, OUTPUT_H[] = {1080, 1440, 2160};
@@ -182,14 +182,14 @@ bool plat_init(void)
 #endif
     /* Sound or controller trouble must not stop the app. */
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
-        SwanStationPS5_log("SDL audio unavailable: %s", SDL_GetError());
+        np_log("SDL audio unavailable: %s", SDL_GetError());
     if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0)
-        SwanStationPS5_log("SDL controllers unavailable: %s", SDL_GetError());
+        np_log("SDL controllers unavailable: %s", SDL_GetError());
 
 #if defined(__PROSPERO__)
     if (!init_ps5_screen())
         return false;
-#elif defined(SwanStationPS5_PREVIEW)
+#elif defined(NP_PREVIEW)
     if (!init_preview_screen())
         return false;
 #else
@@ -203,13 +203,13 @@ bool plat_init(void)
 
     SDL_RendererInfo info;
     if (SDL_GetRendererInfo(renderer, &info) == 0)
-        SwanStationPS5_log("renderer: %s", info.name);
+        np_log("renderer: %s", info.name);
 
     SDL_GameControllerEventState(SDL_ENABLE);
     return true;
 }
 
-#if defined(SwanStationPS5_PREVIEW)
+#if defined(NP_PREVIEW)
 /* ---- interface preview (tools/ui-preview): the PS5's software renderer on an
  * off-screen surface, a fixed 60 Hz clock, scripted buttons and screenshots. */
 static SDL_Surface *preview_surface;
@@ -263,13 +263,13 @@ static void preview_step(void)
         if (!strcmp(cmd, "shot"))
         {
             char path[300];
-            snprintf(path, sizeof(path), "%s/%s.bmp", SDL_getenv("SwanStationPS5_SHOTS") ? SDL_getenv("SwanStationPS5_SHOTS") : ".", arg);
+            snprintf(path, sizeof(path), "%s/%s.bmp", SDL_getenv("NP_SHOTS") ? SDL_getenv("NP_SHOTS") : ".", arg);
             SDL_Surface *out = SDL_CreateRGBSurfaceWithFormat(0, 1920, 1080, 32, SDL_PIXELFORMAT_ARGB8888);
             SDL_Rect r = {0, 36, 1920, 1080}; /* the 1080 lines inside the 1152-line canvas */
             SDL_BlitSurface(preview_surface, &r, out, NULL);
             SDL_SaveBMP(out, path);
             SDL_FreeSurface(out);
-            SwanStationPS5_log("preview: %s", path);
+            np_log("preview: %s", path);
             continue;
         }
         if (!strcmp(cmd, "press") || !strcmp(cmd, "hold"))
@@ -294,7 +294,7 @@ static bool init_preview_screen(void)
     renderer = SDL_CreateSoftwareRenderer(preview_surface);
     if (!renderer)
         return init_failed("preview renderer");
-    const char *script = SDL_getenv("SwanStationPS5_SCRIPT");
+    const char *script = SDL_getenv("NP_SCRIPT");
     preview_script = script ? fopen(script, "r") : NULL;
     return true;
 }
@@ -303,7 +303,7 @@ static bool init_preview_screen(void)
 #if !defined(__PROSPERO__)
 static bool init_desktop_window(void)
 {
-    window = SDL_CreateWindow(SwanStationPS5_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    window = SDL_CreateWindow(NP_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                               1280, 720, SDL_WINDOW_RESIZABLE);
     if (!window)
         return init_failed("SDL window");
@@ -320,20 +320,20 @@ static bool init_desktop_window(void)
 void plat_release(void)
 {
     plat_audio_close();
-    SwanStationPS5_log("shutdown: audio closed");
-    for (int i = 0; i < SwanStationPS5_MAX_PADS; ++i)
+    np_log("shutdown: audio closed");
+    for (int i = 0; i < NP_MAX_PADS; ++i)
         if (controllers[i])
             SDL_GameControllerClose(controllers[i]), controllers[i] = NULL;
-    SwanStationPS5_log("shutdown: controllers closed");
+    np_log("shutdown: controllers closed");
     if (game_texture)
         SDL_DestroyTexture(game_texture), game_texture = NULL;
     if (renderer)
         SDL_DestroyRenderer(renderer), renderer = NULL;
-    SwanStationPS5_log("shutdown: renderer destroyed");
-#if defined(SwanStationPS5_VULKAN)
+    np_log("shutdown: renderer destroyed");
+#if defined(NP_VULKAN)
     if (use_vulkan)
         vkp_close();
-    SwanStationPS5_log("shutdown: Vulkan closed");
+    np_log("shutdown: Vulkan closed");
 #endif
 }
 #endif
@@ -341,7 +341,7 @@ void plat_release(void)
 void plat_shutdown(void)
 {
     plat_audio_close();
-    for (int i = 0; i < SwanStationPS5_MAX_PADS; ++i)
+    for (int i = 0; i < NP_MAX_PADS; ++i)
         if (controllers[i])
             SDL_GameControllerClose(controllers[i]);
     if (game_texture)
@@ -356,10 +356,10 @@ void plat_shutdown(void)
 void plat_default_root(char *out, size_t size)
 {
 #if defined(__PROSPERO__)
-    str_copy(out, size, "/data/SwanStationPS5");
+    str_copy(out, size, NP_DATA);
 #else
-    const char *env = SDL_getenv("SwanStationPS5_ROOT");
-    str_copy(out, size, env && *env ? env : "./SwanStationPS5-data");
+    const char *env = SDL_getenv("NP_ROOT");
+    str_copy(out, size, env && *env ? env : "./nightshade-player-data");
 #endif
 }
 
@@ -373,8 +373,7 @@ const char *plat_sandbox_probe(void)
 
 /* Settings > System > "Unlock /data with etaHEN": stored as a marker file so
  * it can be read before any unlock (paths that may work while sandboxed). */
-static const char *const NO_UNLOCK_MARKERS[] = {"/download0/SwanStationPS5_no_unlock",
-                                                "/data/SwanStationPS5/no_unlock"};
+static const char *const NO_UNLOCK_MARKERS[] = {"/download0/nightshade_player_no_unlock", NP_DATA "/no_unlock"};
 
 bool plat_unlock_disabled(void)
 {
@@ -402,7 +401,7 @@ void plat_set_unlock_disabled(bool disabled)
 #if defined(__PROSPERO__)
 /* How the storage was unlocked, remembered between starts: the way that worked last time goes first. */
 enum { UNLOCK_ROUTE_NONE, UNLOCK_ROUTE_HEN, UNLOCK_ROUTE_LAPY };
-#define UNLOCK_ROUTE_FILE "/data/SwanStationPS5/cache/unlock-route"
+#define UNLOCK_ROUTE_FILE NP_DATA "/cache/unlock-route"
 
 static int unlock_route_remembered(void)
 {
@@ -425,7 +424,8 @@ static void unlock_route_remember(int route)
     }
     if (unlock_route_remembered() == route)
         return;
-    mkdir("/data/SwanStationPS5/cache", 0777); /* the folder may not exist yet at the very first start */
+    mkdir(NP_DATA, 0777); /* the folders may not exist yet at the very first start */
+    mkdir(NP_DATA "/cache", 0777);
     FILE *f = fopen(UNLOCK_ROUTE_FILE, "w");
     if (!f)
         return;
@@ -438,8 +438,8 @@ bool plat_prepare_storage(char *error, size_t size)
 {
 #if defined(__PROSPERO__)
     {
-        FILE *r = fopen("/data/SwanStationPS5/SwanStationPS5.ini", "r");
-        FILE *w = fopen("/data/SwanStationPS5/.sandbox-test", "w");
+        FILE *r = fopen(NP_DATA "/settings.ini", "r");
+        FILE *w = fopen(NP_DATA "/.sandbox-test", "w");
         snprintf(sandbox_probe, sizeof(sandbox_probe), "sandboxed read %s, write %s, list %s",
                  r ? "ok" : "no", w ? "ok" : "no", ps5_data_listable() ? "ok" : "no");
         if (r)
@@ -447,7 +447,7 @@ bool plat_prepare_storage(char *error, size_t size)
         if (w)
         {
             fclose(w);
-            remove("/data/SwanStationPS5/.sandbox-test");
+            remove(NP_DATA "/.sandbox-test");
         }
     }
     if (plat_unlock_disabled())
@@ -469,7 +469,7 @@ bool plat_prepare_storage(char *error, size_t size)
             unlock_route_remember(UNLOCK_ROUTE_HEN);
             return true;
         }
-        status = SwanStationPS5_elevate(&route);
+        status = np_elevate(&route);
         lapy_tried = true;
         if (status == 0 && ps5_data_listable())
             return true;
@@ -487,7 +487,7 @@ bool plat_prepare_storage(char *error, size_t size)
      * not again when it already went first. */
     if (!lapy_tried)
     {
-        status = SwanStationPS5_elevate(&route);
+        status = np_elevate(&route);
         if (status == 0 && ps5_data_listable())
         {
             unlock_route_remember(UNLOCK_ROUTE_LAPY);
@@ -509,28 +509,28 @@ bool plat_prepare_storage(char *error, size_t size)
 /* ---------------------------------------------------------------- input */
 
 /* order[player] = the controller (Controls > Players order) */
-static int player_order[SwanStationPS5_MAX_PADS] = {0, 1, 2, 3};
+static int player_order[NP_MAX_PADS] = {0, 1, 2, 3};
 
-void plat_set_player_order(const int order[SwanStationPS5_MAX_PADS])
+void plat_set_player_order(const int order[NP_MAX_PADS])
 {
     memcpy(player_order, order, sizeof(player_order));
 }
 
-void plat_player_order(int order[SwanStationPS5_MAX_PADS])
+void plat_player_order(int order[NP_MAX_PADS])
 {
     memcpy(order, player_order, sizeof(player_order));
 }
 
 static int physical(int port)
 {
-    return port >= 0 && port < SwanStationPS5_MAX_PADS ? player_order[port] : -1;
+    return port >= 0 && port < NP_MAX_PADS ? player_order[port] : -1;
 }
 
-static void order_pads(PadState pads[SwanStationPS5_MAX_PADS])
+static void order_pads(PadState pads[NP_MAX_PADS])
 {
-    PadState raw[SwanStationPS5_MAX_PADS];
+    PadState raw[NP_MAX_PADS];
     memcpy(raw, pads, sizeof(raw));
-    for (int i = 0; i < SwanStationPS5_MAX_PADS; ++i)
+    for (int i = 0; i < NP_MAX_PADS; ++i)
         pads[i] = raw[player_order[i]];
 }
 
@@ -541,10 +541,10 @@ static void order_pads(PadState pads[SwanStationPS5_MAX_PADS])
  * so buttons came out wrong (Triangle acted as Circle). Read the raw
  * joystick in the driver's order instead. The driver has no Create button
  * (slot 5); SwanStationPS5 turns a touchpad tap into Select. */
-static SDL_Joystick *joys[SwanStationPS5_MAX_PADS];
-static int pad_uid[SwanStationPS5_MAX_PADS] = {-1, -1, -1, -1}; /* the PS5 user of each */
-static int pad_h[SwanStationPS5_MAX_PADS] = {-1, -1, -1, -1};   /* its scePad handle */
-static bool motion_on, touch_on, motion_set[SwanStationPS5_MAX_PADS];
+static SDL_Joystick *joys[NP_MAX_PADS];
+static int pad_uid[NP_MAX_PADS] = {-1, -1, -1, -1}; /* the PS5 user of each */
+static int pad_h[NP_MAX_PADS] = {-1, -1, -1, -1};   /* its scePad handle */
+static bool motion_on, touch_on, motion_set[NP_MAX_PADS];
 
 /* scePad, for what the SDL driver doesn't pass on: the motion sensor and the
  * adaptive triggers (layouts as in Sony's pad.h; the read gets room to spare) */
@@ -591,7 +591,7 @@ int scePadSetTriggerEffect(int handle, const Ps5TriggerParam *param);
 
 static int pad_handle(int i)
 {
-    if (i < 0 || i >= SwanStationPS5_MAX_PADS || !joys[i] || pad_uid[i] < 0)
+    if (i < 0 || i >= NP_MAX_PADS || !joys[i] || pad_uid[i] < 0)
         return -1;
     if (pad_h[i] < 0)
         pad_h[i] = scePadGetHandle(pad_uid[i], 0, 0);
@@ -606,7 +606,7 @@ static const int ps5_buttons[] = {
 
 static void refresh_controllers(void)
 {
-    for (int i = 0; i < SwanStationPS5_MAX_PADS; ++i)
+    for (int i = 0; i < NP_MAX_PADS; ++i)
     {
         if (joys[i] && !SDL_JoystickGetAttached(joys[i]))
         {
@@ -630,22 +630,22 @@ static void refresh_controllers(void)
             continue; /* "PS5 Remote Control": not a gamepad */
         SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(j);
         bool open = false;
-        for (int i = 0; i < SwanStationPS5_MAX_PADS; ++i)
+        for (int i = 0; i < NP_MAX_PADS; ++i)
             open |= joys[i] && SDL_JoystickInstanceID(joys[i]) == id;
-        for (int i = 0; i < SwanStationPS5_MAX_PADS && !open; ++i)
+        for (int i = 0; i < NP_MAX_PADS && !open; ++i)
             if (!joys[i])
             {
                 joys[i] = SDL_JoystickOpen(j);
                 pad_uid[i] = j < users ? user_of[j] : -1;
                 if (joys[i])
-                    SwanStationPS5_log("pad %d: %s (%d buttons, %d axes)", i + 1, name ? name : "?",
+                    np_log("pad %d: %s (%d buttons, %d axes)", i + 1, name ? name : "?",
                               SDL_JoystickNumButtons(joys[i]), SDL_JoystickNumAxes(joys[i]));
                 open = true;
             }
     }
 }
 
-void plat_poll(PadState pads[SwanStationPS5_MAX_PADS], bool *quit)
+void plat_poll(PadState pads[NP_MAX_PADS], bool *quit)
 {
     SDL_Event event;
     bool devices_changed = false;
@@ -659,8 +659,8 @@ void plat_poll(PadState pads[SwanStationPS5_MAX_PADS], bool *quit)
         refresh_controllers();
         first = false;
     }
-    memset(pads, 0, sizeof(PadState) * SwanStationPS5_MAX_PADS);
-    for (int i = 0; i < SwanStationPS5_MAX_PADS; ++i)
+    memset(pads, 0, sizeof(PadState) * NP_MAX_PADS);
+    for (int i = 0; i < NP_MAX_PADS; ++i)
     {
         SDL_Joystick *j = joys[i];
         if (!j)
@@ -683,7 +683,7 @@ void plat_poll(PadState pads[SwanStationPS5_MAX_PADS], bool *quit)
             if (motion_on && !motion_set[i])
             {
                 int err = scePadSetMotionSensorState(h, true);
-                SwanStationPS5_log("pad %d: motion sensor %s (0x%08x)", i + 1, err ? "failed" : "on", (unsigned)err);
+                np_log("pad %d: motion sensor %s (0x%08x)", i + 1, err ? "failed" : "on", (unsigned)err);
                 motion_set[i] = true;
             }
             Ps5PadBuffer b;
@@ -697,8 +697,8 @@ void plat_poll(PadState pads[SwanStationPS5_MAX_PADS], bool *quit)
                 p->touch_x = (uint16_t)(b.d.touch[8] | b.d.touch[9] << 8);
                 p->touch_y = (uint16_t)(b.d.touch[10] | b.d.touch[11] << 8);
                 /* where the battery is isn't documented: log the extra bytes when they change */
-                static uint8_t last[SwanStationPS5_MAX_PADS][32];
-                static uint64_t logged_at[SwanStationPS5_MAX_PADS];
+                static uint8_t last[NP_MAX_PADS][32];
+                static uint64_t logged_at[NP_MAX_PADS];
                 uint64_t now = plat_ticks_us();
                 if (memcmp(last[i], b.d.ext, 32) != 0 && now - logged_at[i] > 30000000ull)
                 {
@@ -707,7 +707,7 @@ void plat_poll(PadState pads[SwanStationPS5_MAX_PADS], bool *quit)
                     char hex[100];
                     for (int k = 0; k < 32; ++k)
                         snprintf(hex + k * 3, 4, "%02x ", b.d.ext[k]);
-                    SwanStationPS5_log("pad %d extra: %s", i + 1, hex);
+                    np_log("pad %d extra: %s", i + 1, hex);
                 }
             }
         }
@@ -734,8 +734,8 @@ void plat_pad_touch(bool on)
 void plat_pad_triggers(int port, PlatTrigger l2, PlatTrigger r2)
 {
     int i = physical(port);
-    static PlatTrigger last[SwanStationPS5_MAX_PADS][2];
-    static int last_h[SwanStationPS5_MAX_PADS] = {-2, -2, -2, -2};
+    static PlatTrigger last[NP_MAX_PADS][2];
+    static int last_h[NP_MAX_PADS] = {-2, -2, -2, -2};
     int h = pad_handle(i);
     if (h < 0)
     {
@@ -743,7 +743,7 @@ void plat_pad_triggers(int port, PlatTrigger l2, PlatTrigger r2)
         if (!said && (l2.mode || r2.mode))
         {
             said = true;
-            SwanStationPS5_log("pad: no scePad handle for port %d (pad %d, user %d, handle 0x%08x)", port + 1, i,
+            np_log("pad: no scePad handle for port %d (pad %d, user %d, handle 0x%08x)", port + 1, i,
                       i >= 0 ? pad_uid[i] : -1, i >= 0 ? (unsigned)pad_h[i] : 0u);
         }
         return;
@@ -765,7 +765,7 @@ void plat_pad_triggers(int port, PlatTrigger l2, PlatTrigger r2)
         memcpy(param.command[k].data, t[k]->data, sizeof(t[k]->data));
         int err = scePadSetTriggerEffect(h, &param);
         if (t[k]->mode)
-            SwanStationPS5_log("pad: trigger %s mode %u -> 0x%08x (handle %d)", k ? "R2" : "L2", (unsigned)t[k]->mode,
+            np_log("pad: trigger %s mode %u -> 0x%08x (handle %d)", k ? "R2" : "L2", (unsigned)t[k]->mode,
                       (unsigned)err, h);
         if (err)
         {
@@ -778,7 +778,7 @@ void plat_pad_triggers(int port, PlatTrigger l2, PlatTrigger r2)
         if (err && !(logged_modes & (1u << (t[k]->mode & 15))))
         {
             logged_modes |= 1u << (t[k]->mode & 15);
-            SwanStationPS5_log("pad: trigger effect %s mode %u (%u %u %u %u) failed (0x%08x)", k ? "R2" : "L2",
+            np_log("pad: trigger effect %s mode %u (%u %u %u %u) failed (0x%08x)", k ? "R2" : "L2",
                       (unsigned)t[k]->mode, t[k]->data[0], t[k]->data[1], t[k]->data[2], t[k]->data[3], (unsigned)err);
         }
     }
@@ -792,9 +792,9 @@ int plat_pad_battery(int port)
 
 void plat_set_lightbar(int port, uint32_t rgb)
 {
-    static uint32_t last[SwanStationPS5_MAX_PADS] = {0xffffffffu, 0xffffffffu, 0xffffffffu, 0xffffffffu};
+    static uint32_t last[NP_MAX_PADS] = {0xffffffffu, 0xffffffffu, 0xffffffffu, 0xffffffffu};
     port = physical(port);
-    if (port < 0 || port >= SwanStationPS5_MAX_PADS || !joys[port] || last[port] == rgb)
+    if (port < 0 || port >= NP_MAX_PADS || !joys[port] || last[port] == rgb)
         return;
     last[port] = rgb;
 #if SDL_VERSION_ATLEAST(2, 0, 14)
@@ -802,7 +802,7 @@ void plat_set_lightbar(int port, uint32_t rgb)
     {
         static bool logged;
         if (!logged)
-            SwanStationPS5_log("pad: light bar not supported here (%s)", SDL_GetError());
+            np_log("pad: light bar not supported here (%s)", SDL_GetError());
         logged = true;
     }
 #endif
@@ -811,7 +811,7 @@ void plat_set_lightbar(int port, uint32_t rgb)
 void plat_rumble(int port, uint16_t strong, uint16_t weak)
 {
     port = physical(port);
-    if (port < 0 || port >= SwanStationPS5_MAX_PADS || !joys[port])
+    if (port < 0 || port >= NP_MAX_PADS || !joys[port])
         return;
     if (rumble_strong[port] == strong && rumble_weak[port] == weak)
         return;
@@ -823,7 +823,7 @@ void plat_rumble(int port, uint16_t strong, uint16_t weak)
 
 static void refresh_controllers(void)
 {
-    for (int i = 0; i < SwanStationPS5_MAX_PADS; ++i)
+    for (int i = 0; i < NP_MAX_PADS; ++i)
     {
         if (controllers[i] && !SDL_GameControllerGetAttached(controllers[i]))
         {
@@ -837,19 +837,19 @@ static void refresh_controllers(void)
             continue;
         SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(j);
         bool open = false;
-        for (int i = 0; i < SwanStationPS5_MAX_PADS; ++i)
+        for (int i = 0; i < NP_MAX_PADS; ++i)
             if (controllers[i] &&
                 SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controllers[i])) == id)
                 open = true;
         if (open)
             continue;
-        for (int i = 0; i < SwanStationPS5_MAX_PADS; ++i)
+        for (int i = 0; i < NP_MAX_PADS; ++i)
         {
             if (!controllers[i])
             {
                 controllers[i] = SDL_GameControllerOpen(j);
                 if (controllers[i])
-                    SwanStationPS5_log("pad %d: %s", i + 1, SDL_GameControllerName(controllers[i]));
+                    np_log("pad %d: %s", i + 1, SDL_GameControllerName(controllers[i]));
                 break;
             }
         }
@@ -895,7 +895,7 @@ static const struct
     {SDL_SCANCODE_ESCAPE, BTN_MENU},  {SDL_SCANCODE_TAB, BTN_MENU},
 };
 
-void plat_poll(PadState pads[SwanStationPS5_MAX_PADS], bool *quit)
+void plat_poll(PadState pads[NP_MAX_PADS], bool *quit)
 {
     SDL_Event event;
     bool devices_changed = false;
@@ -913,8 +913,8 @@ void plat_poll(PadState pads[SwanStationPS5_MAX_PADS], bool *quit)
         first = false;
     }
 
-    memset(pads, 0, sizeof(PadState) * SwanStationPS5_MAX_PADS);
-    for (int i = 0; i < SwanStationPS5_MAX_PADS; ++i)
+    memset(pads, 0, sizeof(PadState) * NP_MAX_PADS);
+    for (int i = 0; i < NP_MAX_PADS; ++i)
     {
         SDL_GameController *c = controllers[i];
         if (!c)
@@ -937,7 +937,7 @@ void plat_poll(PadState pads[SwanStationPS5_MAX_PADS], bool *quit)
     }
     order_pads(pads);
 
-#if defined(SwanStationPS5_PREVIEW)
+#if defined(NP_PREVIEW)
     preview_step();
     pads[0].connected = true;
     pads[0].buttons = preview_buttons;
@@ -988,7 +988,7 @@ void plat_set_lightbar(int port, uint32_t rgb)
 {
     port = physical(port);
 #if SDL_VERSION_ATLEAST(2, 0, 14)
-    if (port >= 0 && port < SwanStationPS5_MAX_PADS && controllers[port])
+    if (port >= 0 && port < NP_MAX_PADS && controllers[port])
         SDL_GameControllerSetLED(controllers[port], (Uint8)(rgb >> 16), (Uint8)(rgb >> 8), (Uint8)rgb);
 #else
     (void)port, (void)rgb;
@@ -998,7 +998,7 @@ void plat_set_lightbar(int port, uint32_t rgb)
 void plat_rumble(int port, uint16_t strong, uint16_t weak)
 {
     port = physical(port);
-    if (port < 0 || port >= SwanStationPS5_MAX_PADS || !controllers[port])
+    if (port < 0 || port >= NP_MAX_PADS || !controllers[port])
         return;
     if (rumble_strong[port] == strong && rumble_weak[port] == weak)
         return;
@@ -1027,12 +1027,12 @@ bool plat_audio_open(int sample_rate)
     audio_device = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0); /* SDL resamples for us */
     if (!audio_device)
     {
-        SwanStationPS5_log("audio open failed: %s", SDL_GetError());
+        np_log("audio open failed: %s", SDL_GetError());
         return false;
     }
     audio_rate = sample_rate;
     SDL_PauseAudioDevice(audio_device, 0);
-    SwanStationPS5_log("audio: %d Hz", sample_rate);
+    np_log("audio: %d Hz", sample_rate);
     return true;
 }
 
@@ -1321,7 +1321,7 @@ bool plat_set_output(int resolution)
     char error[160];
     if (vkp_set_mode(OUTPUT_W[resolution], OUTPUT_H[resolution], error, sizeof(error)))
         return true;
-    SwanStationPS5_log("screen: %dx%d failed: %s", OUTPUT_W[resolution], OUTPUT_H[resolution], error);
+    np_log("screen: %dx%d failed: %s", OUTPUT_W[resolution], OUTPUT_H[resolution], error);
     return false;
 #else
     (void)resolution;
@@ -1343,7 +1343,7 @@ void plat_want_high_refresh(bool on)
         {
             int rc = sceVideoOutConfigureOutput(handle, 1, NULL, NULL, NULL);
             sceVideoOutClose(handle);
-            SwanStationPS5_log("screen: 60 Hz output restored (0x%08x)", (unsigned)rc);
+            np_log("screen: 60 Hz output restored (0x%08x)", (unsigned)rc);
         }
     }
 #else
@@ -1647,7 +1647,11 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
     static const uint8_t scan_strength[] = {0, 110, 200};
     uint8_t scan = scan_strength[settings->crt % 3];
 #if defined(__PROSPERO__)
-    if (game_gpu && vkp_game_image_ready())
+    /* Nightshade Player: a CPU core's picture goes through Vulkan too when a shader is chosen, so the shader
+     * applies to it; without one it is the interface's texture, below */
+    const bool soft_vk = !game_gpu && game_image && gpu_ui && settings->shader &&
+                         vkp_set_soft_frame(game_image, game_image_w, game_image_h, game_image_pitch);
+    if ((game_gpu && vkp_game_image_ready()) || soft_vk)
     {
         /* the CPU canvas: a hole where the GPU draws the picture; its alpha darkens the picture for the menus
          * (premultiplied black). The GPU interface just draws that black over it. */
@@ -1952,7 +1956,7 @@ static void profile_frame_end(void)
     int w = snprintf(line, sizeof(line), "ui profile (ms/frame):");
     for (int i = 0; i < prof.count && w < (int)sizeof(line) - 24; ++i)
         w += snprintf(line + w, sizeof(line) - (size_t)w, " %s %.1f", prof.name[i], prof.us[i] / 120 / 1000.0);
-    /* SwanStationPS5_log("%s", line); */ /* per-frame timings: uncomment to profile the UI */
+    /* np_log("%s", line); */ /* per-frame timings: uncomment to profile the UI */
     (void)line;
     memset(&prof, 0, sizeof(prof));
 }
@@ -1962,7 +1966,7 @@ void plat_end_frame(void)
     profile_frame_end();
     if (!gpu_ui)
         SDL_RenderPresent(renderer);
-#if defined(SwanStationPS5_PREVIEW)
+#if defined(NP_PREVIEW)
     preview_clock += 16667;
 #endif
 #if defined(__PROSPERO__)
@@ -1982,7 +1986,7 @@ void plat_end_frame(void)
         present_us += shown - drawn;
         if (++frames == 120)
         {
-            /* SwanStationPS5_log("ui: draw %.1f ms, present %.1f ms per frame (avg of 120)",
+            /* np_log("ui: draw %.1f ms, present %.1f ms per frame (avg of 120)",
                       draw_us / 120 / 1000.0, present_us / 120 / 1000.0); */
             frames = 0;
             draw_us = present_us = 0;
@@ -2012,7 +2016,7 @@ static SDL_Texture *texture_sdl(PlatTexture *t)
                                t->height); /* ABGR8888 = R,G,B,A bytes in memory */
     if (!t->sdl)
     {
-        SwanStationPS5_log("texture %dx%d failed: %s", t->width, t->height, SDL_GetError());
+        np_log("texture %dx%d failed: %s", t->width, t->height, SDL_GetError());
         return NULL;
     }
     SDL_UpdateTexture(t->sdl, NULL, t->rgba, t->width * 4);
@@ -2228,8 +2232,8 @@ void plat_asset_path(char *out, size_t size, const char *relative)
     /* /app0 exists only inside the sandbox. Once the HEN frees SwanStationPS5 its
      * file system is the console's real one, where the title is mounted at
      * /system_ex/app/<id> (ShadowMountPlus) and stored in /data/homebrew/<id>. */
-    static const char *const bases[] = {"/app0/assets", "/system_ex/app/PPSA98510/assets",
-                                        "/data/homebrew/PPSA98510/assets"};
+    static const char *const bases[] = {"/app0/assets", "/system_ex/app/" NP_TITLE_ID "/assets",
+                                        "/data/homebrew/" NP_TITLE_ID "/assets"};
     static int chosen = -1;
     if (chosen < 0)
     {
@@ -2240,18 +2244,18 @@ void plat_asset_path(char *out, size_t size, const char *relative)
                 chosen = i;
                 break;
             }
-        SwanStationPS5_log("assets: %s", bases[chosen]);
+        np_log("assets: %s", bases[chosen]);
     }
     path_join(out, size, bases[chosen], relative);
 #else
-    const char *base = SDL_getenv("SwanStationPS5_ASSETS");
+    const char *base = SDL_getenv("NP_ASSETS");
     path_join(out, size, base && *base ? base : "assets", relative);
 #endif
 }
 
 uint64_t plat_ticks_us(void)
 {
-#if defined(SwanStationPS5_PREVIEW)
+#if defined(NP_PREVIEW)
     return 1000000ull + preview_clock;
 #endif
     return SDL_GetPerformanceCounter() * 1000000ull / SDL_GetPerformanceFrequency();
@@ -2264,7 +2268,7 @@ void plat_sleep_us(uint32_t us)
 
 void plat_notify(const char *message)
 {
-    SwanStationPS5_log("notify: %s", message);
+    np_log("notify: %s", message);
 #if defined(__PROSPERO__)
     static struct
     {

@@ -19,9 +19,9 @@
 #include "vk_present.h"
 #include "vk_present_hw.h"
 
-#if defined(SwanStationPS5_VULKAN)
+#if defined(NP_VULKAN)
 
-#include "../../SwanStationPS5.h"
+#include "../../nightshade.h"
 #include "fg_bridge.h"
 #include "shaders_royale.h"
 #include "shaders_ntsc.h"
@@ -163,7 +163,23 @@ static struct
     int fg_state;
     double core_hz, display_hz, speed;
     bool nominal;
+    /* Nightshade Player: a core that draws on the CPU (EasyRPG Player). Its frames are copied into this image at
+     * each present, and the image is drawn as a core's Vulkan picture is, so the shaders apply to it. */
+    VkImage soft_image;
+    VkDeviceMemory soft_memory;
+    VkImageView soft_view;
+    int soft_w, soft_h;
+    bool soft_ready; /* the image holds a frame: its layout is SHADER_READ_ONLY_OPTIMAL */
+    VkBuffer soft_staging[FRAMES];
+    VkDeviceMemory soft_staging_memory[FRAMES];
+    void *soft_staging_map[FRAMES];
+    const uint32_t *soft_pixels; /* the frame the next present copies (XRGB8888), NULL when none */
+    size_t soft_pitch;           /* in pixels */
+    bool soft_failed;            /* the image could not be made: the CPU path draws the picture */
 } V;
+
+static void soft_record(VkCommandBuffer cb, int f);
+static void soft_free(void);
 
 /* asked before the screen opens (vkp_open clears V): frame generation's 120 Hz mode */
 static bool want_high_refresh;
@@ -237,8 +253,8 @@ static bool create_instance(char *error, size_t size)
     }
     const char *extensions[] = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_DISPLAY_EXTENSION_NAME};
     VkApplicationInfo app = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    app.pApplicationName = SwanStationPS5_NAME;
-    app.pEngineName = SwanStationPS5_NAME;
+    app.pApplicationName = NP_NAME;
+    app.pEngineName = NP_NAME;
     app.apiVersion = VK_API_VERSION_1_3;
     VkInstanceCreateInfo info = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     info.pApplicationInfo = &app;
@@ -288,7 +304,7 @@ static bool create_surface(char *error, size_t size)
         {
             const VkDisplayModeParametersKHR *p = &modes[i].parameters;
             if (pass == 0)
-                SwanStationPS5_log("vulkan: display mode %ux%u @ %.2f Hz", p->visibleRegion.width,
+                np_log("vulkan: display mode %ux%u @ %.2f Hz", p->visibleRegion.width,
                                    p->visibleRegion.height, p->refreshRate / 1000.0);
             bool size_ok = p->visibleRegion.width == mode_w && p->visibleRegion.height == mode_h;
             if (size_ok && p->refreshRate >= 59000 && p->refreshRate <= 61000)
@@ -320,13 +336,13 @@ static bool create_surface(char *error, size_t size)
             }
         }
         if (at120 >= 0)
-            SwanStationPS5_log("vulkan: no 120 Hz mode at the usual size, using %ux%u", modes[at120].parameters.visibleRegion.width,
+            np_log("vulkan: no 120 Hz mode at the usual size, using %ux%u", modes[at120].parameters.visibleRegion.width,
                                modes[at120].parameters.visibleRegion.height);
     }
     if (want_high_refresh && at120 >= 0)
         best = at120;
     else if (want_high_refresh)
-        SwanStationPS5_log("vulkan: no 120 Hz mode (the TV or the console has none), staying at 60 Hz");
+        np_log("vulkan: no 120 Hz mode (the TV or the console has none), staying at 60 Hz");
     if (best < 0)
     {
         if (mode_count == 0)
@@ -484,7 +500,7 @@ static bool create_swapchain(char *error, size_t size)
     CHECK(vkCreateSwapchainKHR(V.device, &info, NULL, &V.swapchain), "vkCreateSwapchainKHR");
     V.image_count = MAX_IMAGES;
     CHECK(vkGetSwapchainImagesKHR(V.device, V.swapchain, &V.image_count, V.images), "swapchain images");
-    SwanStationPS5_log("vulkan: swapchain %ux%u, %u images, format %d", V.extent.width, V.extent.height,
+    np_log("vulkan: swapchain %ux%u, %u images, format %d", V.extent.width, V.extent.height,
               V.image_count, (int)V.format);
     return true;
 }
@@ -767,11 +783,11 @@ bool vkp_open(int canvas_w, int canvas_h, char *error, size_t size)
               create_pipeline(error, size) && create_canvas(error, size);
     if (!ok)
     {
-        SwanStationPS5_log("vulkan: screen not available: %s", error);
+        np_log("vulkan: screen not available: %s", error);
         vkp_close();
         return false;
     }
-    SwanStationPS5_log("vulkan: the screen is drawn through Vulkan, %s", V.description);
+    np_log("vulkan: the screen is drawn through Vulkan, %s", V.description);
     return true;
 }
 
@@ -923,7 +939,7 @@ static bool fg_ready(uint32_t w, uint32_t h)
         {
             V.fg_pass = VK_NULL_HANDLE;
             V.fg_failed = true;
-            /* SwanStationPS5_log("framegen: no render pass"); */
+            /* np_log("framegen: no render pass"); */
             return false;
         }
     }
@@ -932,13 +948,13 @@ static bool fg_ready(uint32_t w, uint32_t h)
     if (!V.fg)
     {
         V.fg_failed = true; /* not again until the device changes */
-        /* SwanStationPS5_log("framegen: can't start (%s)", error); */
+        /* np_log("framegen: can't start (%s)", error); */
         return false;
     }
     V.fg_w = w;
     V.fg_h = h;
     V.fg_reset = true;
-    /* SwanStationPS5_log("framegen: %ux%u frames", w, h); */
+    /* np_log("framegen: %ux%u frames", w, h); */
     return true;
 }
 
@@ -1549,7 +1565,7 @@ static bool royale_prepare(int preset, bool offscreen, int native_w, int native_
         R.ok = royale_init();
         if (!R.ok)
         {
-            SwanStationPS5_log("vulkan: shader chain %d could not be set up", preset);
+            np_log("vulkan: shader chain %d could not be set up", preset);
             const RoyalePass *passes = R.passes;
             const RoyaleTexture *textures = R.textures;
             int n = R.n, tex_n = R.tex_n;
@@ -1628,7 +1644,7 @@ static bool royale_prepare(int preset, bool offscreen, int native_w, int native_
             }
             if (!ok)
             {
-                SwanStationPS5_log("vulkan: shader chain %d: no memory for its images", preset);
+                np_log("vulkan: shader chain %d: no memory for its images", preset);
                 royale_free_images();
                 R.ok = false;
                 return false;
@@ -1638,7 +1654,7 @@ static bool royale_prepare(int preset, bool offscreen, int native_w, int native_
     R.clear_pending = true;
     memcpy(R.built, key, sizeof(key));
     R.have_images = true;
-    SwanStationPS5_log("vulkan: shader chain %d: PS1 %dx%d, viewport %dx%d", preset, native_w, native_h, viewport_w, viewport_h);
+    np_log("vulkan: shader chain %d: PS1 %dx%d, viewport %dx%d", preset, native_w, native_h, viewport_w, viewport_h);
     return true;
 }
 
@@ -1874,7 +1890,7 @@ static void present_frame(bool ui, const uint32_t *pixels, size_t pitch_bytes)
     {
         static int warned;
         if (!warned++)
-            SwanStationPS5_log("vulkan: acquire failed (%d)", (int)r);
+            np_log("vulkan: acquire failed (%d)", (int)r);
         return;
     }
     vkResetFences(V.device, 1, &V.done[f]);
@@ -1884,6 +1900,7 @@ static void present_frame(bool ui, const uint32_t *pixels, size_t pitch_bytes)
     VkCommandBufferBeginInfo begin = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cb, &begin);
+    soft_record(cb, f); /* a CPU core's new frame, before anything reads the game's picture */
     if (!ui)
     {
         barrier(cb, V.canvas, V.canvas_ready ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
@@ -1939,11 +1956,11 @@ static void present_frame(bool ui, const uint32_t *pixels, size_t pitch_bytes)
                                              V.speed > 0.0 ? V.speed : 100.0, V.nominal, V.fg_max);
             /* the log of the pacing, off until it is needed again:
             if (d.state != V.fg_state)
-                SwanStationPS5_log("framegen: %s (the game's frames: %.2f vsyncs, %.2f refreshes of %.2f Hz)",
+                np_log("framegen: %s (the game's frames: %.2f vsyncs, %.2f refreshes of %.2f Hz)",
                                    ssfg_pacing_state_name(d.state), d.vsyncs, d.refreshes, V.display_hz);
             const char *event = ssfg_pacing_event(V.fg_pacing);
             if (event)
-                SwanStationPS5_log("framegen: %s", event);
+                np_log("framegen: %s", event);
             */
             V.fg_state = d.state;
             V.fg_engaged = d.engaged;
@@ -2158,6 +2175,7 @@ static void destroy_device_objects(void)
     if (!V.device)
         return;
     vkDeviceWaitIdle(V.device);
+    soft_free();
     ui_destroy();
     fg_free();
     if (V.fg_pacing)
@@ -2270,6 +2288,151 @@ void vkp_close(void)
     memset(&V, 0, sizeof(V));
 }
 
+/* ---------------------------------------------------------------- a core drawing on the CPU */
+
+static void soft_free(void)
+{
+    if (!V.device)
+        return;
+    for (int f = 0; f < FRAMES; ++f)
+    {
+        if (V.soft_staging[f])
+            vkDestroyBuffer(V.device, V.soft_staging[f], NULL);
+        if (V.soft_staging_memory[f])
+            vkFreeMemory(V.device, V.soft_staging_memory[f], NULL);
+        V.soft_staging[f] = VK_NULL_HANDLE;
+        V.soft_staging_memory[f] = VK_NULL_HANDLE;
+        V.soft_staging_map[f] = NULL;
+    }
+    if (V.soft_view)
+        vkDestroyImageView(V.device, V.soft_view, NULL);
+    if (V.soft_image)
+        vkDestroyImage(V.device, V.soft_image, NULL);
+    if (V.soft_memory)
+        vkFreeMemory(V.device, V.soft_memory, NULL);
+    if (V.game_image == V.soft_image && V.soft_image)
+    {
+        V.game_image = VK_NULL_HANDLE;
+        V.game_view = VK_NULL_HANDLE;
+    }
+    V.soft_view = VK_NULL_HANDLE;
+    V.soft_image = VK_NULL_HANDLE;
+    V.soft_memory = VK_NULL_HANDLE;
+    V.soft_w = V.soft_h = 0;
+    V.soft_ready = false;
+    V.soft_pixels = NULL;
+}
+
+/* The image and its staging buffers for a w x h frame. */
+static bool soft_make(int w, int h, char *error, size_t size)
+{
+    VkImageCreateInfo ii = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    ii.imageType = VK_IMAGE_TYPE_2D;
+    ii.format = VK_FORMAT_B8G8R8A8_UNORM; /* XRGB8888 in memory: B, G, R, X */
+    ii.extent = (VkExtent3D){(uint32_t)w, (uint32_t)h, 1};
+    ii.mipLevels = 1;
+    ii.arrayLayers = 1;
+    ii.samples = VK_SAMPLE_COUNT_1_BIT;
+    ii.tiling = VK_IMAGE_TILING_OPTIMAL;
+    ii.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    CHECK(vkCreateImage(V.device, &ii, NULL, &V.soft_image), "game image");
+    VkMemoryRequirements req;
+    vkGetImageMemoryRequirements(V.device, V.soft_image, &req);
+    if (!allocate(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &V.soft_memory))
+    {
+        snprintf(error, size, "no GPU memory for the game image");
+        return false;
+    }
+    CHECK(vkBindImageMemory(V.device, V.soft_image, V.soft_memory, 0), "bind game image");
+    VkImageViewCreateInfo view = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    view.image = V.soft_image;
+    view.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    view.format = VK_FORMAT_B8G8R8A8_UNORM;
+    view.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    view.subresourceRange.levelCount = 1;
+    view.subresourceRange.layerCount = 1;
+    CHECK(vkCreateImageView(V.device, &view, NULL, &V.soft_view), "game image view");
+    for (int f = 0; f < FRAMES; ++f)
+    {
+        VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        bi.size = (VkDeviceSize)w * h * 4;
+        bi.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        CHECK(vkCreateBuffer(V.device, &bi, NULL, &V.soft_staging[f]), "game staging buffer");
+        vkGetBufferMemoryRequirements(V.device, V.soft_staging[f], &req);
+        if (!allocate(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                      &V.soft_staging_memory[f]))
+        {
+            snprintf(error, size, "no memory for the game staging buffer");
+            return false;
+        }
+        CHECK(vkBindBufferMemory(V.device, V.soft_staging[f], V.soft_staging_memory[f], 0), "bind game staging");
+        CHECK(vkMapMemory(V.device, V.soft_staging_memory[f], 0, VK_WHOLE_SIZE, 0, &V.soft_staging_map[f]),
+              "map game staging");
+    }
+    V.soft_w = w;
+    V.soft_h = h;
+    V.soft_ready = false;
+    return true;
+}
+
+bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitch_px)
+{
+    if (!V.device || !V.swapchain || V.soft_failed || !xrgb || width <= 0 || height <= 0 || width > 4096 ||
+        height > 4096)
+        return false;
+    if (width != V.soft_w || height != V.soft_h || !V.soft_image)
+    {
+        /* made again for another size: the frames in flight that read the old one finish first */
+        vkDeviceWaitIdle(V.device);
+        soft_free();
+        char error[160];
+        if (!soft_make(width, height, error, sizeof(error)))
+        {
+            np_log("vulkan: %s; the game is drawn without its shader", error);
+            soft_free();
+            V.soft_failed = true;
+            return false;
+        }
+        np_log("vulkan: game image %dx%d for the shaders", width, height);
+    }
+    V.soft_pixels = xrgb;
+    V.soft_pitch = pitch_px;
+    return true;
+}
+
+/* At the start of a frame's commands: the frame into the image, which is then the game's picture. */
+static void soft_record(VkCommandBuffer cb, int f)
+{
+    if (!V.soft_pixels || !V.soft_image || !V.soft_staging_map[f])
+        return;
+    uint32_t *dst = V.soft_staging_map[f];
+    for (int y = 0; y < V.soft_h; ++y)
+    {
+        const uint32_t *src = V.soft_pixels + (size_t)y * V.soft_pitch;
+        uint32_t *row = dst + (size_t)y * V.soft_w;
+        for (int x = 0; x < V.soft_w; ++x)
+            row[x] = src[x] | 0xff000000u; /* opaque: the X byte is not alpha */
+    }
+    V.soft_pixels = NULL;
+    barrier(cb, V.soft_image, V.soft_ready ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, V.soft_ready ? VK_ACCESS_SHADER_READ_BIT : 0,
+            VK_ACCESS_TRANSFER_WRITE_BIT,
+            V.soft_ready ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                         : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT);
+    VkBufferImageCopy copy = {0};
+    copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    copy.imageSubresource.layerCount = 1;
+    copy.imageExtent = (VkExtent3D){(uint32_t)V.soft_w, (uint32_t)V.soft_h, 1};
+    vkCmdCopyBufferToImage(cb, V.soft_staging[f], V.soft_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+    barrier(cb, V.soft_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    V.soft_ready = true;
+    vkp_set_game_image(V.soft_image, V.soft_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+}
+
 /* ---------------------------------------------------------------- a core's device */
 
 void vkp_hw_context(VkInstance *instance, VkPhysicalDevice *gpu, VkSurfaceKHR *surface,
@@ -2305,9 +2468,9 @@ bool vkp_adopt_device(VkDevice device, VkQueue queue, uint32_t family, char *err
     {
         ok = ui_create(error, size);
         if (!ok)
-            SwanStationPS5_log("vulkan: the interface layer could not move to the core's device: %s", error);
+            np_log("vulkan: the interface layer could not move to the core's device: %s", error);
     }
-    SwanStationPS5_log("vulkan: the screen moved to the core's device%s%s", ok ? "" : ": ", ok ? "" : error);
+    np_log("vulkan: the screen moved to the core's device%s%s", ok ? "" : ": ", ok ? "" : error);
     return ok;
 }
 
@@ -2335,7 +2498,7 @@ bool vkp_set_mode(int width, int height, char *error, size_t size)
                   create_canvas(error, size) && ui_create(error, size);
         if (ok)
             return true;
-        SwanStationPS5_log("vulkan: mode %dx%d failed: %s", (int)want_width, (int)want_height, error);
+        np_log("vulkan: mode %dx%d failed: %s", (int)want_width, (int)want_height, error);
     }
     return false;
 }
@@ -2489,6 +2652,12 @@ void vkp_show_game(float x, float y, float w, float h, float crop, int shader, i
 }
 
 #else
+
+bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitch_px)
+{
+    (void)xrgb, (void)width, (void)height, (void)pitch_px;
+    return false;
+}
 
 bool vkp_open(int canvas_w, int canvas_h, char *error, size_t size)
 {

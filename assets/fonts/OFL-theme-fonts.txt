@@ -1,13 +1,7 @@
-The theme fonts: each is licensed under the SIL Open Font License, Version 1.1.
+IBM Plex Mono, licensed under the SIL Open Font License, Version 1.1.
 
-Chakra Petch (ChakraPetch-500.ttf, ChakraPetch-700.ttf):
-  Copyright 2018 The Chakra Petch Project Authors (https://github.com/m4rc1e/Chakra-Petch.git)
-IBM Plex Sans (IBMPlexSans-400.ttf, IBMPlexSans-600.ttf), IBM Plex Mono (IBMPlexMono-400.ttf):
+IBM Plex Mono (IBMPlexMono-400.ttf), the monospaced text:
   Copyright 2019 IBM Corp. All rights reserved.
-Fraunces (Fraunces-600.ttf):
-  Copyright 2020 The Fraunces Project Authors (github.com/undercasetype/Fraunces)
-Work Sans (WorkSans-400.ttf):
-  Copyright 2019 The Work Sans Project Authors (https://github.com/weiweihuanghuang/Work-Sans)
 
 Static instances as served by Google Fonts. The license follows.
 

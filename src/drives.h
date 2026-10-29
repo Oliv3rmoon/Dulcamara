@@ -1,5 +1,5 @@
-#ifndef SwanStationPS5_DRIVES_H
-#define SwanStationPS5_DRIVES_H
+#ifndef NP_DRIVES_H
+#define NP_DRIVES_H
 
 #define DRIVE_EXT_COUNT 2
 #define DRIVE_USB_COUNT 8

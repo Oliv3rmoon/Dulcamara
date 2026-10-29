@@ -2,10 +2,10 @@
  * SwanStationPS5 - TrueType text (Inter) on top of the platform mesh API.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#ifndef SwanStationPS5_TEXT_H
-#define SwanStationPS5_TEXT_H
+#ifndef NP_TEXT_H
+#define NP_TEXT_H
 
-#include "../SwanStationPS5.h"
+#include "../nightshade.h"
 
 enum
 {

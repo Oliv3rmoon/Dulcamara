@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-"""Compiles SwanStationPS5 and packs the release asset, PPSA98510.zip, in the project root.
+"""Compiles Nightshade Player and packs the release asset, PPSA99010.zip, in the project root.
 
-    python3 tools/make_release.py                 # the disc daemon payload, make, then PPSA98510.zip
+    python3 tools/make_release.py                 # make, then PPSA99010.zip
     python3 tools/make_release.py --skip-build    # only pack what dist/ already holds
     python3 tools/make_release.py --jobs 12 --no-nice
     python3 tools/make_release.py --ip 192.168.1.90 [--port 2121]   # also deploys to the PS5 over FTP
 
-The zip holds just the app folder, PPSA98510/, as the releases have since 1.0.0: that is what the
-in-app updater installs, and what you copy to /data/homebrew. The release tag is the version from
-SwanStationPS5_VERSION in src/SwanStationPS5.h, without a "v" (1.0.1).
-
-The disc daemon payload (payload/discd.c) is built too, to dist/SwanStationPS5-DiscDaemon.elf; it is not in the zip:
-it is sent to the console's ELF loader (port 9021), not installed with the app.
+The zip holds just the app folder, PPSA99010/: what the in-app updater installs, and what you copy to
+/data/homebrew. The release tag is the version from NP_VERSION in src/nightshade.h, without a "v" (0.1.0).
+(From Nightshade Station's, which is SwanStationPS5's.)
 
 SPDX-License-Identifier: GPL-3.0-or-later
 """
@@ -25,25 +22,25 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-APP = "PPSA98510"
+APP = "PPSA99010"
 
 
 def read_version():
-    text = (ROOT / "src/SwanStationPS5.h").read_text()
-    m = re.search(r'#define\s+SwanStationPS5_VERSION\s+"([^"]+)"', text)
+    text = (ROOT / "src/nightshade.h").read_text()
+    m = re.search(r'#define\s+NP_VERSION\s+"([^"]+)"', text)
     if not m:
-        sys.exit("error: SwanStationPS5_VERSION not found in src/SwanStationPS5.h")
+        sys.exit("error: NP_VERSION not found in src/nightshade.h")
     return m.group(1)
 
 
 def sync_content_version(version):
-    """Writes SwanStationPS5_VERSION into sce_sys/param.json as contentVersion: 1.0.2 -> 01.000.002."""
+    """Writes NP_VERSION into sce_sys/param.json as contentVersion: 1.0.2 -> 01.000.002."""
     m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
     if not m:
-        sys.exit(f'error: SwanStationPS5_VERSION "{version}" is not X.Y.Z')
+        sys.exit(f'error: NP_VERSION "{version}" is not X.Y.Z')
     major, minor, patch = (int(g) for g in m.groups())
     if major > 99 or minor > 999 or patch > 999:
-        sys.exit(f'error: SwanStationPS5_VERSION "{version}" does not fit contentVersion (00-99.000-999.000-999)')
+        sys.exit(f'error: NP_VERSION "{version}" does not fit contentVersion (00-99.000-999.000-999)')
     content = f"{major:02d}.{minor:03d}.{patch:03d}"
     path = ROOT / "sce_sys/param.json"
     text = path.read_text()
@@ -64,24 +61,6 @@ def build(jobs, use_nice):
     result = subprocess.run(cmd, cwd=ROOT, env=env)
     if result.returncode != 0:
         sys.exit(f"error: the build failed (make exit code {result.returncode}); no zip was made")
-
-
-def refresh_cheat_indexes():
-    """The cheat file lists in assets/, downloaded again; the current ones stay if there is no connection."""
-    for script in ("make-cheat-index.py", "make-chtdb-index.py"):
-        print(f"==> python3 tools/{script}", flush=True)
-        if subprocess.run([sys.executable, str(ROOT / "tools" / script)], cwd=ROOT).returncode != 0:
-            print(f"warning: tools/{script} failed; keeping the current index")
-
-
-def build_daemon():
-    """The disc daemon payload, dist/SwanStationPS5-DiscDaemon.elf (make disc-daemon)."""
-    print("==> make disc-daemon", flush=True)
-    result = subprocess.run(["make", "disc-daemon"], cwd=ROOT)
-    elf = ROOT / "dist" / "SwanStationPS5-DiscDaemon.elf"
-    if result.returncode != 0 or not elf.is_file():
-        sys.exit(f"error: the disc daemon payload did not build (make exit code {result.returncode})")
-    return elf
 
 
 def deploy(ip, port):
@@ -119,36 +98,25 @@ def main():
     args = ap.parse_args()
 
     version = read_version()
-    print(f"SwanStationPS5 {version}")
+    print(f"Nightshade Player {version}")
     if args.sync_version:
         sync_content_version(version)
         return
     if not args.skip_build:
-        refresh_cheat_indexes()
         sync_content_version(version)
-        # the payload first: it takes seconds, and if it fails nobody waits for the app to build to find out
-        daemon = build_daemon()
         build(args.jobs, not args.no_nice)
-        print(f"==> {daemon}  ({daemon.stat().st_size / 1e3:.0f} KB)")
-        print(f"    sha256 {hashlib.sha256(daemon.read_bytes()).hexdigest()}")
     out, count = pack()
     digest = hashlib.sha256(out.read_bytes()).hexdigest()
     print(f"==> {out}  ({count} files, {out.stat().st_size / 1e6:.1f} MB)")
     print(f"    sha256 {digest}")
     if args.ip:
         deploy(args.ip, args.port)
-    # Nightshade Station: a release is published by the Build workflow from a version tag, with SHA256SUMS
+    # A release is published by the Build workflow from a version tag, with SHA256SUMS
     # (.github/workflows/build.yml); a ZIP made here is for testing.
-    print(f"    publish: push a signed tag {version} to Oliv3rmoon/Nightshade-Station; the Build workflow "
-          f"publishes {out.name}, the disc daemon and SHA256SUMS as \"Nightshade Station {version}\"")
-    # How to send the disc daemon: only printed, never sent for you (the loader runs whatever it is given).
-    daemon_elf = ROOT / "dist" / "SwanStationPS5-DiscDaemon.elf"
-    if daemon_elf.is_file():
-        print(f"    disc daemon payload: dist/{daemon_elf.name}  (not sent; it is not in the zip)")
-        print(f"      send it once, with the app closed:  socat -t 99999999 - TCP:{args.ip or '<PS5 IP>'}:9021 "
-              f"< dist/{daemon_elf.name}")
+    print(f"    publish: push a signed tag {version} to Oliv3rmoon/Nightshade-Player; the Build workflow "
+          f"publishes {out.name} and SHA256SUMS as \"Nightshade Player {version}\"")
     if args.ip:
-        print(f"    live log (open the app first): nc {args.ip} 3232 | grep --line-buffered SwanStationPS5")
+        print(f"    live log (open the app first): nc {args.ip} 3232 | grep --line-buffered NightshadePlayer")
 
 
 main()

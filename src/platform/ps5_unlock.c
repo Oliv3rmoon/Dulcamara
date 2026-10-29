@@ -40,7 +40,7 @@ static const char *const REQUESTS[] = {
     "/download0/onionhen_jailbreak", /* OnionHEN also takes this name */
 };
 #define REQUEST_COUNT (int)(sizeof(REQUESTS) / sizeof(REQUESTS[0]))
-#define CRASH_MARKER "/download0/SwanStationPS5_unlock_attempt"
+#define CRASH_MARKER "/download0/nightshade_player_unlock_attempt"
 
 bool ps5_data_listable(void)
 {
@@ -222,7 +222,7 @@ const char *ps5_unlock_describe(UnlockResult r)
     case UNLOCK_ALREADY: return "already unlocked";
     case UNLOCK_NO_ANSWER: return "no unlock service answered (LegacyJB, etaHEN, PS5SX2 Helper)";
     case UNLOCK_CANT_REQUEST: return "couldn't write the request";
-    case UNLOCK_SKIPPED_AFTER_CRASH: return "skipped once after the last request closed Nightshade Station (start again to retry)";
+    case UNLOCK_SKIPPED_AFTER_CRASH: return "skipped once after the last request closed Nightshade Player (start again to retry)";
     }
     return "?";
 }

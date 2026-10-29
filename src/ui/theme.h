@@ -5,8 +5,8 @@
  * The TH_* colours come from the active theme (theme.c), so a theme change
  * shows on the next frame everywhere.
  */
-#ifndef SwanStationPS5_THEME_H
-#define SwanStationPS5_THEME_H
+#ifndef NP_THEME_H
+#define NP_THEME_H
 
 #include <stdbool.h>
 #include <stdint.h>

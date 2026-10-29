@@ -77,14 +77,14 @@ static bool load_fonts(const char *regular, const char *bold)
     const char *files[2] = {regular, bold};
     for (int w = 0; w < 2; ++w)
     {
-        char path[SwanStationPS5_PATH_MAX];
+        char path[NP_PATH_MAX];
         plat_asset_path(path, sizeof(path), files[w]);
         unsigned char *data = read_file(path);
         stbtt_fontinfo info;
         bool ok = data && stbtt_InitFont(&info, data, stbtt_GetFontOffsetForIndex(data, 0));
         if (!ok)
         {
-            SwanStationPS5_log("font missing or invalid: %s", path);
+            np_log("font missing or invalid: %s", path);
             free(data);
             if (font_ok[w])
                 continue; /* keep the current one */
@@ -120,7 +120,7 @@ void text_set_fonts(const char *regular, const char *bold)
 bool text_init(void)
 {
     load_fonts("fonts/Inter-400.ttf", "fonts/Inter-600.ttf");
-    char mono_path[SwanStationPS5_PATH_MAX];
+    char mono_path[NP_PATH_MAX];
     plat_asset_path(mono_path, sizeof(mono_path), "fonts/IBMPlexMono-400.ttf");
     font_data[FONT_MONO] = read_file(mono_path);
     font_ok[FONT_MONO] = font_data[FONT_MONO] &&
@@ -128,16 +128,16 @@ bool text_init(void)
                                         stbtt_GetFontOffsetForIndex(font_data[FONT_MONO], 0));
     if (!font_ok[FONT_MONO])
     {
-        SwanStationPS5_log("font missing or invalid: %s (guides use the regular face)", mono_path);
+        np_log("font missing or invalid: %s (guides use the regular face)", mono_path);
         free(font_data[FONT_MONO]);
         font_data[FONT_MONO] = NULL;
     }
-    char jp_path[SwanStationPS5_PATH_MAX];
-    plat_asset_path(jp_path, sizeof(jp_path), "fonts/NotoSansJP-SwanStationPS5.ttf");
+    char jp_path[NP_PATH_MAX];
+    plat_asset_path(jp_path, sizeof(jp_path), "fonts/NotoSansJP-subset.ttf");
     jp_data = read_file(jp_path);
     jp_ok = jp_data && stbtt_InitFont(&jp_info, jp_data, stbtt_GetFontOffsetForIndex(jp_data, 0));
     if (!jp_ok)
-        SwanStationPS5_log("font missing or invalid: %s (Japanese will show as ?)", jp_path);
+        np_log("font missing or invalid: %s (Japanese will show as ?)", jp_path);
     return font_ok[FONT_REGULAR];
 }
 

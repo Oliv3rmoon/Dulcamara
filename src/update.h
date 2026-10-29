@@ -1,12 +1,12 @@
 /*
  * SwanStationPS5 - updates from the project's GitHub releases.
- * Nightshade Station: Oliv3rmoon/Nightshade-Station's (UPDATE_REPO, update_release.h).
+ * Nightshade Player: Oliv3rmoon/Nightshade-Player's (UPDATE_REPO, update_release.h).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#ifndef SwanStationPS5_UPDATE_H
-#define SwanStationPS5_UPDATE_H
+#ifndef NP_UPDATE_H
+#define NP_UPDATE_H
 
-#include "SwanStationPS5.h"
+#include "nightshade.h"
 
 enum UpdateState
 {

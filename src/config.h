@@ -1,25 +1,19 @@
 /*
- * SwanStationPS5 - settings persistence.
+ * Nightshade Player - the settings file (settings.ini in the data folder) and the data folder's layout.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#ifndef SwanStationPS5_CONFIG_H
-#define SwanStationPS5_CONFIG_H
+#ifndef NP_CONFIG_H
+#define NP_CONFIG_H
 
-#include "SwanStationPS5.h"
+#include "nightshade.h"
 
 void config_defaults(Settings *s);
+/* Reads the file over the defaults; a missing file or key keeps the default. */
 void config_load(Settings *s, const char *path);
-/* A game's own settings: the console-wide ones with the game's file over
- * them. Returns false (and *out = *global) when the game has no file. */
-bool config_load_game(Settings *out, const Settings *global, const char *path);
-bool config_peek_bool(const char *path, const char *key);
-bool config_peek_bool_or(const char *path, const char *key, bool otherwise);
-int config_peek_int(const char *path, const char *key, int otherwise);
-bool config_peek_string(const char *path, const char *key, char *out, size_t size);
 bool config_save(const Settings *s, const char *path);
+/* The data folder's paths below root. */
 void config_paths(Paths *p, const char *root);
-
-/* A profile's own folders (saves, states, SwanStationPS5.ini) under dir. */
-void config_user_paths(Paths *p, const char *dir);
+/* The game buttons back to the core's defaults (cores.h). */
+void config_default_buttons(Settings *s, int core);
 
 #endif

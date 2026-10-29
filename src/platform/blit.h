@@ -2,8 +2,8 @@
  * SwanStationPS5 - fast multi-threaded scaling of the game picture into the screen.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#ifndef SwanStationPS5_BLIT_H
-#define SwanStationPS5_BLIT_H
+#ifndef NP_BLIT_H
+#define NP_BLIT_H
 
 #include <stdbool.h>
 #include <stddef.h>

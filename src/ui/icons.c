@@ -2,7 +2,7 @@
  * SwanStationPS5 - interface icons: a Tabler Icons subset (MIT), drawn like text.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * assets/fonts/tabler-SwanStationPS5.ttf holds only the icons in icons_list.h (made by
+ * assets/fonts/tabler-icons-subset.ttf holds only the icons in icons_list.h (made by
  * tools/make_icon_font.py). Each size used gets one small atlas.
  */
 #include "icons.h"
@@ -51,13 +51,13 @@ static IconAtlas *atlas_for(float size)
     if (!tried)
     {
         tried = true;
-        char path[SwanStationPS5_PATH_MAX];
-        plat_asset_path(path, sizeof(path), "fonts/tabler-SwanStationPS5.ttf");
+        char path[NP_PATH_MAX];
+        plat_asset_path(path, sizeof(path), "fonts/tabler-icons-subset.ttf");
         font = read_file(path);
         stbtt_fontinfo info;
         font_ok = font && stbtt_InitFont(&info, font, stbtt_GetFontOffsetForIndex(font, 0));
         if (!font_ok)
-            SwanStationPS5_log("icons: %s missing or invalid", path);
+            np_log("icons: %s missing or invalid", path);
     }
     if (!font_ok)
         return NULL;

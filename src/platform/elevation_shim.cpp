@@ -8,7 +8,7 @@
 #if defined(__PROSPERO__)
 #include "elevation/elevation.hpp"
 
-extern "C" int SwanStationPS5_elevate(const char **route)
+extern "C" int np_elevate(const char **route)
 {
     const auto status = elevation::request(elevation::Capability::filesystem);
     if (route)

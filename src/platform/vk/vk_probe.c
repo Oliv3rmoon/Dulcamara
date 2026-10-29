@@ -10,9 +10,9 @@
  */
 #include "vk_probe.h"
 
-#if defined(SwanStationPS5_VULKAN)
+#if defined(NP_VULKAN)
 
-#include "../../SwanStationPS5.h"
+#include "../../nightshade.h"
 
 #include <stdio.h>
 #include <vulkan/vulkan.h>
@@ -34,20 +34,20 @@ static void probe(void)
     LOAD(NULL, vkEnumerateInstanceVersion);
     if (!vkCreateInstance)
     {
-        SwanStationPS5_log("vulkan: the driver has no vkCreateInstance");
+        np_log("vulkan: the driver has no vkCreateInstance");
         return;
     }
     uint32_t version = VK_API_VERSION_1_0;
     if (vkEnumerateInstanceVersion)
         vkEnumerateInstanceVersion(&version);
-    SwanStationPS5_log("vulkan: instance version %u.%u.%u", VK_API_VERSION_MAJOR(version),
+    np_log("vulkan: instance version %u.%u.%u", VK_API_VERSION_MAJOR(version),
               VK_API_VERSION_MINOR(version), VK_API_VERSION_PATCH(version));
 
     VkApplicationInfo app = {0};
     app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    app.pApplicationName = SwanStationPS5_NAME;
+    app.pApplicationName = NP_NAME;
     app.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    app.pEngineName = SwanStationPS5_NAME;
+    app.pEngineName = NP_NAME;
     app.apiVersion = VK_API_VERSION_1_3;
     VkInstanceCreateInfo info = {0};
     info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -56,7 +56,7 @@ static void probe(void)
     VkResult r = vkCreateInstance(&info, NULL, &instance);
     if (r != VK_SUCCESS)
     {
-        SwanStationPS5_log("vulkan: vkCreateInstance failed (%d)", (int)r);
+        np_log("vulkan: vkCreateInstance failed (%d)", (int)r);
         return;
     }
     LOAD(instance, vkEnumeratePhysicalDevices);
@@ -69,7 +69,7 @@ static void probe(void)
     if (count > 4)
         count = 4;
     vkEnumeratePhysicalDevices(instance, &count, devices);
-    SwanStationPS5_log("vulkan: %u GPU(s)", count);
+    np_log("vulkan: %u GPU(s)", count);
     for (uint32_t i = 0; i < count; ++i)
     {
         VkPhysicalDeviceProperties p;
@@ -79,23 +79,23 @@ static void probe(void)
         uint64_t mb = 0;
         for (uint32_t h = 0; h < m.memoryHeapCount; ++h)
             mb += m.memoryHeaps[h].size >> 20;
-        SwanStationPS5_log("vulkan: GPU %u: %s, Vulkan %u.%u.%u, %u memory heaps, %llu MB", i, p.deviceName,
+        np_log("vulkan: GPU %u: %s, Vulkan %u.%u.%u, %u memory heaps, %llu MB", i, p.deviceName,
                   VK_API_VERSION_MAJOR(p.apiVersion), VK_API_VERSION_MINOR(p.apiVersion),
                   VK_API_VERSION_PATCH(p.apiVersion), m.memoryHeapCount, (unsigned long long)mb);
     }
     vkDestroyInstance(instance, NULL);
-    SwanStationPS5_log("vulkan: probe finished");
+    np_log("vulkan: probe finished");
 }
 
 void vk_probe(const char *root)
 {
     /* If the previous probe took the app down, don't try again: delete the
      * marker to retry. */
-    char marker[SwanStationPS5_PATH_MAX];
+    char marker[NP_PATH_MAX];
     path_join(marker, sizeof(marker), root, "vulkan_probe.crashed");
     if (path_exists(marker))
     {
-        SwanStationPS5_log("vulkan: skipped, the last probe did not finish (%s)", marker);
+        np_log("vulkan: skipped, the last probe did not finish (%s)", marker);
         return;
     }
     FILE *f = fopen(marker, "w");

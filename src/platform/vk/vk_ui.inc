@@ -661,7 +661,7 @@ void vkp_ui_draw(int id, const VkpUiVertex *v, int count)
     if (U.nverts + (uint32_t)count > UI_MAX_VERTS)
     {
         if (!U.warned++)
-            SwanStationPS5_log("vulkan: the interface list is full, drawing is cut short");
+            np_log("vulkan: the interface list is full, drawing is cut short");
         return;
     }
     const VkDescriptorSet set = U.tex[id]->set;

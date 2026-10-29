@@ -370,13 +370,17 @@ assert manifest["target_title"] == app.name and manifest["mode"] == "elf-helper"
 PY
 fi
 
-# Licences of SwanStationPS5 and what it's built from (GPL: the texts travel with it).
+# Licences of Nightshade Player and what it's built from (GPL: the texts travel with it).
 mkdir -p "$app/licenses"
 cp "$root/docs/THIRD-PARTY.txt" "$app/licenses/THIRD-PARTY.txt"
-cp "$root/LICENSE" "$app/licenses/LICENSE-SwanStationPS5.txt"
-for pair in "third_party/swanstation/LICENSE:LICENSE-swanstation.txt" \
-    "third_party/rcheevos/LICENSE:LICENSE-rcheevos.txt"; do
-    if [[ -f $root/${pair%%:*} ]]; then cp "$root/${pair%%:*}" "$app/licenses/${pair##*:}"; fi
+cp "$root/LICENSE" "$app/licenses/LICENSE-Nightshade-Player.txt"
+for pair in "third_party/easyrpg-player/COPYING:LICENSE-EasyRPG-Player.txt" \
+    "third_party/easyrpg-player/docs/AUTHORS.md:AUTHORS-EasyRPG-Player.md" \
+    "third_party/liblcf/COPYING:LICENSE-liblcf.txt" \
+    "third_party/inih/LICENSE.txt:LICENSE-inih.txt" \
+    "build/easyrpg-ps5/pixman/pixman-0.46.4/COPYING:LICENSE-pixman.txt"; do
+    [[ -f $root/${pair%%:*} ]] || { echo "missing licence: ${pair%%:*}" >&2; exit 2; }
+    cp "$root/${pair%%:*}" "$app/licenses/${pair##*:}"
 done
 
 [[ -f $root/runtime/libc.prx ]] || bash "$root/tools/rebuild-libc.sh"

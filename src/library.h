@@ -1,28 +1,30 @@
 /*
- * SwanStationPS5 - game library scanning.
+ * Nightshade Player - the game library: what is in /data/nightshade-player/games.
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * A game is a folder holding RPG_RT.ldb and RPG_RT.lmt (any case), straight in games/ or one folder down
+ * (games/Series/Game), or a .zip or .easyrpg archive that holds them, at its root or in a folder inside it. Its
+ * title is RPG_RT.ini's GameTitle, else the folder's or archive's name; its cover is the picture of its title screen
+ * (Title/ in the game, the one RPG_RT.ldb names).
  */
-#ifndef SwanStationPS5_LIBRARY_H
-#define SwanStationPS5_LIBRARY_H
+#ifndef NP_LIBRARY_H
+#define NP_LIBRARY_H
 
-#include "SwanStationPS5.h"
+#include "nightshade.h"
 
 typedef struct
 {
-    char title[96];
-    char serial[16];               /* e.g. SLUS-00421 when the name carries it */
-    char path[SwanStationPS5_PATH_MAX];     /* what the core loads: .m3u/.cue/.chd/.pbp/... */
-    char id[64];                   /* stable key for save states */
-    char disc_name[160];           /* first disc file name without extension, for .cht lookup */
-    char folder[SwanStationPS5_PATH_MAX];   /* directory holding the game files */
-    int discs;
+    char title[160];              /* UTF-8 */
+    char name[160];               /* the folder's or archive's own name (an archive's without its extension) */
+    char location[NP_PATH_MAX];   /* the game's folder, or the archive */
+    char inner[NP_PATH_MAX];      /* in an archive, the folder that holds the game ("" at its root, else "Dir/") */
+    char path[NP_PATH_MAX];       /* what the core loads: the folder, or <archive>/<inner> */
+    char id[24];                  /* a stable key for the game: its location's hash */
+    bool archive;
+    int engine;                   /* 2000, 2003; 0 until the cover is looked up (it reads RPG_RT.ldb) */
+    int core;                     /* which core runs it (CORE_* in core/cores.h) */
+    long long played;             /* when it was last played (seconds since 1970), 0 never */
 } Game;
-
-/* The console's BIOS booted with no disc (Settings > About > Start BIOS): a Game with no path */
-static inline bool game_is_bios(const Game *g)
-{
-    return g && !g->path[0];
-}
 
 typedef struct
 {
@@ -31,31 +33,25 @@ typedef struct
     int capacity;
 } Library;
 
-/* Scans every existing root. Each root holds one game per folder, or loose
- * images. Multi-disc folders without an .m3u get one written for them. */
-void library_scan(Library *lib, const char *const *roots, int root_count);
-/* The same, adding to the games the library already has (from the sync index, when folders can't be listed). */
-void library_scan_append(Library *lib, const char *const *roots, int root_count);
+/* A folder that holds RPG_RT.ldb and RPG_RT.lmt. */
+bool library_dir_is_game(const char *dir);
+/* An archive that holds a game: fills g (title, inner, path...) and returns true. */
+bool library_read_archive(const char *archive, Game *g);
+/* A game folder: fills g. */
+bool library_read_folder(const char *dir, Game *g);
 
-/* For a sandboxed SwanStationPS5 (folders can't be listed): reads the index written by
- * tools/SwanStationPS5_sync.py, one game per line:
- *   title <TAB> serial <TAB> discs <TAB> /data/SwanStationPS5/games/.../file.m3u <TAB> disc name
- * Returns false when the index can't be opened. */
-bool library_load_index(Library *lib, const char *index_path);
+/* Every game in root (the games folder), in no particular order. */
+void library_scan(Library *lib, const char *root);
 void library_free(Library *lib);
+/* mode 0: by title; 1: the last played first, then by title. */
+void library_sort(Library *lib, int mode);
 
-/* Where the serials the core read from .chd and the like are remembered (a tab-separated file); call before scanning. */
-void library_serial_cache_load(const char *file);
+/* The picture of the game's title screen: a file path for a folder, the name of the entry inside an archive. Reads
+ * RPG_RT.ldb for its name (and sets g->engine); without one, the only picture in Title/. False when there is none. */
+bool library_title_image(Game *g, char *out, size_t size);
 
-/* Adds a game that is not in a folder (a disc played from the drive) as the last one; library_remove_path takes it out
- * again by its path. Both leave the games before it where they are. */
-bool library_add_game(Library *lib, const Game *g);
-bool library_remove_path(Library *lib, const char *path);
-
-/* Deletes the files that make the game appear on the shelf: the file the core loads (.cue, .m3u, .chd, .pbp, .iso...),
- * what a .cue or .m3u lists (its .bin, its discs), and the .sbi beside it. Only files inside the game's folder;
- * the folder goes too when it is one SwanStationPS5 made ("Title [serial]") and nothing else is left in it. Saves,
- * states and covers are not touched. Returns how many files were deleted. */
-int library_delete_game_files(const Game *g);
+/* When each game was last played: one "id<TAB>seconds" a line in the file. */
+void library_load_played(Library *lib, const char *file);
+void library_mark_played(Library *lib, int index, const char *file);
 
 #endif

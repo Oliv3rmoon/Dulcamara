@@ -1,371 +1,240 @@
 /*
- * SwanStationPS5 - cover art: local lookup, background download and decoding.
+ * Nightshade Player - the library's covers (covers.h).
  * SPDX-License-Identifier: GPL-3.0-or-later
- *
- * Lookup order for a game:
- *   1. <root>/covers/custom/<id>.png|jpg, picked on the shelf (Details, then Square)
- *   2. in the game's own folder: cover.png|jpg, or an image named like the
- *      disc file ("Crash Bandicoot.cue" -> "Crash Bandicoot.png")
- *   3. in <root>/covers/: an image named like the game's title, the disc
- *      file or the serial (the way DuckStation finds covers)
- *   4. <root>/covers/default/<serial>.jpg or covers/3d/<serial>.png
- *   5. download from xlenore/psx-covers into (4), when enabled
- *   6. no serial (or nothing for it): by name, from libretro-thumbnails'
- *      Named_Boxarts (assets/boxarts-index.txt), into covers/boxart/<id>.png
- *   7. fallback-cover.png beside the game (picked up by the sync tool)
- *   8. a generated title card
- * One worker thread does the file I/O, downloads and JPEG/PNG decoding; the
- * main thread only uploads finished pixels, at most a few per frame.
  */
 #include "covers.h"
 
-#include "cheats.h"
-#include "net.h"
+#include "rpgmaker.h"
+
+#include "../third_party/miniz/miniz.h"
 #include "stb_image.h"
-#include "ui/text.h"
 
 #include <SDL2/SDL.h>
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define KEEP_RADIUS 22  /* textures kept around the cursor */
-#define LOAD_RADIUS 16  /* covers requested around the cursor (the grid and spines show more) */
-#define MAX_HEIGHT 640  /* decoded covers are scaled down to this */
-#define QUEUE_SIZE 64
+#define KEEP 10        /* pictures kept on each side of the cursor */
+#define MAX_FILE (16u << 20)
 
-typedef enum
+enum
 {
-    SLOT_EMPTY,
+    SLOT_NONE,
     SLOT_QUEUED,
-    SLOT_READY, /* pixels decoded, waiting for upload */
+    SLOT_DECODED, /* rgba waits for the main thread */
     SLOT_LOADED,
-} SlotState;
+    SLOT_MISSING
+};
 
 typedef struct
 {
-    SlotState state;
+    int state;
     PlatTexture *texture;
-    bool placeholder; /* texture is a title card, real art may still arrive */
-    uint8_t *pixels;
+    uint8_t *rgba;
     int w, h;
-    uint32_t color; /* average colour, for the shelf's background tint */
-    /* copies, so the worker never touches the Library */
-    char title[96];
-    char serial[16];
-    char id[64];
-    char disc_name[160];
-    char folder[SwanStationPS5_PATH_MAX];
+    int engine;
+    uint32_t color;
 } Slot;
 
+static Library *library;
 static Slot *slots;
 static int slot_count;
-static Paths paths;
-static int style;
-static bool download_enabled;
-static int network_failures;
-
 static SDL_Thread *worker;
 static SDL_mutex *lock;
 static SDL_cond *wake;
-static bool quit;
-static int queue[QUEUE_SIZE];
-static int queue_len;
-static int downloading;
+static bool quitting;
+static int generation; /* a new library: work for the old one is dropped */
 
-void covers_url(char *out, size_t size, int cover_style, const char *serial)
+/* ---------------------------------------------------------------- decoding */
+
+uint8_t *covers_decode(const uint8_t *data, size_t len, int *w, int *h)
 {
-    (void)cover_style;
-    snprintf(out, size, "https://raw.githubusercontent.com/xlenore/psx-covers/main/covers/%s/%s.%s",
-             /* cover_style == COVER_BOX3D ? "3d" : */ "default", serial,
-             /* cover_style == COVER_BOX3D ? "png" : */ "jpg");
-}
-
-static void cache_path(char *out, size_t size, const char *serial)
-{
-    char file[64];
-    snprintf(file, sizeof(file), "%s/%s.%s", /* style == COVER_BOX3D ? "3d" : */ "default", serial,
-             /* style == COVER_BOX3D ? "png" : */ "jpg");
-    path_join(out, size, paths.covers, file);
-}
-
-/* ---------------------------------------------------------------- worker */
-
-static uint8_t *downscale(uint8_t *src, int *w, int *h)
-{
-    if (*h <= MAX_HEIGHT)
-        return src;
-    int nh = MAX_HEIGHT, nw = *w * MAX_HEIGHT / *h;
-    uint8_t *dst = malloc((size_t)nw * nh * 4);
-    if (!dst)
-        return src;
-    /* box filter: average the source pixels covering each destination pixel */
-    for (int y = 0; y < nh; ++y)
-    {
-        int sy0 = y * *h / nh, sy1 = (y + 1) * *h / nh;
-        for (int x = 0; x < nw; ++x)
-        {
-            int sx0 = x * *w / nw, sx1 = (x + 1) * *w / nw;
-            unsigned sum[4] = {0, 0, 0, 0}, n = 0;
-            for (int sy = sy0; sy < sy1; ++sy)
-                for (int sx = sx0; sx < sx1; ++sx, ++n)
-                    for (int c = 0; c < 4; ++c)
-                        sum[c] += src[((size_t)sy * *w + sx) * 4 + c];
-            for (int c = 0; c < 4; ++c)
-                dst[((size_t)y * nw + x) * 4 + c] = (uint8_t)(n ? sum[c] / n : 0);
-        }
-    }
-    stbi_image_free(src);
-    *w = nw;
-    *h = nh;
-    return dst;
-}
-
-static uint8_t *title_card(const char *title, int *w, int *h)
-{
-    *w = 480;
-    *h = 480;
-    uint8_t *px = malloc((size_t)*w * *h * 4);
+    uint8_t *rgba = rpgm_decode_xyz(data, len, w, h);
+    if (rgba)
+        return rgba;
+    int comp;
+    unsigned char *px = stbi_load_from_memory(data, (int)len, w, h, &comp, 4);
     if (!px)
         return NULL;
-    for (int y = 0; y < *h; ++y)
-        for (int x = 0; x < *w; ++x)
-        {
-            uint8_t *p = &px[((size_t)y * *w + x) * 4];
-            float t = (float)y / *h;
-            p[0] = (uint8_t)(30 + 12 * t);
-            p[1] = (uint8_t)(36 + 10 * t);
-            p[2] = (uint8_t)(78 + 30 * t);
-            p[3] = 255;
-            if (x < 6 || y < 6 || x >= *w - 6 || y >= *h - 6)
-                p[0] = 70, p[1] = 86, p[2] = 170; /* frame */
-        }
-    text_render_rgba(px, *w, *h, 30, 30, FONT_BOLD, 0xff9fb4ffu, *w - 60, "Nightshade Station");
-    text_render_rgba(px, *w, *h, 170, 46, FONT_BOLD, 0xffffffffu, *w - 70, title);
-    return px;
-}
-
-static uint8_t *load_image(const char *path, int *w, int *h)
-{
-    int comp;
-    uint8_t *px = stbi_load(path, w, h, &comp, 4);
-    return px ? downscale(px, w, h) : NULL;
-}
-
-uint8_t *covers_decode(const char *path, int *w, int *h)
-{
-    return load_image(path, w, h);
-}
-
-uint8_t *covers_for_serial(const char *serial, int *w, int *h)
-{
-    char path[SwanStationPS5_PATH_MAX];
-    cache_path(path, sizeof(path), serial);
-    if (!path_exists(path) && download_enabled && network_failures < 3)
+    /* stb's buffer to one of ours (free()) */
+    uint8_t *copy = malloc((size_t)*w * *h * 4);
+    if (copy)
     {
-        char url[256], dir[SwanStationPS5_PATH_MAX];
-        covers_url(url, sizeof(url), style, serial);
-        str_copy(dir, sizeof(dir), path);
-        *strrchr(dir, '/') = '\0';
-        make_dirs(dir);
-        net_download(url, path);
+        memcpy(copy, px, (size_t)*w * *h * 4);
+        /* RPG Maker draws a title picture opaque: its transparent colour is still a colour */
+        for (size_t i = 0; i < (size_t)*w * *h; ++i)
+            copy[i * 4 + 3] = 255;
     }
-    return path_exists(path) ? load_image(path, w, h) : NULL;
+    stbi_image_free(px);
+    return copy;
 }
 
-static const char *const IMAGE_EXTS[] = {"png", "jpg", "jpeg"};
-
-bool covers_is_image(const char *name)
+static uint8_t *read_whole(const char *path, size_t *len)
 {
-    for (size_t i = 0; i < 3; ++i)
-        if (str_icmp(path_ext(name), IMAGE_EXTS[i]) == 0)
-            return true;
-    return false;
-}
-
-/* <dir>/<name>.png|jpg|jpeg, the first that decodes. */
-static uint8_t *load_named(const char *dir, const char *name, int *w, int *h)
-{
-    if (!dir[0] || !name[0])
+    FILE *f = fopen(path, "rb");
+    if (!f)
         return NULL;
-    for (size_t i = 0; i < 3; ++i)
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *data = size > 0 && (unsigned long)size <= MAX_FILE ? malloc((size_t)size) : NULL;
+    if (data && fread(data, 1, (size_t)size, f) != (size_t)size)
     {
-        char file[200], path[SwanStationPS5_PATH_MAX];
-        snprintf(file, sizeof(file), "%s.%s", name, IMAGE_EXTS[i]);
-        path_join(path, sizeof(path), dir, file);
-        uint8_t *px = path_exists(path) ? load_image(path, w, h) : NULL;
-        if (px)
-            return px;
+        free(data);
+        data = NULL;
     }
-    return NULL;
+    fclose(f);
+    *len = data ? (size_t)size : 0;
+    return data;
 }
 
-void covers_custom_dir(char *out, size_t size)
+static uint8_t *read_entry(const char *archive, const char *entry, size_t *len)
 {
-    path_join(out, size, paths.covers, "custom");
-}
-
-/* Finds or fetches the art for one slot. Runs on the worker thread. */
-static uint8_t *produce(const Slot *job, int *w, int *h, bool *placeholder)
-{
-    char path[SwanStationPS5_PATH_MAX];
-    *placeholder = false;
-    covers_custom_dir(path, sizeof(path));
-    const char *names[][2] = {
-        {path, job->id},                        /* picked on the shelf */
-        {job->folder, "cover"},                 /* beside the game */
-        {job->folder, job->disc_name},
-        {paths.covers, job->title},             /* in covers/, by name */
-        {paths.covers, job->disc_name},
-        {paths.covers, job->serial},
-    };
-    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i)
+    mz_zip_archive zip;
+    memset(&zip, 0, sizeof(zip));
+    if (!mz_zip_reader_init_file(&zip, archive, 0))
+        return NULL;
+    uint8_t *data = NULL;
+    const mz_uint n = mz_zip_reader_get_num_files(&zip);
+    char name[NP_PATH_MAX];
+    for (mz_uint i = 0; i < n && !data; ++i)
     {
-        uint8_t *px = load_named(names[i][0], names[i][1], w, h);
-        if (px)
-            return px;
-    }
-    if (job->serial[0])
-    {
-        cache_path(path, sizeof(path), job->serial);
-        if (!path_exists(path) && download_enabled && network_failures < 3)
+        mz_zip_reader_get_filename(&zip, i, name, sizeof(name));
+        for (char *p = name; *p; ++p)
+            if (*p == '\\')
+                *p = '/';
+        if (strcmp(name, entry) != 0)
+            continue;
+        mz_zip_archive_file_stat st;
+        if (mz_zip_reader_file_stat(&zip, i, &st) && st.m_uncomp_size <= MAX_FILE)
         {
-            char url[256], dir[SwanStationPS5_PATH_MAX];
-            covers_url(url, sizeof(url), style, job->serial);
-            str_copy(dir, sizeof(dir), path);
-            *strrchr(dir, '/') = '\0';
-            make_dirs(dir);
-            NetResult r = net_download(url, path);
-            if (r == NET_UNAVAILABLE && ++network_failures == 3)
-                SwanStationPS5_log("covers: network unavailable, downloads paused");
-            if (r == NET_OK)
-                network_failures = 0;
-        }
-        uint8_t *px = path_exists(path) ? load_image(path, w, h) : NULL;
-        if (px)
-            return px;
-    }
-    /* by name: libretro-thumbnails' box art, for discs without a (known) serial */
-    {
-        char file[140];
-        snprintf(file, sizeof(file), "boxart/%.100s.png", job->id);
-        path_join(path, sizeof(path), paths.covers, file);
-        if (!path_exists(path) && download_enabled && network_failures < 3)
-        {
-            Game g;
-            memset(&g, 0, sizeof(g));
-            str_copy(g.title, sizeof(g.title), job->title);
-            str_copy(g.disc_name, sizeof(g.disc_name), job->disc_name);
-            str_copy(g.serial, sizeof(g.serial), job->serial);
-            char name[256];
-            if (cheats_best_in_index(&g, "boxarts-index.txt", name, sizeof(name)))
+            size_t got = 0;
+            void *heap = mz_zip_reader_extract_to_heap(&zip, i, &got, 0);
+            if (heap)
             {
-                char url[700], dir[SwanStationPS5_PATH_MAX];
-                size_t w = (size_t)snprintf(url, sizeof(url), "%s",
-                                            "https://raw.githubusercontent.com/libretro-thumbnails/Sony_-_PlayStation/master/Named_Boxarts/");
-                for (const unsigned char *p = (const unsigned char *)name; *p && w + 4 < sizeof(url); ++p)
-                {
-                    if (isalnum(*p) || strchr("-._~", *p))
-                        url[w++] = (char)*p;
-                    else
-                        w += (size_t)snprintf(url + w, sizeof(url) - w, "%%%02X", *p);
-                }
-                url[w] = '\0';
-                str_copy(dir, sizeof(dir), path);
-                *strrchr(dir, '/') = '\0';
-                make_dirs(dir);
-                NetResult r = net_download(url, path);
-                SwanStationPS5_log("covers: %s by name (%s): %s", job->title, name, r == NET_OK ? "ok" : "failed");
-                if (r == NET_UNAVAILABLE && ++network_failures == 3)
-                    SwanStationPS5_log("covers: network unavailable, downloads paused");
+                data = malloc(got ? got : 1);
+                if (data)
+                    memcpy(data, heap, got);
+                *len = got;
+                mz_free(heap);
             }
         }
-        uint8_t *px = path_exists(path) ? load_image(path, w, h) : NULL;
-        if (px)
-            return px;
     }
-    /* art found beside the game files by tools/SwanStationPS5_sync.py: better than nothing */
-    if (job->folder[0])
+    mz_zip_reader_end(&zip);
+    return data;
+}
+
+/* 2x, nearest: pixel art stays sharp at the size the shelf shows it; mipmaps make the smaller ones */
+static uint8_t *double_size(const uint8_t *rgba, int w, int h)
+{
+    uint8_t *out = malloc((size_t)w * h * 16);
+    if (!out)
+        return NULL;
+    for (int y = 0; y < h * 2; ++y)
+        for (int x = 0; x < w * 2; ++x)
+            memcpy(out + ((size_t)y * w * 2 + x) * 4, rgba + ((size_t)(y / 2) * w + x / 2) * 4, 4);
+    return out;
+}
+
+static void load_one(Game *g, Slot *result)
+{
+    char where[NP_PATH_MAX];
+    result->state = SLOT_MISSING;
+    if (!library_title_image(g, where, sizeof(where)))
     {
-        path_join(path, sizeof(path), job->folder, "fallback-cover.png");
-        uint8_t *px = path_exists(path) ? load_image(path, w, h) : NULL;
-        if (px)
-            return px;
+        result->engine = g->engine;
+        return;
     }
-    *placeholder = true;
-    return title_card(job->title, w, h);
+    result->engine = g->engine;
+    size_t len = 0;
+    uint8_t *data = g->archive ? read_entry(g->location, where, &len) : read_whole(where, &len);
+    if (!data)
+        return;
+    int w = 0, h = 0;
+    uint8_t *rgba = covers_decode(data, len, &w, &h);
+    free(data);
+    if (!rgba || w <= 0 || h <= 0)
+    {
+        free(rgba);
+        np_log("covers: %s: %s is not a picture it can read", g->title, where);
+        return;
+    }
+    uint64_t r = 0, gr = 0, b = 0;
+    for (size_t i = 0; i < (size_t)w * h; ++i)
+        r += rgba[i * 4], gr += rgba[i * 4 + 1], b += rgba[i * 4 + 2];
+    const size_t n = (size_t)w * h;
+    result->color = 0xff000000u | (uint32_t)(r / n) << 16 | (uint32_t)(gr / n) << 8 | (uint32_t)(b / n);
+    if (w <= 640 && h <= 480)
+    {
+        uint8_t *big = double_size(rgba, w, h);
+        if (big)
+        {
+            free(rgba);
+            rgba = big;
+            w *= 2;
+            h *= 2;
+        }
+    }
+    result->rgba = rgba;
+    result->w = w;
+    result->h = h;
+    result->state = SLOT_DECODED;
 }
 
 static int worker_main(void *unused)
 {
     (void)unused;
     SDL_LockMutex(lock);
-    while (!quit)
+    while (!quitting)
     {
-        if (queue_len == 0)
+        int pick = -1;
+        for (int i = 0; i < slot_count && pick < 0; ++i)
+            if (slots[i].state == SLOT_QUEUED)
+                pick = i;
+        if (pick < 0)
         {
             SDL_CondWait(wake, lock);
             continue;
         }
-        int index = queue[0];
-        memmove(queue, queue + 1, (size_t)--queue_len * sizeof(int));
-        if (index >= slot_count || slots[index].state != SLOT_QUEUED)
-            continue;
-        Slot job = slots[index]; /* copy: strings stay valid without the lock */
-        ++downloading;
+        Game copy = library->games[pick];
+        const int gen = generation;
         SDL_UnlockMutex(lock);
-
-        int w = 0, h = 0;
-        bool placeholder;
-        uint8_t *px = produce(&job, &w, &h, &placeholder);
-
+        Slot result;
+        memset(&result, 0, sizeof(result));
+        load_one(&copy, &result);
         SDL_LockMutex(lock);
-        --downloading;
-        if (index < slot_count && slots[index].state == SLOT_QUEUED && px)
+        if (gen == generation && pick < slot_count && slots[pick].state == SLOT_QUEUED)
         {
-            slots[index].pixels = px;
-            slots[index].w = w;
-            slots[index].h = h;
-            /* average of a sparse grid, darkened towards the theme */
-            uint64_t sum[3] = {0, 0, 0};
-            int samples = 0;
-            for (int y = h / 16; y < h; y += h / 8 + 1)
-                for (int x = w / 16; x < w; x += w / 8 + 1, ++samples)
-                    for (int c = 0; c < 3; ++c)
-                        sum[c] += px[((size_t)y * w + x) * 4 + c];
-            if (samples)
-                slots[index].color = 0xff000000u | (uint32_t)(sum[0] / samples) << 16 |
-                                     (uint32_t)(sum[1] / samples) << 8 | (uint32_t)(sum[2] / samples);
-            slots[index].placeholder = placeholder;
-            slots[index].state = SLOT_READY;
+            slots[pick].rgba = result.rgba;
+            slots[pick].w = result.w;
+            slots[pick].h = result.h;
+            slots[pick].engine = result.engine;
+            slots[pick].color = result.color;
+            slots[pick].state = result.state;
         }
         else
-        {
-            free(px);
-            if (index < slot_count && slots[index].state == SLOT_QUEUED)
-                slots[index].state = SLOT_EMPTY;
-        }
+            free(result.rgba);
     }
     SDL_UnlockMutex(lock);
     return 0;
 }
 
-/* ---------------------------------------------------------------- main thread */
+/* ---------------------------------------------------------------- the main thread */
 
 static void free_slots(void)
 {
     for (int i = 0; i < slot_count; ++i)
     {
-        plat_texture_free(slots[i].texture);
-        free(slots[i].pixels);
+        if (slots[i].texture)
+            plat_texture_free(slots[i].texture);
+        free(slots[i].rgba);
     }
     free(slots);
     slots = NULL;
     slot_count = 0;
 }
 
-void covers_start(const Library *lib, const Paths *p, const Settings *settings)
+void covers_start(Library *lib)
 {
     if (!lock)
     {
@@ -373,27 +242,16 @@ void covers_start(const Library *lib, const Paths *p, const Settings *settings)
         wake = SDL_CreateCond();
     }
     SDL_LockMutex(lock);
+    ++generation;
     free_slots();
-    queue_len = 0;
-    paths = *p;
-    style = settings->cover_style;
-    download_enabled = settings->cover_download && net_available();
-    network_failures = 0;
+    library = lib;
     slot_count = lib->count;
-    slots = calloc((size_t)(slot_count ? slot_count : 1), sizeof(Slot));
-    for (int i = 0; i < slot_count; ++i)
-    {
-        str_copy(slots[i].title, sizeof(slots[i].title), lib->games[i].title);
-        str_copy(slots[i].serial, sizeof(slots[i].serial), lib->games[i].serial);
-        str_copy(slots[i].id, sizeof(slots[i].id), lib->games[i].id);
-        str_copy(slots[i].disc_name, sizeof(slots[i].disc_name), lib->games[i].disc_name);
-        str_copy(slots[i].folder, sizeof(slots[i].folder), lib->games[i].folder);
-    }
+    slots = slot_count ? calloc((size_t)slot_count, sizeof(Slot)) : NULL;
+    if (!slots)
+        slot_count = 0;
     SDL_UnlockMutex(lock);
     if (!worker)
         worker = SDL_CreateThread(worker_main, "covers", NULL);
-    SwanStationPS5_log("covers: %d games, style %d, downloads %s", slot_count, style,
-              download_enabled ? "on" : "off");
 }
 
 void covers_stop(void)
@@ -401,7 +259,7 @@ void covers_stop(void)
     if (!lock)
         return;
     SDL_LockMutex(lock);
-    quit = true;
+    quitting = true;
     SDL_CondSignal(wake);
     SDL_UnlockMutex(lock);
     if (worker)
@@ -412,118 +270,53 @@ void covers_stop(void)
 
 void covers_update(int center)
 {
-    covers_update_view(NULL, slot_count, center);
-}
-
-/* view[k] = library index shown at shelf position k (NULL: the library order). */
-void covers_update_view(const int *view, int count, int center_pos)
-{
-    if (!slots)
+    if (!lock)
         return;
     SDL_LockMutex(lock);
-    /* upload a few finished images per frame */
-    int uploads = 0;
-    for (int i = 0; i < slot_count && uploads < 3; ++i)
+    bool asked = false;
+    for (int i = 0; i < slot_count; ++i)
     {
         Slot *s = &slots[i];
-        if (s->state != SLOT_READY)
-            continue;
-        PlatTexture *t = plat_texture_create_mips(s->pixels, s->w, s->h);
-        free(s->pixels);
-        s->pixels = NULL;
-        plat_texture_free(s->texture);
-        s->texture = t;
-        s->state = SLOT_LOADED;
-        ++uploads;
-    }
-    /* free far textures, request near ones nearest-first */
-    static int *distance;
-    static int distance_size;
-    if (distance_size < slot_count)
-    {
-        int *grown = realloc(distance, sizeof(int) * (size_t)slot_count);
-        if (!grown)
+        const int distance = i > center ? i - center : center - i;
+        if (s->state == SLOT_DECODED)
         {
-            SDL_UnlockMutex(lock);
-            return;
+            s->texture = plat_texture_create_mips(s->rgba, s->w, s->h);
+            free(s->rgba);
+            s->rgba = NULL;
+            s->state = s->texture ? SLOT_LOADED : SLOT_MISSING;
+            library->games[i].engine = s->engine;
         }
-        distance = grown;
-        distance_size = slot_count;
-    }
-    for (int i = 0; i < slot_count; ++i)
-        distance[i] = 1 << 30;
-    for (int k = 0; k < count; ++k)
-    {
-        int i = view ? view[k] : k;
-        if (i >= 0 && i < slot_count)
-            distance[i] = k > center_pos ? k - center_pos : center_pos - k;
-    }
-    for (int i = 0; i < slot_count; ++i)
-    {
-        int d = distance[i];
-        if (d > KEEP_RADIUS && slots[i].state == SLOT_LOADED)
+        else if (s->state == SLOT_MISSING && s->engine && !library->games[i].engine)
+            library->games[i].engine = s->engine;
+        if (distance <= KEEP && s->state == SLOT_NONE)
         {
-            plat_texture_free(slots[i].texture);
-            slots[i].texture = NULL;
-            slots[i].state = SLOT_EMPTY;
+            s->state = SLOT_QUEUED;
+            asked = true;
+        }
+        else if (distance > KEEP + 4 && (s->state == SLOT_LOADED || s->state == SLOT_QUEUED))
+        {
+            if (s->texture)
+                plat_texture_free(s->texture);
+            s->texture = NULL;
+            s->state = SLOT_NONE;
         }
     }
-    for (int d = 0; d <= LOAD_RADIUS; ++d)
-        for (int side = -1; side <= 1; side += 2)
-        {
-            int k = center_pos + d * side;
-            if (k < 0 || k >= count)
-                continue;
-            int i = view ? view[k] : k;
-            if (i < 0 || i >= slot_count || slots[i].state != SLOT_EMPTY || queue_len >= QUEUE_SIZE)
-                continue;
-            slots[i].state = SLOT_QUEUED;
-            queue[queue_len++] = i;
-            if (d == 0)
-                break;
-        }
-    if (queue_len)
+    if (asked)
         SDL_CondSignal(wake);
     SDL_UnlockMutex(lock);
 }
 
 PlatTexture *covers_get(int index)
 {
-    return (slots && index >= 0 && index < slot_count) ? slots[index].texture : NULL;
+    return index >= 0 && index < slot_count ? slots[index].texture : NULL;
 }
 
-bool covers_is_placeholder(int index)
+bool covers_missing(int index)
 {
-    return slots && index >= 0 && index < slot_count && slots[index].texture && slots[index].placeholder;
+    return index >= 0 && index < slot_count && slots[index].state == SLOT_MISSING;
 }
 
 uint32_t covers_color(int index)
 {
-    return (slots && index >= 0 && index < slot_count && slots[index].texture) ? slots[index].color
-                                                                               : 0;
-}
-
-void covers_reload(int index)
-{
-    if (!slots || index < 0 || index >= slot_count)
-        return;
-    SDL_LockMutex(lock);
-    Slot *s = &slots[index];
-    if (s->state == SLOT_READY || s->state == SLOT_LOADED)
-    {
-        free(s->pixels);
-        s->pixels = NULL;
-        s->state = SLOT_EMPTY; /* the old texture stays on screen until the new one is up */
-    }
-    SDL_UnlockMutex(lock);
-}
-
-int covers_downloading(void)
-{
-    if (!lock)
-        return 0;
-    SDL_LockMutex(lock);
-    int n = queue_len + downloading;
-    SDL_UnlockMutex(lock);
-    return n;
+    return index >= 0 && index < slot_count ? slots[index].color : 0;
 }

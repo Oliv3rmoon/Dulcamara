@@ -1,12 +1,12 @@
 /*
- * SwanStationPS5 - updates from the project's GitHub releases.
- * Nightshade Station: from Oliv3rmoon/Nightshade-Station's releases (update_release.h).
+ * Nightshade Player - updates from Oliv3rmoon/Nightshade-Player's GitHub releases (update_release.h), as
+ * Nightshade Station (and SwanStationPS5 before it) updates itself.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Checks api.github.com for the repository's latest release (not a draft or a pre-release);
- * update_release.c decides whether it is offered: a newer X.Y.Z tag carrying PPSA98510.zip and
+ * update_release.c decides whether it is offered: a newer X.Y.Z tag carrying PPSA99010.zip and
  * SHA256SUMS, both this repository's own files. Installing downloads the ZIP, checks it against
- * the SHA-256 that SHA256SUMS gives it, and writes the PPSA98510 folder inside it over the
+ * the SHA-256 that SHA256SUMS gives it, and writes the PPSA99010 folder inside it over the
  * installed app. Each file goes to <name>.new and is renamed into place: a running eboot.bin
  * can't be overwritten, but it can be replaced by name, and the new one runs from the next start.
  */
@@ -28,7 +28,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define APP_DIR_DEFAULT "/data/homebrew/PPSA98510"
+#define APP_DIR_DEFAULT "/data/homebrew/" NP_TITLE_ID
 
 static SDL_atomic_t state;
 static char version[32], zip_url[256], zip_sha256[65], message[256];
@@ -51,7 +51,7 @@ const char *update_message(void)
 static void fail(const char *why)
 {
     str_copy(message, sizeof(message), why);
-    SwanStationPS5_log("update: %s", why);
+    np_log("update: %s", why);
     SDL_AtomicSet(&state, UPDATE_FAILED);
 }
 
@@ -61,7 +61,7 @@ static int check_thread(void *unused)
     char *body = NULL;
     size_t len = 0;
     /* releases/latest: the newest release that is neither a draft nor a pre-release */
-    int status = net_request(UPDATE_LATEST_URL, NULL, NULL, SwanStationPS5_NAME "/" SwanStationPS5_VERSION, &body, &len);
+    int status = net_request(UPDATE_LATEST_URL, NULL, NULL, NP_NAME "/" NP_VERSION, &body, &len);
     if (status == 404)
     {
         free(body);
@@ -75,18 +75,18 @@ static int check_thread(void *unused)
         return 0;
     }
     Release release;
-    ReleaseVerdict verdict = release_evaluate(body, len, SwanStationPS5_VERSION, &release);
+    ReleaseVerdict verdict = release_evaluate(body, len, NP_VERSION, &release);
     free(body);
     version[0] = zip_url[0] = zip_sha256[0] = '\0';
-    SwanStationPS5_log("update: " UPDATE_REPO " latest %s, this %s: %s", release.version[0] ? release.version : "?",
-                       SwanStationPS5_VERSION, release_verdict_text(verdict));
+    np_log("update: " UPDATE_REPO " latest %s, this %s: %s", release.version[0] ? release.version : "?",
+                       NP_VERSION, release_verdict_text(verdict));
     if (verdict != RELEASE_OFFER)
     {
         SDL_AtomicSet(&state, UPDATE_NONE);
         return 0;
     }
     /* SHA256SUMS: the SHA-256 the download must have */
-    status = net_request(release.sums_url, NULL, NULL, SwanStationPS5_NAME "/" SwanStationPS5_VERSION, &body, &len);
+    status = net_request(release.sums_url, NULL, NULL, NP_NAME "/" NP_VERSION, &body, &len);
     if (status != 200 || !body)
     {
         free(body);
@@ -98,7 +98,7 @@ static int check_thread(void *unused)
     free(body);
     if (listed != 1 || (release.zip_digest[0] && strcmp(release.zip_digest, sha) != 0))
     {
-        SwanStationPS5_log("update: %s's " UPDATE_SUMS " %s; not offered", release.version,
+        np_log("update: %s's " UPDATE_SUMS " %s; not offered", release.version,
                            listed == 0 ? "doesn't list " UPDATE_ZIP
                            : listed < 0 ? "has a malformed or repeated line for " UPDATE_ZIP
                                         : "disagrees with GitHub's digest of " UPDATE_ZIP);
@@ -108,7 +108,7 @@ static int check_thread(void *unused)
     str_copy(version, sizeof(version), release.version);
     str_copy(zip_url, sizeof(zip_url), release.zip_url);
     str_copy(zip_sha256, sizeof(zip_sha256), sha);
-    SwanStationPS5_log("update: %s available, " UPDATE_ZIP " sha256 %s", version, zip_sha256);
+    np_log("update: %s available, " UPDATE_ZIP " sha256 %s", version, zip_sha256);
     SDL_AtomicSet(&state, UPDATE_AVAILABLE);
     return 0;
 }
@@ -127,11 +127,11 @@ void update_check(void)
 }
 
 /* Where the running app is stored. The update has to land there, whether it's in /data/homebrew or on an
- * extended or USB drive (/mnt/ext1/homebrew/PPSA98510 ...). The mount the app runs from (/app0, or the
+ * extended or USB drive (/mnt/ext1/homebrew/PPSA99010 ...). The mount the app runs from (/app0, or the
  * ShadowMountPlus one) is matched to a folder on disk by its eboot.bin: same size and modification time. */
 static bool same_eboot(const char *dir, const struct stat *running)
 {
-    char file[SwanStationPS5_PATH_MAX];
+    char file[NP_PATH_MAX];
     struct stat st;
     path_join(file, sizeof(file), dir, "eboot.bin");
     return stat(file, &st) == 0 && st.st_size == running->st_size && st.st_mtime == running->st_mtime;
@@ -139,13 +139,13 @@ static bool same_eboot(const char *dir, const struct stat *running)
 
 static const char *app_dir(void)
 {
-    static char found[SwanStationPS5_PATH_MAX];
+    static char found[NP_PATH_MAX];
     static bool done;
     if (done)
         return found;
     done = true;
     str_copy(found, sizeof(found), APP_DIR_DEFAULT);
-    static const char *const running_dirs[] = {"/app0", "/system_ex/app/" SwanStationPS5_TITLE_ID};
+    static const char *const running_dirs[] = {"/app0", "/system_ex/app/" NP_TITLE_ID};
     const char *roots[1 + DRIVE_COUNT] = {"/data"};
     for (int d = 0; d < DRIVE_COUNT; ++d)
         roots[1 + d] = drive_paths[d];
@@ -153,7 +153,7 @@ static const char *app_dir(void)
     bool have = false;
     for (size_t i = 0; i < sizeof(running_dirs) / sizeof(running_dirs[0]) && !have; ++i)
     {
-        char file[SwanStationPS5_PATH_MAX];
+        char file[NP_PATH_MAX];
         path_join(file, sizeof(file), running_dirs[i], "eboot.bin");
         have = stat(file, &running) == 0;
     }
@@ -161,13 +161,13 @@ static const char *app_dir(void)
         return found;
     for (size_t r = 0; r < sizeof(roots) / sizeof(roots[0]); ++r)
     {
-        char dir[SwanStationPS5_PATH_MAX];
+        char dir[NP_PATH_MAX];
         /* <root>/<id> and <root>/<any folder>/<id>, such as <root>/homebrew/<id> */
-        path_join(dir, sizeof(dir), roots[r], SwanStationPS5_TITLE_ID);
+        path_join(dir, sizeof(dir), roots[r], NP_TITLE_ID);
         if (same_eboot(dir, &running))
         {
             str_copy(found, sizeof(found), dir);
-            SwanStationPS5_log("update: the app is in %s", found);
+            np_log("update: the app is in %s", found);
             return found;
         }
         DIR *d = opendir(roots[r]);
@@ -178,29 +178,29 @@ static const char *app_dir(void)
         {
             if (e->d_name[0] == '.')
                 continue;
-            char sub[SwanStationPS5_PATH_MAX];
+            char sub[NP_PATH_MAX];
             path_join(sub, sizeof(sub), roots[r], e->d_name);
-            path_join(dir, sizeof(dir), sub, SwanStationPS5_TITLE_ID);
+            path_join(dir, sizeof(dir), sub, NP_TITLE_ID);
             if (same_eboot(dir, &running))
             {
                 str_copy(found, sizeof(found), dir);
                 closedir(d);
-                SwanStationPS5_log("update: the app is in %s", found);
+                np_log("update: the app is in %s", found);
                 return found;
             }
         }
         closedir(d);
     }
-    SwanStationPS5_log("update: couldn't find where the app is stored, using %s", found);
+    np_log("update: couldn't find where the app is stored, using %s", found);
     return found;
 }
 
 static int install_thread(void *unused)
 {
     (void)unused;
-    char zip[SwanStationPS5_PATH_MAX];
+    char zip[NP_PATH_MAX];
     path_join(zip, sizeof(zip), app.paths.root, "cache/update.zip");
-    char dir[SwanStationPS5_PATH_MAX];
+    char dir[NP_PATH_MAX];
     path_join(dir, sizeof(dir), app.paths.root, "cache");
     make_dirs(dir);
     if (net_download(zip_url, zip) != NET_OK)
@@ -212,7 +212,7 @@ static int install_thread(void *unused)
     char got[65] = "";
     if (!release_file_sha256(zip, got) || strcmp(got, zip_sha256) != 0)
     {
-        SwanStationPS5_log("update: " UPDATE_ZIP " sha256 %s, " UPDATE_SUMS " says %s", got, zip_sha256);
+        np_log("update: " UPDATE_ZIP " sha256 %s, " UPDATE_SUMS " says %s", got, zip_sha256);
         remove(zip);
         fail(tr("The download doesn't match its SHA256SUMS"));
         return 0;
@@ -232,12 +232,12 @@ static int install_thread(void *unused)
         mz_zip_archive_file_stat st;
         if (!mz_zip_reader_file_stat(&archive, i, &st) || st.m_is_directory)
             continue;
-        /* PPSA98510/<path> -> <where the app is stored>/<path> */
-        const char *inside = strstr(st.m_filename, "PPSA98510/");
+        /* PPSA99010/<path> -> <where the app is stored>/<path> */
+        const char *inside = strstr(st.m_filename, NP_TITLE_ID "/");
         if (!inside || strstr(inside, ".."))
             continue;
-        inside += strlen("PPSA98510/");
-        char target[SwanStationPS5_PATH_MAX], temp[SwanStationPS5_PATH_MAX + 8], parent[SwanStationPS5_PATH_MAX];
+        inside += strlen(NP_TITLE_ID "/");
+        char target[NP_PATH_MAX], temp[NP_PATH_MAX + 8], parent[NP_PATH_MAX];
         path_join(target, sizeof(target), app_dir(), inside);
         str_copy(parent, sizeof(parent), target);
         char *slash = strrchr(parent, '/');
@@ -262,8 +262,8 @@ static int install_thread(void *unused)
         fail(tr("Couldn't write the new files (is /data unlocked?)"));
         return 0;
     }
-    snprintf(message, sizeof(message), tr("Nightshade Station %s is installed: restart Nightshade Station to use it"), version);
-    SwanStationPS5_log("update: installed %s (%d files)", version, files);
+    snprintf(message, sizeof(message), tr("Nightshade Player %s is installed: restart Nightshade Player to use it"), version);
+    np_log("update: installed %s (%d files)", version, files);
     SDL_AtomicSet(&state, UPDATE_INSTALLED);
     return 0;
 }

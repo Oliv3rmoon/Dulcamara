@@ -1,77 +1,40 @@
 /*
- * SwanStationPS5 - libretro host for the statically linked SwanStation core.
+ * Nightshade Player - the libretro host: runs the core a game needs (cores.h) and hands its pictures, sound and
+ * buttons to and from the platform layer.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-#ifndef SwanStationPS5_HOST_H
-#define SwanStationPS5_HOST_H
+#ifndef NP_HOST_H
+#define NP_HOST_H
 
-#include "../SwanStationPS5.h"
-#include "../gamedb.h"
+#include "../library.h"
+#include "../nightshade.h"
 
-/* serial: the disc's (SLUS-00662), for the emulator choice and the memory
- * card; may be empty. */
-bool host_load(const char *game_path, const char *serial, const Paths *paths, const Settings *settings,
-               char *error, size_t error_size);
+/* Starts the game on its core. system_dir: the core's system folder (EasyRPG's RTP is in <system>/rtp/2000 and
+ * rtp/2003). False with a reason in error. */
+bool host_load(const Game *g, const char *system_dir, char *error, size_t error_size);
 void host_unload(void);
 bool host_loaded(void);
-/* "SwanStation": the emulator of the loaded game */
-const char *host_core_name(void);
-/* The emulator a game would get with these settings ("SwanStation"). */
-const char *host_emulator_for(const Settings *settings, const char *serial);
+const char *host_core_name(void); /* "EasyRPG Player" while a game runs */
 
-void host_set_pads(const PadState pads[SwanStationPS5_MAX_PADS]);
-/* Port 1's device for the next host_load: 0 a pad, 1 GunCon, 2 Justifier. */
-void host_set_gun(int device);
-/* The console region the core is told while a BIOS starts with no disc ("NTSC-U", "NTSC-J", "PAL"); NULL for the settings' own. */
-void host_set_region_override(const char *region);
-/* The disc of a multi-disc game the next host_load starts on (0 is the first); -1 leaves it to the saved one. */
-void host_set_initial_disc(int index);
-/* Other controllers for the next host_load: 0 pads, 1 NeGcon in every port, 2 a mouse in port 1. */
-void host_set_special(int device);
-bool host_analog_mode(int port); /* the controller in this port is in analog mode (the core said so) */
-void host_apply_devices(const Settings *settings); /* the controller types, while a game runs */
-/* Known fixes for the next host_load (GDB_* from gamedb.h): settings the game breaks with. */
-void host_set_fixes(unsigned flags, const GameInfo *info);
-/* How hard the game is rumbling this player's controller now, 0..1. */
-float host_rumble_level(int port);
-void host_run_frame(void);
-/* Run-ahead: frames run only to show the future are silent and don't rumble. */
-void host_set_speculative(bool on);
-uint32_t host_frames_new(void);      /* the core's frames so far: the game's own... */
-uint32_t host_frames_repeated(void); /* ...and the ones that repeat the last (a 30 fps game on a 60 fps core) */
+/* Player 1's controller for the next frames, its buttons mapped to the game's by the settings. */
+void host_set_input(const PadState *pad, const Settings *settings);
+/* Runs `times` of the core's frames, each `seconds` of the game's time (fast-forward runs several a refresh). */
+void host_run(int times, double seconds);
+/* Keeps the sound queued: asks the core for more while less than `seconds` is waiting. */
+void host_feed_audio(double seconds);
+void host_set_volume(int tenths); /* 0..10 */
+void host_set_fast_forward(bool on); /* what RETRO_ENVIRONMENT_GET_FASTFORWARDING answers */
+/* The core asked to close (EasyRPG: Exit on the title screen). */
+bool host_shutdown_requested(void);
 void host_reset(void);
-void host_apply_settings(const Settings *settings); /* takes effect without reloading */
 
 double host_fps(void);
 int host_sample_rate(void);
-float host_aspect(void);
-/* Latest frame; returns NULL when the core has not produced one yet. */
-const void *host_frame(int *width, int *height, size_t *pitch, int *pixel_format,
-                       bool *fresh);
+float host_aspect(void); /* the picture's shape, width / height */
+/* The latest picture; NULL until the core has drawn one. fresh: drawn since the last call. */
+const void *host_frame(int *width, int *height, size_t *pitch, int *pixel_format, bool *fresh);
 
-bool host_save_state(const char *path);
-bool host_load_state(const char *path);
-/* Save states in memory (rewind, quick resume). */
-size_t host_state_size(void);
-bool host_serialize(void *buffer, size_t size);
-bool host_unserialize(const void *buffer, size_t size);
-/* The latest frame scaled to w x h RGBA (save-state thumbnails). */
-bool host_capture(uint8_t *rgba, int w, int h);
-/* Folder the core reads fan-translation patches from (before host_load). */
-void host_set_patches_dir(const char *dir);
-
-/* For RetroAchievements */
-struct retro_memory_map;
-const struct retro_memory_map *host_memory_map(void);
-void *host_memory_data(unsigned id); /* retro_get_memory_data of the running core */
-size_t host_memory_size(unsigned id);
-
-int host_disc_count(void);
-int host_disc_index(void);
-bool host_disc_select(int index);
-
-/* GameShark codes, to the running core */
-void host_cheat_reset(void);
-void host_cheat_set(unsigned index, const char *code);
+/* Save states, when the core has them (EasyRPG Player has not: its saves are the game's own). */
+bool host_can_save_states(void);
 
 #endif

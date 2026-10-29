@@ -1,4 +1,4 @@
-# SwanStationPS5 - Linux/WSL build entry points (based on ps5-native-app-boilerplate).
+# Nightshade Player - Linux/WSL build entry points (Nightshade Station's, on ps5-native-app-boilerplate).
 # Copyright (C) 2026 BlackBearReloaded
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -7,42 +7,40 @@ SHELL := /bin/bash
 
 -include .env
 
-# v2: Vulkan through the linked RADV driver (APP_VULKAN=0 builds without it).
+# The screen through Vulkan (the linked RADV driver), as Nightshade Station: the shelf, the menus and the game's
+# shaders are drawn by the GPU.
 APP_VULKAN ?= 1
 ifeq ($(APP_VULKAN),1)
-APP_DEFINITIONS ?= SwanStationPS5_HAVE_CURL=1 SwanStationPS5_VULKAN=1
-SwanStationPS5_VULKAN_INCLUDE := .deps/native/radv-release/include
+APP_DEFINITIONS ?= NP_HAVE_CURL=1 NP_VULKAN=1
+NP_VULKAN_INCLUDE := .deps/native/radv-release/include
 else
-APP_DEFINITIONS ?= SwanStationPS5_HAVE_CURL=1
+APP_DEFINITIONS ?= NP_HAVE_CURL=1
 endif
-# RetroAchievements: rcheevos (MIT), built by tools/build-rcheevos.sh.
-SwanStationPS5_RCHEEVOS := build/rcheevos-ps5/librcheevos.a
-# Games on NFS servers: libnfs (LGPL-2.1-or-later), built by tools/build-libnfs.sh.
-SwanStationPS5_LIBNFS := build/libnfs-ps5/libnfs.a
-APP_INCLUDE_PATHS ?= third_party/swanstation/dep/libretro-common/include third_party/stb examples/update-check third_party/rcheevos/include third_party/libnfs/include third_party/libnfs/mount $(SwanStationPS5_VULKAN_INCLUDE)
+# The cores (src/core/cores.h): EasyRPG Player, built by tools/build-easyrpg.sh with its API renamed easyrpg_retro_*.
+NP_EASYRPG := build/easyrpg-ps5/libeasyrpg.a
+NP_LIBRETRO_INCLUDE := third_party/easyrpg-player/builds/libretro/libretro-common/include
+APP_INCLUDE_PATHS ?= $(NP_LIBRETRO_INCLUDE) third_party/stb examples/update-check $(NP_VULKAN_INCLUDE)
 ifeq ($(APP_VULKAN),1)
-# SwanStation (Vulkan renderer), built by tools/build-swanstation.sh
-SwanStationPS5_SWANSTATION := build/swanstation-ps5/libswanstation.a
-# Frame generation (AMD FSR 3's frame interpolation, from PS5SX2), built by tools/build-framegen.sh
-SwanStationPS5_FRAMEGEN := build/framegen-ps5/libframegen.a
+# Frame generation (AMD FSR 3's frame interpolation, from PS5SX2), built by tools/build-framegen.sh: the Vulkan
+# screen (src/platform/vk) is Nightshade Station's and links it.
+NP_FRAMEGEN := build/framegen-ps5/libframegen.a
 endif
-APP_STATIC_ARCHIVES ?= $(SwanStationPS5_LIBNFS) $(SwanStationPS5_RCHEEVOS) $(SwanStationPS5_SWANSTATION) $(SwanStationPS5_FRAMEGEN)
+APP_STATIC_ARCHIVES ?= $(NP_EASYRPG) $(NP_FRAMEGEN)
 APP_RUNTIME_MODULES ?=
-# fcntl: console_curl. The allocator family: ps5_heap.c (the C heap is too small). The file family: src/nfs/nfs.cpp
-# (a game on an /nfs share is read through libnfs by the scan and by the core alike).
-APP_WRAP_SYMBOLS ?= fcntl malloc free calloc realloc reallocf memalign posix_memalign aligned_alloc malloc_usable_size \
-	fopen fclose fread fseek fseeko ftell ftello rewind feof ferror fileno fgetc getc fgets fflush setvbuf flockfile \
-	funlockfile open close read pread lseek fstat stat lstat access realpath opendir readdir closedir
+# fcntl: console_curl. The allocator family: ps5_heap.c (the C heap is too small).
+APP_WRAP_SYMBOLS ?= fcntl malloc free calloc realloc reallocf memalign posix_memalign aligned_alloc malloc_usable_size
 APP_SOURCE_DIR ?=
 APP_PARAM ?=
 APP_SCE_SYS ?=
 APP_ASSETS ?= assets
 APP_ROOT_FILES ?=
-# Lapy elevation: needed to list /data/SwanStationPS5 under ShadowMountPlus.
+# Lapy elevation: needed to list /data/nightshade-player under ShadowMountPlus.
 APP_LAPY_HELPER ?= 1
 PACBREW_PACKAGES ?= sdl2 libcurl
 PACBREW_INCLUDE_PATHS ?=
-PACBREW_STATIC_ARCHIVES ?=
+# The library reads game titles in Shift-JIS and the Windows code pages (src/rpgmaker.c): GNU libiconv. The core
+# has its own copy, local to its archive.
+PACBREW_STATIC_ARCHIVES ?= lib/libiconv.a
 PS5_HOST ?=
 FTP_PORT ?= 2121
 DEPLOY_FORMAT ?= folder
@@ -92,7 +90,16 @@ doctor:
 	@printf '%s\n' '==> [doctor] Checking the Linux/WSL host without changing it'
 	@bash tools/doctor.sh
 
-test: test-unit test-integration test-elevation test-update-check test-self-update
+test: host-checks test-unit test-integration test-elevation test-update-check test-self-update
+
+# Nightshade Player's own host checks: the library's game detection (tests/test_library.py) and EasyRPG Player's
+# core run headless on EasyRPG's TestGame (tests/test_core.py). Neither needs the PS5 SDK.
+.PHONY: host-checks test-library test-core
+host-checks: test-library test-core
+test-library:
+	@python3 -m unittest tests.test_library -v
+test-core:
+	@python3 -m unittest tests.test_core -v
 
 .PHONY: test-elevation
 test-elevation:
@@ -214,9 +221,8 @@ self-update-example: $(RUNTIME) self-update-helper
 		APP_ROOT_FILES="$(SELF_UPDATE_HELPER) $(APP_ROOT_FILES)" \
 		bash tools/build.sh Folder
 
-# The version into sce_sys/param.json (as make release does), the disc daemon payload (seconds; a mistake in it shows
-# before the app's long build), then the app.
-deploy: sync-version disc-daemon
+# The version into sce_sys/param.json (as make release does), then the app.
+deploy: sync-version
 	@printf '%s\n' '==> [deploy] Building and publishing the selected app output over FTP'
 	@bash tools/deploy.sh
 
@@ -255,11 +261,6 @@ distclean: clean
 sync-version:
 	@python3 tools/make_release.py --sync-version
 
-.PHONY: disc-daemon
-# The disc daemon payload (payload/discd.c): dist/SwanStationPS5-DiscDaemon.elf, sent once to the console's ELF loader.
-disc-daemon:
-	@bash tools/build-disc-daemon.sh
-
 .PHONY: core
 # The core is rebuilt by its own Makefile; this only forwards to it.
 .PHONY: radv
@@ -270,17 +271,22 @@ ifeq ($(APP_VULKAN),1)
 endif
 
 core:
-	@bash tools/build-libnfs.sh
-	@bash tools/build-rcheevos.sh ps5
+	@bash tools/build-easyrpg.sh
 ifeq ($(APP_VULKAN),1)
-	@bash tools/build-swanstation.sh
 	@bash tools/build-framegen.sh
 endif
 
+# The app for this computer, for the interface (tools/build-desktop.sh).
+.PHONY: desktop
+desktop:
+	@bash tools/build-desktop.sh
+
 help:
 	@printf '%s\n' \
-	  'SwanStationPS5:' \
-	  'make                 Build the PS5 app folder dist/PPSA98510 (core + frontend)' \
+	  'Nightshade Player:' \
+	  'make                 Build the PS5 app folder dist/PPSA99010 (the cores + the frontend)' \
+	  'make host-checks     Game detection tests and EasyRPG Player run headless on TestGame' \
+	  'make desktop         The app for this computer (SDL2 window), for the interface' \
 	  'make deploy PS5_HOST=<ip>  Build and upload to /data/homebrew over FTP' \
 	  '' \
 	  'Boilerplate:' \
