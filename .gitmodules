@@ -10,3 +10,9 @@
 [submodule "third_party/renpy"]
 	path = third_party/renpy
 	url = https://github.com/renpy/renpy.git
+[submodule "third_party/renpy7"]
+	path = third_party/renpy7
+	url = https://github.com/renpy/renpy.git
+[submodule "third_party/pygame_sdl2"]
+	path = third_party/pygame_sdl2
+	url = https://github.com/renpy/pygame_sdl2.git

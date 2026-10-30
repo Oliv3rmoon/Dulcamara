@@ -20,10 +20,6 @@ import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = ROOT / "build/renpy-host"
-HEADLESS = BUILD / "core-check/renpy-headless"
-UNIT = BUILD / "core-check/renpy-unit"
-ASSETS = BUILD / "assets"
 GAME = ROOT / "tests/renpy-game"
 
 
@@ -72,17 +68,22 @@ def make_game(directory, width=1280, height=720, sound_rate=48000, broken=False)
 
 
 class RenpyCoreTest(unittest.TestCase):
+    # the build script and its host build (tests/test_renpy7_core.py runs the same tests on Ren'Py 7's)
+    SCRIPT = "tools/build-renpy.sh"
+    BUILD = ROOT / "build/renpy-host"
+
     @classmethod
     def setUpClass(cls):
         if not shutil.which(os.environ.get("CC", "cc")) or not shutil.which("cmake"):
             raise unittest.SkipTest("needs a C compiler and cmake")
-        build = subprocess.run(["bash", str(ROOT / "tools/build-renpy.sh"), "host"], capture_output=True, text=True)
+        build = subprocess.run(["bash", str(ROOT / cls.SCRIPT), "host"], capture_output=True, text=True)
         if build.returncode != 0:
-            raise AssertionError("tools/build-renpy.sh host failed:\n" + build.stdout[-4000:] + build.stderr[-4000:])
+            raise AssertionError(f"{cls.SCRIPT} host failed:\n" + build.stdout[-4000:] + build.stderr[-4000:])
         print(build.stdout.strip().splitlines()[-1])
 
     def run_core(self, mode, game, data, *more, env=None):
-        result = subprocess.run([str(HEADLESS), str(ASSETS), mode, str(game), str(data), *map(str, more)],
+        headless, assets = self.BUILD / "core-check/renpy-headless", self.BUILD / "assets"
+        result = subprocess.run([str(headless), str(assets), mode, str(game), str(data), *map(str, more)],
                                 capture_output=True, text=True, errors="replace", timeout=600, check=False,
                                 env={**os.environ, **(env or {})})
         print(f"\n{mode} {game.name}:")
@@ -100,8 +101,8 @@ class RenpyCoreTest(unittest.TestCase):
 
     def test_the_core_checks(self):
         # under the sanitizers; leaks are not checked: the OpenGL driver's own allocations would be reported
-        result = subprocess.run([str(UNIT)], capture_output=True, text=True, timeout=120, check=False,
-                                env={**os.environ, "ASAN_OPTIONS": "detect_leaks=0"})
+        result = subprocess.run([str(self.BUILD / "core-check/renpy-unit")], capture_output=True, text=True,
+                                timeout=120, check=False, env={**os.environ, "ASAN_OPTIONS": "detect_leaks=0"})
         print("\ncore checks:")
         print(result.stdout.strip())
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr[-3000:])

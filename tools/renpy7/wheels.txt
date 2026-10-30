@@ -1,0 +1,29 @@
+# Dulcamara - the packages tools/build-renpy7.sh unpacks for Ren'Py 7: "build" ones run on the build machine with its
+# Python 2.7 (Cython turns Ren'Py's and pygame_sdl2's .pyx into C; their setup.py need setuptools, and Ren'Py's
+# imports Ren'Py, which imports future and typing), "engine" ones go into the engine's lib/site-packages: the
+# pure-Python packages Ren'Py 7 imports, at the versions Ren'Py 7.8.7's own build installs (renpy-build's
+# tasks/python2.py), and certifi's last for Python 2. future has no wheel: its source archive's packages are copied,
+# with its licence. "license" lines are the source archives of the engine's wheels that carry no licence file: the
+# file is copied into the wheel's dist-info folder. <kind> <sha256> <url> [<file in the archive> <dist-info folder>]
+# SPDX-License-Identifier: GPL-3.0-or-later
+build eeb475eb6f0ccf6c039035eb4f0f928eb53ead88777e0a760eccb140ad90930b https://files.pythonhosted.org/packages/1c/24/e3935e545b128a90146e743212703420287ed35885074a9f36b21f3bb68d/Cython-0.29.32-py2.py3-none-any.whl
+build 27a714c09253134e60a6fa68130f78c7037e5562c4f21f8f318f2ae900d152d5 https://files.pythonhosted.org/packages/e1/b7/182161210a13158cd3ccc41ee19aadef54496b74f2817cc147006ec932b4/setuptools-44.1.1-py2.py3-none-any.whl
+build 34a17436ed1e96697a86f9de3d15a3b0be01d8bc8de9c1dffd59fb8234ed5307 https://files.pythonhosted.org/packages/8f/2e/cf6accf7415237d6faeeebdc7832023c90e0282aa16fd3263db0eb4715ec/future-0.18.3.tar.gz
+build c7219ef20c5fbf413b4567092adfc46fa6203cb8454eda33c3fc1afe1398a308 https://files.pythonhosted.org/packages/0b/cb/da856e81731833b94da70a08712f658416266a5fb2a9d9e426c8061becef/typing-3.10.0.0-py2-none-any.whl
+engine 3350809f0555b11f552448330d0b52d5f24c91a322ea4a15ef22629740f3761c https://files.pythonhosted.org/packages/73/fb/00a976f728d0d1fecfe898238ce23f502a721c0ac0ecfedb80e0d88c64e9/six-1.12.0-py2.py3-none-any.whl
+engine 34a17436ed1e96697a86f9de3d15a3b0be01d8bc8de9c1dffd59fb8234ed5307 https://files.pythonhosted.org/packages/8f/2e/cf6accf7415237d6faeeebdc7832023c90e0282aa16fd3263db0eb4715ec/future-0.18.3.tar.gz
+engine 43f682fea81c452c98d09fc316aae12de6d30c4b5c84226642cf8f8fd1c93abd https://files.pythonhosted.org/packages/e1/ae/baedc9cb175552e95f3395c43055a6a5e125ae4d48a1d7a924baca83e92e/rsa-3.4.2-py2.py3-none-any.whl
+engine d5cd6ed995dba16fad0c521cfe31cd2d68400b53fcc2bce93326829be73ab6d1 https://files.pythonhosted.org/packages/ba/fe/02e3e2ee243966b143657fb8bd6bc97595841163b6d8c26820944acaec4d/pyasn1-0.4.2-py2.py3-none-any.whl
+engine 80600258e7ed2f16b9aa1d7c295bd70194109ad5a30fdee0eaeefef1d4c559dd https://files.pythonhosted.org/packages/09/d4/4f05f5d16a4863b30ba96c23b23e942da8889abfa1cdbabf2a0df12a4532/ecdsa-0.18.0-py2.py3-none-any.whl
+engine 06330f386d6e4b195fbfc736b297f58c5a892e4440e54d294d7004e3a9bbea1b https://files.pythonhosted.org/packages/63/cb/6965947c13a94236f6d4b8223e21beb4d576dc72e8130bd7880f600839b8/urllib3-1.22-py2.py3-none-any.whl
+engine d62a0163eb4c2344ac042ab2bdf75399a71a2d8c7d47eac2e2ee91b9d6339569 https://files.pythonhosted.org/packages/37/45/946c02767aabb873146011e665728b680884cd8fe70dde973c640e45b775/certifi-2021.10.8-py2.py3-none-any.whl
+engine 8c7309c718f94b3a625cb648ace320157ad16ff131ae0af362c9f21b80ef6ec4 https://files.pythonhosted.org/packages/27/cc/6dd9a3869f15c2edfab863b992838277279ce92663d334df9ecf5106f5c6/idna-2.6-py2.py3-none-any.whl
+engine a84b8c9ab6239b578f22d1c21d51b696dcfe004032bb80ea832398d6909d7279 https://files.pythonhosted.org/packages/f1/ca/10332a30cb25b627192b4ea272c351bce3ca1091e541245cccbace6051d8/requests-2.20.0-py2.py3-none-any.whl
+engine fc323ffcaeaed0e0a02bf4d117757b98aed530d9ed4531e3e15460124c106691 https://files.pythonhosted.org/packages/bc/a9/01ffebfb562e4274b6487b4bb1ddec7ca55ec7510b22e4c51f14098443b8/chardet-3.0.4-py2.py3-none-any.whl
+engine c7219ef20c5fbf413b4567092adfc46fa6203cb8454eda33c3fc1afe1398a308 https://files.pythonhosted.org/packages/0b/cb/da856e81731833b94da70a08712f658416266a5fb2a9d9e426c8061becef/typing-3.10.0.0-py2-none-any.whl
+engine 08e69f092cc6dbe92a0fdd16eeb9b9ffbc13cadfe5ca4c7bd92ffb078b293299 https://files.pythonhosted.org/packages/a2/4b/52123768624ae28d84c97515dd96c9958888e8c2d8f122074e31e2be878c/PySocks-1.7.1-py27-none-any.whl
+license 84ab92ed1c4d4f16916e05906b6b75a6c0fb5db821cc65e70cbd64a3e2a5eaae https://files.pythonhosted.org/packages/fc/bb/a5768c230f9ddb03acc9ef3f0d4a3cf93462473795d18e9535498c8f929d/chardet-3.0.4.tar.gz chardet-3.0.4/LICENSE chardet-3.0.4.dist-info
+license 2c6a5de3089009e3da7c5dde64a141dbc8551d5b7f6cf4ed7c2568d0cc520a8f https://files.pythonhosted.org/packages/f4/bd/0467d62790828c23c47fc1dfa1b1f052b24efdf5290f071c7a91d0d82fd3/idna-2.6.tar.gz idna-2.6/LICENSE.rst idna-2.6.dist-info
+license d258b0a71994f7770599835249cece1caef3c70def868c4915e6e5ca49b67d15 https://files.pythonhosted.org/packages/eb/3d/b7d0fdf4a882e26674c68c20f40682491377c4db1439870f5b6f862f76ed/pyasn1-0.4.2.tar.gz pyasn1-0.4.2/LICENSE.rst pyasn1-0.4.2.dist-info
+license 25df4e10c263fb88b5ace923dd84bf9aa7f5019687b5e55382ffcdb8bede9db5 https://files.pythonhosted.org/packages/14/89/adf8b72371e37f3ca69c6cb8ab6319d009c4a24b04a31399e5bd77d9bb57/rsa-3.4.2.tar.gz rsa-3.4.2/LICENSE rsa-3.4.2.dist-info
+license cc44da8e1145637334317feebd728bd869a35285b93cbb4cca2577da7e62db4f https://files.pythonhosted.org/packages/ee/11/7c59620aceedcc1ef65e156cc5ce5a24ef87be4107c2b74458464e437a5d/urllib3-1.22.tar.gz urllib3-1.22/LICENSE.txt urllib3-1.22.dist-info

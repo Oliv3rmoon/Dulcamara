@@ -1,0 +1,43 @@
+--- a/configure
++++ b/configure
+@@ -3286,6 +3286,10 @@
+ 		;;
+ 	*-*-cygwin*)
+ 		ac_sys_system=Cygwin
++		;;
++	*-*-freebsd*)
++		# the PS5 (Dulcamara): FreeBSD's headers, the console's libc
++		ac_sys_system=FreeBSD
+ 		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+@@ -3333,6 +3337,9 @@
+ 	*-*-cygwin*)
+ 		_host_cpu=
+ 		;;
++	*-*-freebsd*)
++		_host_cpu=$host_cpu
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -8462,6 +8469,9 @@
+     	ppc)
+     		MACOSX_DEFAULT_ARCH="ppc"
+     		;;
++    	arm64)
++    		MACOSX_DEFAULT_ARCH="arm64"
++    		;;
+     	*)
+     		as_fn_error $? "Unexpected output of 'arch' on OSX" "$LINENO" 5
+     		;;
+@@ -8474,6 +8484,9 @@
+     	ppc)
+     		MACOSX_DEFAULT_ARCH="ppc64"
+     		;;
++    	arm64)
++    		MACOSX_DEFAULT_ARCH="arm64"
++    		;;
+     	*)
+     		as_fn_error $? "Unexpected output of 'arch' on OSX" "$LINENO" 5
+     		;;

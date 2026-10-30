@@ -1,9 +1,10 @@
 /*
- * Dulcamara - Ren'Py's core on the PS5: the C library functions Python and its modules call that the console's libc
+ * Dulcamara - Ren'Py's cores on the PS5: the C library functions Python and its modules call that the console's libc
  * has not, or has only in libScePosixForWebKit (which a native title does not load, so its calls would jump to
- * address 0). tools/build-renpy.sh found them by what the core leaves undefined. Each does what a sandboxed console
- * can: the nearest call it has, or the error a POSIX system gives for what it cannot do. They are local to the core's
- * archive, so the app's own stand-ins (src/platform/ps5_shims.c: dirfd, nl_langinfo) are not touched.
+ * address 0). tools/build-renpy.sh and build-renpy7.sh found them by what each core leaves undefined (Python 3.12 and
+ * 2.7 call different ones). Each does what a sandboxed console can: the nearest call it has, or the error a POSIX
+ * system gives for what it cannot do. They are local to each core's archive, so the app's own stand-ins
+ * (src/platform/ps5_shims.c: dirfd, nl_langinfo) are not touched.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #if defined(__PROSPERO__)
@@ -207,6 +208,13 @@ int isatty(int fd)
     (void)fd;
     errno = ENOTTY;
     return 0;
+}
+
+char *ttyname(int fd)
+{
+    (void)fd;
+    errno = ENOTTY; /* there are no terminals */
+    return NULL;
 }
 
 /* ---------------------------------------------------------------- processes and users (there are none to change) */

@@ -2,7 +2,8 @@
  * Dulcamara - Ren'Py 8 as a libretro core: the libretro API (renamed renpy_retro_* in the PS5 build, as
  * tools/build-renpy.sh does). Ren'Py runs on its own thread (python.c); each retro_run hands it one frame's time and
  * takes back the picture it drew (handoff.c, frames.c), and the frontend's sound callback plays its mixer (audio.c).
- * The engine is <core assets directory>/renpy8, and the saves <save directory>/saves/renpy.
+ * The engine is <core assets directory>/renpy8, and the saves <save directory>/saves/renpy. Ren'Py 7's core is the
+ * same file, built by tools/build-renpy7.sh with python2.c and DR_ENGINE_FOLDER "renpy7".
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "libretro.h"
@@ -19,6 +20,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+
+#ifndef DR_ENGINE_FOLDER
+#define DR_ENGINE_FOLDER "renpy8" /* in the core assets folder */
+#define DR_RENPY_VERSION "8.5.3"
+#endif
 
 #define FRAME_USEC 16667
 #define SOUND_FRAMES 800 /* a frame's worth at 48 kHz */
@@ -131,7 +137,7 @@ void retro_get_system_info(struct retro_system_info *info)
 {
     memset(info, 0, sizeof(*info));
     info->library_name = "Ren'Py";
-    info->library_version = "8.5.3";
+    info->library_version = DR_RENPY_VERSION;
     info->valid_extensions = "rpa|rpyc|rpy";
     info->need_fullpath = true;
     info->block_extract = true;
@@ -165,13 +171,13 @@ bool retro_load_game(const struct retro_game_info *info)
     const char *assets = NULL, *save = NULL;
     if (!environ_cb(RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY, &assets) || !assets)
     {
-        emit(2, "renpy: the frontend gave no core assets folder, where the engine (renpy8/) is");
+        emit(2, "renpy: the frontend gave no core assets folder, where the engine (" DR_ENGINE_FOLDER "/) is");
         return false;
     }
     if (!environ_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &save) || !save)
         environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &save);
     char engine[1024], marker[1100], game_folder[1100], saves[1024];
-    snprintf(engine, sizeof(engine), "%s/renpy8", assets);
+    snprintf(engine, sizeof(engine), "%s/" DR_ENGINE_FOLDER, assets);
     snprintf(marker, sizeof(marker), "%s/renpy/__init__.py", engine);
     snprintf(game_folder, sizeof(game_folder), "%s/game", info->path);
     snprintf(saves, sizeof(saves), "%s/saves/renpy", save ? save : info->path);

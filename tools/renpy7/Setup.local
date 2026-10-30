@@ -1,0 +1,59 @@
+# Dulcamara - the Python 2.7 modules built into Ren'Py 7's core (tools/build-renpy7.sh copies this to Python's
+# Modules/Setup.local, whose modules are built in). Ren'Py 7's own list (renpy-build's Python-2.7.18-Setup.local)
+# without ctypes (no libffi on the PS5), dl, the terminal, and _ssl and _hashlib: Python 2.7 does not build against
+# OpenSSL 3, the only one PacBrew has, so hashlib uses Python's own md5 and sha modules, and there is no TLS (Ren'Py
+# needs it only to download updates). The CJK codecs are there for games whose text is in Japanese, Chinese or Korean
+# encodings. The rest of the standard library is Python, in the engine's lib/python27.zip.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+_bisect _bisectmodule.c
+_collections _collectionsmodule.c
+_csv _csv.c
+_functools _functoolsmodule.c
+_heapq _heapqmodule.c
+_hotshot _hotshot.c
+_io -I$(srcdir)/Modules/_io _io/_iomodule.c _io/iobase.c _io/fileio.c _io/bytesio.c _io/bufferedio.c _io/textio.c _io/stringio.c
+_json _json.c
+_locale _localemodule.c
+_lsprof _lsprof.c rotatingtree.c
+_multibytecodec cjkcodecs/multibytecodec.c
+_codecs_cn cjkcodecs/_codecs_cn.c
+_codecs_hk cjkcodecs/_codecs_hk.c
+_codecs_iso2022 cjkcodecs/_codecs_iso2022.c
+_codecs_jp cjkcodecs/_codecs_jp.c
+_codecs_kr cjkcodecs/_codecs_kr.c
+_codecs_tw cjkcodecs/_codecs_tw.c
+_random _randommodule.c
+_struct _struct.c
+_md5 md5module.c md5.c
+_sha shamodule.c
+_sha256 sha256module.c
+_sha512 sha512module.c
+
+array arraymodule.c
+audioop audioop.c
+binascii binascii.c -DUSE_ZLIB_CRC32 -lz
+bz2 bz2module.c -lbz2
+cPickle cPickle.c
+cStringIO cStringIO.c
+cmath cmathmodule.c Modules/_math.o -lm
+datetime datetimemodule.c timemodule.c -lm
+future_builtins future_builtins.c
+itertools itertoolsmodule.c
+imageop imageop.c
+math mathmodule.c Modules/_math.o -lm
+mmap mmapmodule.c
+operator operator.c
+parser parsermodule.c
+select selectmodule.c
+strop stropmodule.c
+time timemodule.c -lm
+unicodedata unicodedata.c
+zlib zlibmodule.c -lz
+
+pyexpat expat/xmlparse.c expat/xmlrole.c expat/xmltok.c pyexpat.c -I$(srcdir)/Modules/expat -DHAVE_EXPAT_CONFIG_H -DXML_POOR_ENTROPY -DUSE_PYEXPAT_CAPI
+_elementtree _elementtree.c -I$(srcdir)/Modules/expat -DHAVE_EXPAT_CONFIG_H -DUSE_PYEXPAT_CAPI
+
+_socket socketmodule.c timemodule.c -lm
+fcntl fcntlmodule.c
+pwd pwdmodule.c
