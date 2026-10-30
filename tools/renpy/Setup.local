@@ -66,7 +66,6 @@ _sqlite3
 _decimal
 _multiprocessing
 _posixshmem
-_scproxy
 _crypt
 audioop
 grp

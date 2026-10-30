@@ -152,8 +152,11 @@ build_python() {
     rm -rf "$out/python"
     local src="$out/work/python/Python-$python_version" ssl=()
     cp "$root/tools/renpy/Setup.local" "$src/Modules/Setup.local"
-    if [[ $(uname -s) == Darwin ]] && command -v brew >/dev/null; then
-        ssl=(--with-openssl="$(brew --prefix openssl@3)")
+    if [[ $(uname -s) == Darwin ]]; then
+        # urllib.request imports it on macOS (setuptools here; requests in the engine)
+        printf '\n*static*\n_scproxy -DPy_BUILD_CORE_BUILTIN _scproxy.c $(MODULE__SCPROXY_LDFLAGS)\n' \
+            >>"$src/Modules/Setup.local"
+        command -v brew >/dev/null && ssl=(--with-openssl="$(brew --prefix openssl@3)")
     fi
     (cd "$src" && ./configure --prefix="$out/python" --disable-shared --with-ensurepip=no --disable-test-modules \
         "${ssl[@]}" CC="$cc") >"$log/python.log" 2>&1 || fail python
@@ -246,5 +249,104 @@ if ! fresh deps "$deps_key"; then
     chmod +x "$out/bin/cython"
     stamp deps "$deps_key"
 fi
-"$out/bin/cython" --version
-echo "==> [renpy] $py"
+# ---- Ren'Py's own C: setup.py turns its .pyx into C for a static build (RENPY_STATIC: each module's init function
+# named after its whole dotted name), then each module listed in src/Setup is compiled with the core's renamed SDL
+# calls (src/core/renpy/sdl_renames.h) and registered in an inittab. Two optional modules are left out:
+# tinyfiledialogs (renpy.tfd, desktop file dialogs) and renpy.gl2.live2dmodel, which needs Live2D's Cubism SDK
+# (not free to give away; Ren'Py's own builds add it only where it is installed).
+sdl_cflags() { pkg-config --cflags sdl2 SDL2_image freetype2 harfbuzz fribidi libpng libjpeg libwebp zlib; }
+build_modules() {
+    echo "==> [renpy] Ren'Py's modules (Cython $("$out/bin/cython" --version 2>&1 | awk '{print $NF}'))"
+    local src="$out/renpy-src" objects="$out/modules" generated
+    rm -rf "$src" "$objects" "$out/gen"
+    mkdir -p "$src" "$objects" "$out/gen"
+    git -C "$renpy" archive HEAD | tar -x -C "$src"
+    (cd "$src" && RENPY_STATIC=1 RENPY_REGENERATE_CYTHON=1 RENPY_CYTHON="$out/bin/cython" PYTHONPATH="$out/tools" \
+        CC="$cc" CXX="$cxx" CFLAGS="$(sdl_cflags)" "$py" setup.py generate) >"$log/modules.log" 2>&1 ||
+        fail modules
+    generated="$src/tmp/gen3-static"
+    [[ -d $generated ]] || { echo "Ren'Py's setup.py did not write $generated" >&2; exit 1; }
+    local cflags=(-O2 -g -fPIC -w -fno-strict-aliasing -include "$root/src/core/renpy/sdl_renames.h"
+        -I"$src/src" -I"$generated" $("$out/python/bin/python3.12-config" --includes) $(sdl_cflags)
+        -I"$prefix/include")
+    local modules=() sources=() line parts s
+    while read -r line; do
+        line=${line%%#*}
+        read -r -a parts <<<"$line"
+        [[ ${#parts[@]} -eq 0 || ${parts[0]} == renpy.tfd || ${parts[0]} == renpy.gl2.live2dmodel ]] && continue
+        modules+=("${parts[0]}")
+        for s in "${parts[@]:1}"; do
+            sources+=("$src/src/${s/..\/tmp\/gen\//../tmp/gen3-static/}")
+        done
+    done <"$src/src/Setup"
+    printf '%s\n' "${modules[@]}" >"$out/modules.txt"
+    # compile every source once, $jobs at a time
+    local pids=() objs=() f o
+    for f in $(printf '%s\n' "${sources[@]}" | sort -u); do
+        o="$objects/$(basename "${f%.*}").o"
+        objs+=("$o")
+        if [[ $f == *.cc ]]; then
+            "$cxx" -std=c++17 "${cflags[@]}" -c "$f" -o "$o" >>"$log/modules.log" 2>&1 &
+        else
+            "$cc" -std=gnu99 "${cflags[@]}" -c "$f" -o "$o" >>"$log/modules.log" 2>&1 &
+        fi
+        pids+=($!)
+        if (( ${#pids[@]} >= jobs )); then wait "${pids[0]}" || fail modules; pids=("${pids[@]:1}"); fi
+    done
+    for f in "${pids[@]}"; do wait "$f" || fail modules; done
+    {
+        printf '/* Dulcamara - written by tools/build-renpy.sh: the engine'"'"'s compiled modules, built in. */\n'
+        printf '#include <Python.h>\n\n'
+        for s in "${modules[@]}"; do printf 'PyMODINIT_FUNC PyInit_%s(void);\n' "${s//./_}"; done
+        printf '\nstatic struct _inittab renpy_modules[] = {\n'
+        for s in "${modules[@]}"; do printf '    {"%s", PyInit_%s},\n' "$s" "${s//./_}"; done
+        printf '    {NULL, NULL},\n};\n\nvoid renpy_extend_inittab(void)\n{\n    PyImport_ExtendInittab(renpy_modules);\n}\n'
+    } >"$out/gen/inittab.c"
+    rm -f "$out/librenpy-modules.a"
+    ar rcs "$out/librenpy-modules.a" "${objs[@]}"
+}
+
+# ---- the engine folder (renpy8/): Ren'Py's Python (compiled; the app folder may be read-only), Ren'Py's common
+# scripts and fonts, renpy.py, the boot script, the standard library (compiled, in an uncompressed zip, so that
+# zipimport needs nothing) and the pure-Python packages of tools/renpy/wheels.txt.
+build_engine() {
+    echo "==> [renpy] the engine folder"
+    local src="$out/renpy-src" engine="$out/assets/renpy8"
+    rm -rf "$engine"
+    mkdir -p "$engine/lib"
+    cp -R "$src/renpy" "$engine/renpy"
+    find "$engine/renpy" \( -name '*.pyx' -o -name '*.pxd' -o -name '*.pxi' -o -name '*.c' -o -name '*.c.dynamic' \
+        -o -name '*.cc' -o -name '*.h' \) -delete
+    cp "$src/renpy.py" "$engine/renpy.py"
+    cp "$root/src/core/renpy/boot.py" "$engine/dulcamara_boot.py"
+    unpack_wheels engine "$engine/lib/site-packages"
+    "$py" -m compileall -q -j 1 --invalidation-mode unchecked-hash "$engine/renpy" "$engine/lib/site-packages" \
+        >"$log/engine.log" 2>&1 || fail engine
+    "$py" - "$out/python/lib/python3.12" "$engine/lib/python312.zip" <<'PY' >>"$log/engine.log" 2>&1 || fail engine
+import importlib.util, pathlib, py_compile, sys, tempfile, zipfile
+stdlib, zip_path = pathlib.Path(sys.argv[1]), sys.argv[2]
+skip = {"test", "idlelib", "tkinter", "turtledemo", "ensurepip", "lib2to3", "pydoc_data", "site-packages",
+        "lib-dynload", "__phello__", "venv"}
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as z, tempfile.TemporaryDirectory() as tmp:
+    for source in sorted(stdlib.rglob("*.py")):
+        relative = source.relative_to(stdlib)
+        if relative.parts[0] in skip or relative.parts[0].startswith("config-"):
+            continue
+        compiled = pathlib.Path(tmp) / "m.pyc"
+        py_compile.compile(str(source), cfile=str(compiled), dfile=str(relative), doraise=True,
+                           invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH)
+        z.write(compiled, str(relative.with_suffix(".pyc")))
+PY
+}
+
+modules_key="modules-1 $(git -C "$renpy" rev-parse HEAD) $deps_key $(digest "$root/src/core/renpy/sdl_renames.h")"
+if ! fresh modules "$modules_key"; then
+    build_modules
+    stamp modules "$modules_key"
+fi
+engine_key="engine-1 $modules_key $(digest "$root/src/core/renpy/boot.py" "$root/tools/renpy/wheels.txt")"
+if ! fresh engine "$engine_key"; then
+    build_engine
+    stamp engine "$engine_key"
+fi
+echo "==> [renpy] $(wc -l <"$out/modules.txt" | tr -d ' ') Ren'Py modules built in, the engine in $out/assets/renpy8"
