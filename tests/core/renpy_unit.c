@@ -6,6 +6,7 @@
  */
 #include "../../src/core/renpy/audio.h"
 #include "../../src/core/renpy/frames.h"
+#include "../../src/core/renpy/gl.h"
 #include "../../src/core/renpy/handoff.h"
 
 #include <math.h>
@@ -229,6 +230,52 @@ static void check_audio(void)
     CHECK(converted[1] == 0 && converted[2] == -32768, "NaN is silence, -1 is -32768");
 }
 
+/* ---------------------------------------------------------------- OpenGL */
+
+/* The read-back: a picture cleared orange, its top half then blue, comes out XRGB8888 with its top row first.
+ * Skipped where this computer has no OpenGL without a screen (DULCAMARA_NO_GL, or no context). */
+static void check_gl(void)
+{
+    char error[256] = "";
+    if (getenv("DULCAMARA_NO_GL") || !gl_create(64, 32, 0, error, sizeof(error)))
+    {
+        printf("gl: skipped (%s)\n", error[0] ? error : "DULCAMARA_NO_GL");
+        return;
+    }
+    printf("gl: %s\n", gl_renderer());
+    void (*clear_color)(float, float, float, float) = (void (*)(float, float, float, float))gl_proc("glClearColor");
+    void (*clear)(unsigned) = (void (*)(unsigned))gl_proc("glClear");
+    void (*enable)(unsigned) = (void (*)(unsigned))gl_proc("glEnable");
+    void (*disable)(unsigned) = (void (*)(unsigned))gl_proc("glDisable");
+    void (*scissor)(int, int, int, int) = (void (*)(int, int, int, int))gl_proc("glScissor");
+    CHECK(clear_color && clear && enable && disable && scissor, "GL's functions found");
+    if (!(clear_color && clear && enable && disable && scissor))
+        return;
+    frames_reset();
+    clear_color(1.0f, 0.5f, 0.0f, 1.0f);
+    clear(0x4000);   /* GL_COLOR_BUFFER_BIT */
+    enable(0x0C11);  /* GL_SCISSOR_TEST: GL's rows 16..31, the top half */
+    scissor(0, 16, 64, 16);
+    clear_color(0.0f, 0.0f, 1.0f, 1.0f);
+    clear(0x4000);
+    disable(0x0C11);
+    gl_present();
+    gl_flush_pending(); /* Ren'Py waits after it draws: the picture read for it is published then */
+    int w = 0, h = 0;
+    bool fresh = false;
+    const uint32_t *p = frames_take(&w, &h, &fresh);
+    CHECK(p && w == 64 && h == 32 && fresh, "a fresh 64x32 picture (%dx%d)", w, h);
+    if (p)
+    {
+        CHECK((p[0] & 0xffffff) == 0x0000ff, "the top row is blue (%06x): GL's rows are turned over",
+              p[0] & 0xffffff);
+        const uint32_t bottom = p[31 * 64] & 0xffffff;
+        CHECK(bottom == 0xff8000 || bottom == 0xff7f00, "the bottom row is orange (%06x)", bottom);
+    }
+    gl_destroy();
+    frames_reset();
+}
+
 int main(void)
 {
     check_lockstep();
@@ -236,6 +283,7 @@ int main(void)
     check_stop();
     check_frames();
     check_audio();
+    check_gl();
     printf("%d checks, %d failed\n", checks, failures);
     printf(failures ? "FAIL\n" : "PASS\n");
     return failures ? 1 : 0;

@@ -350,3 +350,21 @@ if ! fresh engine "$engine_key"; then
     stamp engine "$engine_key"
 fi
 echo "==> [renpy] $(wc -l <"$out/modules.txt" | tr -d ' ') Ren'Py modules built in, the engine in $out/assets/renpy8"
+
+# ---- the core and its checks: always rebuilt (a few seconds). The core's own C is warning-free.
+libretro="$root/third_party/easyrpg-player/builds/libretro/libretro-common/include"
+[[ -f $libretro/libretro.h ]] || { echo "libretro.h is missing: run 'git submodule update --init third_party/easyrpg-player'" >&2; exit 2; }
+check="$out/core-check"
+mkdir -p "$check"
+own_flags=(-std=c11 -D_DEFAULT_SOURCE -D_DARWIN_C_SOURCE -O1 -g -Wall -Wextra -Werror -pthread)
+if [[ $(uname -s) == Darwin ]]; then
+    gl_backend="$root/src/core/renpy/gl_cgl.c"
+    gl_libs=(-framework OpenGL)
+else
+    gl_backend="$root/src/core/renpy/gl_egl.c"
+    gl_libs=($(pkg-config --libs egl))
+fi
+echo "==> [renpy] the core's checks"
+"$cc" "${own_flags[@]}" -fsanitize=address,undefined -fno-sanitize-recover=all \
+    "$root/tests/core/renpy_unit.c" "$root"/src/core/renpy/{handoff,frames,audio,gl}.c "$gl_backend" \
+    "${gl_libs[@]}" -lm -o "$check/renpy-unit" >"$log/core.log" 2>&1 || fail core
