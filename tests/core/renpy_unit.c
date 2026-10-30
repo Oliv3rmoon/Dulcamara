@@ -4,6 +4,7 @@
  * has OpenGL without a screen, the read-back (gl.c). tests/test_renpy_core.py runs it.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
+#include "../../src/core/renpy/frames.h"
 #include "../../src/core/renpy/handoff.h"
 
 #include <pthread.h>
@@ -132,11 +133,61 @@ static void check_stop(void)
     CHECK(real_usec() - start < 100000, "and does not wait");
 }
 
+/* ---------------------------------------------------------------- the pictures */
+
+static void check_frames(void)
+{
+    frames_reset();
+    int w = 0, h = 0;
+    bool fresh = true;
+    CHECK(frames_take(&w, &h, &fresh) == NULL && !fresh, "no picture before the first");
+
+    uint32_t *back = frames_back(4, 2);
+    for (int i = 0; i < 8; ++i)
+        back[i] = (uint32_t)i;
+    frames_publish();
+    const uint32_t *shown = frames_take(&w, &h, &fresh);
+    CHECK(shown && w == 4 && h == 2 && fresh && shown[7] == 7, "the first picture, 4x2 and fresh");
+    shown = frames_take(&w, &h, &fresh);
+    CHECK(shown && !fresh, "the same picture again is not fresh");
+
+    /* the frontend's picture stays as it was while Ren'Py draws the next two */
+    for (int n = 1; n <= 2; ++n)
+    {
+        back = frames_back(4, 2);
+        for (int i = 0; i < 8; ++i)
+            back[i] = (uint32_t)(n * 100 + i);
+        frames_publish();
+    }
+    CHECK(shown[0] == 0, "the frontend's picture is untouched while Ren'Py draws (%u)", shown[0]);
+    shown = frames_take(&w, &h, &fresh);
+    CHECK(shown && fresh && shown[0] == 200, "the newest picture comes next");
+
+    const uint32_t gl_rows[6] = {1, 2, 3, 4, 5, 6}; /* bottom row first */
+    uint32_t rows[6];
+    frames_copy_flipped(rows, gl_rows, 3, 2);
+    CHECK(rows[0] == 4 && rows[2] == 6 && rows[3] == 1, "rows turned over");
+
+    int fw, fh;
+    frames_fit(1280, 720, 1920, 1080, &fw, &fh);
+    CHECK(fw == 1280 && fh == 720, "1280x720 fits as it is");
+    frames_fit(1920, 1080, 1920, 1080, &fw, &fh);
+    CHECK(fw == 1920 && fh == 1080, "1920x1080 fits as it is");
+    frames_fit(2560, 1440, 1920, 1080, &fw, &fh);
+    CHECK(fw == 1920 && fh == 1080, "2560x1440 becomes 1920x1080 (%dx%d)", fw, fh);
+    frames_fit(1080, 1920, 1920, 1080, &fw, &fh);
+    CHECK(fw == 608 && fh == 1080, "a portrait 1080x1920 becomes 608x1080 (%dx%d)", fw, fh);
+    frames_fit(3000, 1000, 1920, 1080, &fw, &fh);
+    CHECK(fw == 1920 && fh == 640, "3000x1000 becomes 1920x640 (%dx%d)", fw, fh);
+    frames_reset();
+}
+
 int main(void)
 {
     check_lockstep();
     check_a_busy_ren_py();
     check_stop();
+    check_frames();
     printf("%d checks, %d failed\n", checks, failures);
     printf(failures ? "FAIL\n" : "PASS\n");
     return failures ? 1 : 0;
