@@ -61,9 +61,13 @@ jobs:
           print(f"{tag}: NP_VERSION {version}, contentVersion {content}")
           PY
 
-      # EasyRPG Player (with libretro-common inside it), liblcf and inih: the core and what it is built from.
+      # EasyRPG Player (with libretro-common inside it), liblcf and inih, Ren'Py 8 and 7 and pygame_sdl2: the cores and
+      # what they are built from. Only EasyRPG Player's own submodule is fetched within: pygame_sdl2 records a Windows
+      # one (pygame_sdl2_windeps) that its .gitmodules does not name.
       - name: Fetch submodules
-        run: git submodule update --init --recursive --depth=1
+        run: |
+          git submodule update --init --depth=1
+          git -C third_party/easyrpg-player submodule update --init --recursive --depth=1
 
       - name: Install toolchain
         run: |

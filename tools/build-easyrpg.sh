@@ -44,7 +44,7 @@ pixman_hash=d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c
 for need in "$player/CMakeLists.txt" "$player/builds/libretro/libretro-common/include/libretro.h" \
     "$lcf/CMakeLists.txt" "$inih/ini.c"; do
     [[ -f $need ]] || {
-        echo "EasyRPG sources missing: run 'git submodule update --init --recursive third_party'" >&2
+        echo "EasyRPG sources missing: run 'git submodule update --init --recursive third_party/easyrpg-player third_party/liblcf third_party/inih'" >&2
         exit 2
     }
 done
