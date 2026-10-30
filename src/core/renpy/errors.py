@@ -18,8 +18,10 @@ def log_error(text):
         _dulcamara.log(2, line)
 
 
-def report_exception(e, *args, **kwargs):
-    te = originals["report_exception"](e, *args, **kwargs)
+def report_exception(e, editor=True):
+    # never the editor Ren'Py would open traceback.txt in (xdg-open, a process of its own): there is none on the
+    # console, and the core's fork() refuses
+    te = originals["report_exception"](e, editor=False)
     try:
         with open(te.traceback_fn, encoding="utf-8", errors="replace") as f:
             log_error(f.read())

@@ -15,6 +15,7 @@
 #include <pthread.h>
 #include <pwd.h>
 #include <signal.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -219,10 +220,57 @@ char *ttyname(int fd)
 
 /* ---------------------------------------------------------------- processes and users (there are none to change) */
 
+/* A title starts no processes: Python's subprocess, os.system and Ren'Py's editor fail with ENOSYS here, rather than
+ * reach the console's fork. */
+pid_t fork(void)
+{
+    return unsupported();
+}
+
+int execv(const char *path, char *const argv[])
+{
+    (void)path, (void)argv;
+    return unsupported();
+}
+
+int execve(const char *path, char *const argv[], char *const envp[])
+{
+    (void)path, (void)argv, (void)envp;
+    return unsupported();
+}
+
 int fexecve(int fd, char *const argv[], char *const envp[])
 {
     (void)fd, (void)argv, (void)envp;
     return unsupported();
+}
+
+int posix_spawn(pid_t *pid, const char *path, const posix_spawn_file_actions_t *actions,
+                const posix_spawnattr_t *attributes, char *const argv[], char *const envp[])
+{
+    (void)pid, (void)path, (void)actions, (void)attributes, (void)argv, (void)envp;
+    return ENOSYS;
+}
+
+int posix_spawnp(pid_t *pid, const char *file, const posix_spawn_file_actions_t *actions,
+                 const posix_spawnattr_t *attributes, char *const argv[], char *const envp[])
+{
+    (void)pid, (void)file, (void)actions, (void)attributes, (void)argv, (void)envp;
+    return ENOSYS;
+}
+
+int system(const char *command)
+{
+    if (!command)
+        return 0; /* no shell */
+    return unsupported();
+}
+
+FILE *popen(const char *command, const char *mode)
+{
+    (void)command, (void)mode;
+    errno = ENOSYS;
+    return NULL;
 }
 
 pid_t getpgrp(void)

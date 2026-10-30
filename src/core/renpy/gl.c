@@ -7,10 +7,12 @@
 
 #include "frames.h"
 #include "gl_backend.h"
+#include "log.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 typedef unsigned int GLenum, GLuint, GLbitfield;
 typedef int GLint, GLsizei;
@@ -199,10 +201,34 @@ static void restore_bindings(Bindings b)
     gl.BindFramebuffer(GL_FRAMEBUFFER, (GLuint)b.framebuffer);
 }
 
+static int64_t now_usec(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (int64_t)t.tv_sec * 1000000 + t.tv_nsec / 1000;
+}
+
+/* What reading the pictures back costs (the PBO read, mapping the frame before and copying it out), in the log
+ * every 600 frames: the number the console's first runs are to give. */
+static void timed(int64_t usec)
+{
+    static int64_t total, slowest;
+    static int count;
+    total += usec;
+    slowest = usec > slowest ? usec : slowest;
+    if (++count < 600)
+        return;
+    log_queue(1, "renpy: reading back %dx%d: %.2f ms a frame on average, %.2f ms the slowest of %d", width, height,
+              (double)total / count / 1000.0, (double)slowest / 1000.0, count);
+    total = slowest = 0;
+    count = 0;
+}
+
 void gl_present(void)
 {
     if (!made)
         return;
+    const int64_t start = now_usec();
     const Bindings b = save_bindings();
     gl.BindFramebuffer(GL_FRAMEBUFFER, fbo);
     gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
@@ -215,6 +241,7 @@ void gl_present(void)
     next_pbo = slot ^ 1;
     publish(next_pbo); /* the frame before this one, read a frame ago */
     restore_bindings(b);
+    timed(now_usec() - start);
 }
 
 void gl_flush_pending(void)

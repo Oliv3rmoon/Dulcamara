@@ -54,7 +54,7 @@ static void core_log(enum retro_log_level level, const char *fmt, ...)
         log_used += n;
     }
     if (getenv("RENPY_HEADLESS_VERBOSE") || strstr(line, "DULCAMARA-TEST: ") || strstr(line, "Ren'Py reported") ||
-        strstr(line, ".rpy") || strstr(line, "Dulcamara starts"))
+        strstr(line, ".rpy") || strstr(line, "Dulcamara starts") || strstr(line, "did not stop"))
         printf("log: %s", line);
 }
 

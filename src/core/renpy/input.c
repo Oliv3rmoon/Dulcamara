@@ -13,6 +13,7 @@ static SDL_Joystick *pad;
 static SDL_JoystickID pad_id = -1;
 static uint16_t held;
 static bool skip_wanted, skip_held;
+static bool detached; /* Ren'Py's thread is closing SDL: the frontend's thread calls it no more */
 static int skip_frames; /* frames since Ctrl was last pressed */
 static int16_t pointer_x, pointer_y;
 static bool pointer_moved, pointer_pressed, button_down;
@@ -53,6 +54,7 @@ static void apply(void)
 void input_attach(void)
 {
     pthread_mutex_lock(&lock);
+    detached = false;
     if (!pad)
     {
         SDL_VirtualJoystickDesc d;
@@ -110,7 +112,7 @@ void input_set(uint16_t retropad, int16_t left_x, int16_t left_y)
 static void push_skip(void)
 {
     const bool again = skip_held && skip_wanted && ++skip_frames >= 30;
-    if ((skip_held == skip_wanted && !again) || !SDL_WasInit(SDL_INIT_EVENTS))
+    if ((skip_held == skip_wanted && !again) || detached || !SDL_WasInit(SDL_INIT_EVENTS))
         return;
     skip_frames = 0;
     SDL_Event e;
@@ -182,6 +184,7 @@ void input_detach(void)
     }
     pad = NULL;
     pad_id = -1;
+    detached = true;
     held = 0;
     skip_wanted = skip_held = false;
     pointer_x = pointer_y = 0;

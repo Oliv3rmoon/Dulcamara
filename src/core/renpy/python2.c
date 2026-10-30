@@ -121,8 +121,9 @@ static void *renpy_main(void *unused)
     interpreter_up = true;
     pthread_mutex_unlock(&state_lock);
 
-    /* runpy.run_path(boot, run_name="__main__") */
-    PyObject *runpy = PyImport_ImportModule("runpy");
+    /* runpy.run_path(boot, run_name="__main__"), unless a stop came before python_stop could reach Python (it raises
+     * in Ren'Py's thread from here on) */
+    PyObject *runpy = handoff_stopping() ? NULL : PyImport_ImportModule("runpy");
     PyObject *run_path = runpy ? PyObject_GetAttrString(runpy, "run_path") : NULL;
     PyObject *args = run_path ? Py_BuildValue("(s)", boot) : NULL;
     PyObject *kwargs = args ? Py_BuildValue("{s:s}", "run_name", "__main__") : NULL;
@@ -130,7 +131,7 @@ static void *renpy_main(void *unused)
     Py_XDECREF(kwargs);
     Py_XDECREF(args);
     Py_XDECREF(run_path);
-    if (!result)
+    if (!result && PyErr_Occurred())
     {
         if (PyErr_ExceptionMatches(PyExc_SystemExit))
             PyErr_Clear();
@@ -148,6 +149,7 @@ static void *renpy_main(void *unused)
         pthread_cond_wait(&state_changed, &state_lock);
     pthread_mutex_unlock(&state_lock);
     Py_END_ALLOW_THREADS
+    PyThreadState_SetAsyncExc(renpy_ident, NULL); /* a stop that came as the boot script ended */
     Py_Finalize();
 
     input_detach();

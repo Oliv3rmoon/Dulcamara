@@ -90,6 +90,7 @@ class RenpyCoreTest(unittest.TestCase):
         print(result.stdout.strip())
         self.assertEqual(result.returncode, 0, result.stdout[-6000:] + result.stderr[-3000:])
         self.assertIn("PASS", result.stdout)
+        self.assertNotIn("did not stop", result.stdout, "the core stopped Ren'Py within its ten seconds")
         return result.stdout
 
     def play_and_check(self, game, data):
