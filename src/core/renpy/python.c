@@ -255,9 +255,33 @@ bool python_start(const char *engine_dir, const char *game_dir, const char *save
     return true;
 }
 
+/* Logs where Ren'Py's thread is in its Python (on the stopping thread, which holds the GIL): for a stop that has not
+ * come, the log then says what held it. */
+static void log_where_renpy_is(void)
+{
+    char code[640];
+    snprintf(code, sizeof(code),
+             "import sys, traceback, _dulcamara\n"
+             "frame = sys._current_frames().get(%lu)\n"
+             "if frame is not None:\n"
+             "    _dulcamara.log(2, \"Ren'Py has not stopped; its thread is at:\")\n"
+             "    for line in ''.join(traceback.format_stack(frame)).splitlines():\n"
+             "        _dulcamara.log(2, line)\n",
+             renpy_ident);
+    PyObject *globals = PyDict_New();
+    if (globals && PyDict_SetItemString(globals, "__builtins__", PyEval_GetBuiltins()) == 0)
+    {
+        PyObject *done = PyRun_String(code, Py_file_input, globals, globals);
+        Py_XDECREF(done);
+    }
+    if (PyErr_Occurred())
+        PyErr_Clear();
+    Py_XDECREF(globals);
+}
+
 /* Raises renpy.game.QuitException in Ren'Py's thread (SystemExit before Ren'Py is imported): Ren'Py then quits
  * the way its own Quit does, closing its sound and display. */
-static void ask_renpy_to_quit(void)
+static void ask_renpy_to_quit(bool where)
 {
     pthread_mutex_lock(&state_lock);
     const bool can = interpreter_up;
@@ -276,6 +300,8 @@ static void ask_renpy_to_quit(void)
         PyErr_Clear();
         quit = Py_NewRef(PyExc_SystemExit);
     }
+    if (where)
+        log_where_renpy_is();
     PyThreadState_SetAsyncExc(renpy_ident, quit);
     Py_DECREF(quit);
     Py_XDECREF(renpy_game);
@@ -291,9 +317,14 @@ void python_stop(void)
     if (!thread_live)
         return;
     handoff_stop();
-    ask_renpy_to_quit();
+    ask_renpy_to_quit(false);
     for (int i = 0; i < 1000 && !handoff_engine_ended(); ++i)
+    {
+        /* three seconds on: where Ren'Py is, and the quit once more, in case a handler of Ren'Py's caught the first */
+        if (i == 300)
+            ask_renpy_to_quit(true);
         usleep(10000);
+    }
     if (handoff_engine_ended())
     {
         pthread_join(thread, NULL);

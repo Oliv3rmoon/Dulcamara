@@ -14,6 +14,26 @@ init python:
 
     config.after_load_callbacks.append(dulcamara_after_load)
 
+    # DULCAMARA_TEST_HOLD=1: a game with a handler of its own that catches the first quit the core raises in it (half
+    # a second in, it spins until something is raised), and then spins on: only the core asking again ends it.
+    dulcamara_hold = {"calls": 0, "done": False}
+
+    def dulcamara_hold_on():
+        dulcamara_hold["calls"] += 1
+        if dulcamara_hold["done"] or dulcamara_hold["calls"] < 10:
+            return
+        dulcamara_hold["done"] = True
+        try:
+            while True:
+                pass
+        except Exception:
+            dulcamara_test("held on to a quit")
+        while True:
+            pass
+
+    if os.environ.get("DULCAMARA_TEST_HOLD") == "1":
+        config.periodic_callbacks.append(dulcamara_hold_on)
+
 default choice = None
 
 # DULCAMARA_TEST_SKIP=1: unread dialogue may be skipped too, so that fast-forward's skip shows on a first run.

@@ -164,6 +164,16 @@ class RenpyCoreTest(unittest.TestCase):
             self.assertIn("fast-forward: the dialogue went by without Cross", output)
             self.assertIn("DULCAMARA-TEST: choice=", output)
 
+    def test_a_game_that_catches_its_quit(self):
+        # A game whose own handler catches the quit the core raises in Ren'Py's thread: three seconds on, the core logs
+        # where Ren'Py is and raises it again, and Ren'Py stops.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("start", make_game(work / "Holds on"), work / "data",
+                                   env={"DULCAMARA_TEST_HOLD": "1"})
+            self.assertIn("DULCAMARA-TEST: held on to a quit", output)
+            self.assertIn("Ren'Py has not stopped; its thread is at:", output)
+
     def test_a_game_with_an_error(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
