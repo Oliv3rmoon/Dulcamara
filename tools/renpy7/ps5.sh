@@ -146,6 +146,8 @@ mkdir -p "$work"
 "$nm" --extern-only "$work/renpy7.o" | awk '$2 == "C" { print $NF }' | sort -u >"$work/common.txt"
 cat "$work/api.txt" "$work/common.txt" >"$work/keep.txt"
 sed 's/.*/& renpy7_&/' "$work/keep.txt" >"$work/rename.txt"
+# FreeBSD's _setjmp and _longjmp (OpenSSL's) are the console's setjmp and longjmp, which also keep the signal mask
+printf '_setjmp setjmp\n_longjmp longjmp\n' >>"$work/rename.txt"
 "$objcopy" --strip-debug --keep-global-symbols="$work/keep.txt" "$work/renpy7.o" "$work/renpy7-local.o"
 "$objcopy" --redefine-syms="$work/rename.txt" "$work/renpy7-local.o" "$work/renpy7-ps5.o"
 "$nm" --undefined-only "$work/renpy7-ps5.o" | awk '{print $NF}' | sort -u >"$work/undefined.txt"
@@ -160,10 +162,15 @@ for stub in "$sdk/target/lib"/*.so; do
 done
 # the AGC calls: the app links them through its own stubs (tooling/ps5-stubs), not ps5-opengl's
 grep -ohE '\bsceAgc[A-Za-z0-9_]+[[:space:]]*\(' "$root"/tooling/ps5-stubs/*.c | tr -d ' (' >>"$work/console.txt"
-"$nm" --defined-only "$sdk/target/lib/libc.a" "$sdk/target/lib/libc++.a" "$sdk/target/lib/libc++abi.a" 2>/dev/null |
-    awk 'NF { print $NF }' >>"$work/console.txt"
+# What the app's link adds (tooling/radv/radv-link.sh): the SDK's C++ runtime and unwinder, compiler-rt's builtins
+# (__emutls_get_address), and the SDK's platform layer, whose ps5_<name> it links in for <name>. Not the SDK's
+# libc.a, which the app does not link: the console's libc is reached through the stubs above.
+"$nm" --defined-only "$sdk/target/lib/libc++.a" "$sdk/target/lib/libc++abi.a" "$sdk/target/lib/libunwind.a" \
+    "$sdk/target/lib/libps5platform.a" 2>/dev/null | awk 'NF >= 2 && $2 ~ /[TDBRVW]/ { print $NF }' |
+    sed 's/^ps5_//' >>"$work/console.txt"
+echo __emutls_get_address >>"$work/console.txt"
 LC_ALL=C sort -u -o "$work/console.txt" "$work/console.txt"
-LC_ALL=C comm -23 "$work/undefined.txt" "$work/console.txt" | grep -vxE 'dirfd|nl_langinfo|__dso_handle' \
+LC_ALL=C comm -23 "$work/undefined.txt" "$work/console.txt" | grep -vxE 'dirfd|nl_langinfo|uselocale|strcasestr|___mb_cur_max|__dso_handle' \
     >"$work/unresolved.txt" || true
 
 # ---- the engine: the host's

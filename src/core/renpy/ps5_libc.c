@@ -4,7 +4,7 @@
  * address 0). tools/build-renpy.sh and build-renpy7.sh found them by what each core leaves undefined (Python 3.12 and
  * 2.7 call different ones). Each does what a sandboxed console can: the nearest call it has, or the error a POSIX
  * system gives for what it cannot do. They are local to each core's archive, so the app's own stand-ins
- * (src/platform/ps5_shims.c: dirfd, nl_langinfo) are not touched.
+ * (src/platform/ps5_shims.c, which the cores use too: dirfd, nl_langinfo, uselocale, strcasestr) are not touched.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #if defined(__PROSPERO__)
@@ -14,16 +14,28 @@
 #include <netdb.h>
 #include <pthread.h>
 #include <pwd.h>
+#include <runetype.h>
 #include <signal.h>
 #include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/times.h>
 #include <time.h>
 #include <unistd.h>
+
+/* ---------------------------------------------------------------- the locale */
+
+/* The SDK's headers have no thread-local locale (__NO_TLS), so <ctype.h>'s inline tolower and isalpha (Python 2.7's
+ * string methods) ask this for the locale; the console's libc has the locale but not the call. */
+#undef _CurrentRuneLocale /* runetype.h makes the name this call: here it is the console's variable */
+const _RuneLocale *__getCurrentRuneLocale(void)
+{
+    return _CurrentRuneLocale ? _CurrentRuneLocale : &_DefaultRuneLocale;
+}
 
 /* ---------------------------------------------------------------- time */
 
@@ -204,6 +216,46 @@ void closefrom(int lowest)
         close(fd);
 }
 
+/* mkstemp is only in libScePosixForWebKit's stub (null in a title): FFmpeg's av_tempfile asks for it */
+int mkstemp(char *pattern)
+{
+    static const char LETTERS[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const size_t n = strlen(pattern);
+    if (n < 6 || strcmp(pattern + n - 6, "XXXXXX"))
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    unsigned long long seed = (unsigned long long)t.tv_nsec ^ ((unsigned long long)t.tv_sec << 20) ^ (unsigned)getpid();
+    for (int attempt = 0; attempt < 100; ++attempt)
+    {
+        for (size_t i = n - 6; i < n; ++i)
+        {
+            seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;
+            pattern[i] = LETTERS[(seed >> 33) % (sizeof(LETTERS) - 1)];
+        }
+        const int fd = open(pattern, O_RDWR | O_CREAT | O_EXCL, 0600);
+        if (fd >= 0 || errno != EEXIST)
+            return fd;
+    }
+    errno = EEXIST;
+    return -1;
+}
+
+FILE *tmpfile(void)
+{
+    errno = ENOSYS; /* Python's tempfile makes its files itself, in a folder it can write */
+    return NULL;
+}
+
+char *tmpnam(char *buffer)
+{
+    (void)buffer;
+    return NULL;
+}
+
 int isatty(int fd)
 {
     (void)fd;
@@ -316,6 +368,18 @@ int getresuid(uid_t *real, uid_t *effective, uid_t *saved)
     return 0;
 }
 
+struct passwd *getpwnam(const char *name)
+{
+    (void)name;
+    return NULL; /* no such user */
+}
+
+struct passwd *getpwuid(uid_t uid)
+{
+    (void)uid;
+    return NULL;
+}
+
 int getpwnam_r(const char *name, struct passwd *entry, char *buffer, size_t size, struct passwd **result)
 {
     (void)name, (void)entry, (void)buffer, (void)size;
@@ -335,6 +399,21 @@ char *strsignal(int number)
     static char text[32];
     snprintf(text, sizeof(text), "Signal %d", number);
     return text;
+}
+
+/* ---------------------------------------------------------------- sockets */
+
+/* OpenSSL's datagram BIO batches with these, which the console's libc has not */
+ssize_t recvmmsg(int fd, struct mmsghdr *messages, size_t count, int flags, const struct timespec *timeout)
+{
+    (void)fd, (void)messages, (void)count, (void)flags, (void)timeout;
+    return unsupported();
+}
+
+ssize_t sendmmsg(int fd, struct mmsghdr *messages, size_t count, int flags)
+{
+    (void)fd, (void)messages, (void)count, (void)flags;
+    return unsupported();
 }
 
 /* ---------------------------------------------------------------- names: the console's resolver is not used */
