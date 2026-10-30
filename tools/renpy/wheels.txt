@@ -1,0 +1,16 @@
+# Dulcamara - the wheels tools/build-renpy.sh unpacks: "build" ones run on the build machine (Cython turns Ren'Py's
+# .pyx into C; Ren'Py's setup.py needs setuptools), "engine" ones go into the engine's lib/site-packages (the
+# pure-Python packages Ren'Py imports, at the versions of Ren'Py 8.5.3's uv.lock). <kind> <sha256> <url>
+# SPDX-License-Identifier: GPL-3.0-or-later
+build d194d95e4fa029a3f6c7d46bdd16d973808c7ea4797586911fdb67cb98b1a2c6 https://files.pythonhosted.org/packages/7c/24/f7351052cf9db771fe4f32fca47fd66e6d9b53d8613b17faf7d130a9d553/cython-3.1.4-py3-none-any.whl
+build 95b30ddfb717250edb492926c92b5221f7ef3fbcc2b07579bcd4a27da21d0173 https://files.pythonhosted.org/packages/94/b8/f1f62a5e3c0ad2ff1d189590bfa4c46b4f3b6e49cef6f26c6ee4e575394d/setuptools-80.10.2-py3-none-any.whl
+engine 4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl
+engine 30638e27cf77b7e15c4c4cc1973720149e1033827cfd00661ca5c8cc0cdb24c3 https://files.pythonhosted.org/packages/cb/a3/460c57f094a4a165c84a1341c373b0a4f5ec6ac244b998d5021aade89b77/ecdsa-0.19.1-py2.py3-none-any.whl
+engine 3324635456fa185245e24865e810cecec7b4caf933d7eb133dcde67d48cee69b https://files.pythonhosted.org/packages/56/5d/c814546c2333ceea4ba42262d8c4d55763003e767fa169adc693bd524478/requests-2.33.0-py3-none-any.whl
+engine 9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897 https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl
+engine 771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea https://files.pythonhosted.org/packages/0e/61/66938bbb5fc52dbdf84594873d5b51fb1f7c7794e9c0f5bd885f30bc507b/idna-3.11-py3-none-any.whl
+engine 9943707519e4add1115f44c2bc244f782c0249876bf51b6599fee1ffbedd685c https://files.pythonhosted.org/packages/e6/ad/3cc14f097111b4de0040c83a525973216457bbeeb63739ef1ed275c1c021/certifi-2026.1.4-py3-none-any.whl
+engine 7a32c560861a02ff789ad905a2fe94e3f840803362c84fecf1851cb4cf3dc37f https://files.pythonhosted.org/packages/0a/4c/925909008ed5a988ccbb72dcc897407e5d6d3bd72410d69e051fc0c14647/charset_normalizer-3.4.4-py3-none-any.whl
+engine 68635866661c6836b8d39430f97a996acbd61bfa49406748ea243539fe239762 https://files.pythonhosted.org/packages/64/8d/0133e4eb4beed9e425d9a98ed6e081a55d195481b7632472be1af08d2f6b/rsa-4.9.1-py3-none-any.whl
+engine 1eb26d860996a18e9b6ed05e7aae0e9fc21619fcee6af91cca9bad4fbea224bf https://files.pythonhosted.org/packages/44/b5/a96872e5184f354da9c84ae119971a0a4c221fe9b27a4d94bd43f2596727/pyasn1-0.6.2-py3-none-any.whl
+engine 929292d34f5872e70396626ef385ec22355a1fae8ad29e1a734c3e43f9fbc216 https://files.pythonhosted.org/packages/da/71/ae30dadffc90b9006d77af76b393cb9dfbfc9629f339fc1574a1c52e6806/future-1.0.0-py3-none-any.whl

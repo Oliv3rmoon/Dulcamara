@@ -1,0 +1,90 @@
+# Dulcamara - the CPython modules built into Ren'Py's core (tools/build-renpy.sh copies this to Python's
+# Modules/Setup.local). Ren'Py's own list (renpy-build's Python-3.12.8-Setup.stdlib) without ctypes, which needs
+# libffi (PacBrew has none and Ren'Py does not import it at start), and without the terminal and macOS modules.
+# The rest of the standard library is Python, in the engine's lib/python312.zip.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+*static*
+_asyncio -DPy_BUILD_CORE_BUILTIN _asynciomodule.c
+_bisect -DPy_BUILD_CORE_BUILTIN _bisectmodule.c
+_bz2 -DPy_BUILD_CORE_BUILTIN _bz2module.c -lbz2
+_contextvars -DPy_BUILD_CORE_BUILTIN _contextvarsmodule.c
+_csv -DPy_BUILD_CORE_BUILTIN _csv.c
+_datetime -DPy_BUILD_CORE_BUILTIN _datetimemodule.c
+_heapq -DPy_BUILD_CORE_BUILTIN _heapqmodule.c
+_json -DPy_BUILD_CORE_BUILTIN -I$(srcdir)/Include/internal _json.c
+_lsprof -DPy_BUILD_CORE_BUILTIN _lsprof.c rotatingtree.c
+_opcode -DPy_BUILD_CORE_BUILTIN _opcode.c
+_pickle -DPy_BUILD_CORE_BUILTIN _pickle.c
+_queue -DPy_BUILD_CORE_BUILTIN _queuemodule.c
+_random -DPy_BUILD_CORE_BUILTIN _randommodule.c
+_statistics -DPy_BUILD_CORE_BUILTIN _statisticsmodule.c
+_struct -DPy_BUILD_CORE_BUILTIN _struct.c
+_typing -DPy_BUILD_CORE_BUILTIN _typingmodule.c
+_zoneinfo -DPy_BUILD_CORE_BUILTIN _zoneinfo.c
+array -DPy_BUILD_CORE_BUILTIN arraymodule.c
+binascii -DPy_BUILD_CORE_BUILTIN binascii.c
+cmath -DPy_BUILD_CORE_BUILTIN cmathmodule.c
+math -DPy_BUILD_CORE_BUILTIN mathmodule.c
+mmap -DPy_BUILD_CORE_BUILTIN mmapmodule.c
+select -DPy_BUILD_CORE_BUILTIN selectmodule.c
+unicodedata -DPy_BUILD_CORE_BUILTIN unicodedata.c
+zlib -DPy_BUILD_CORE_BUILTIN zlibmodule.c -lz
+_lzma -DPy_BUILD_CORE_BUILTIN _lzmamodule.c -llzma
+pyexpat -DPy_BUILD_CORE_BUILTIN expat/xmlparse.c expat/xmlrole.c expat/xmltok.c pyexpat.c -I$(srcdir)/Modules/expat -DHAVE_EXPAT_CONFIG_H -DXML_POOR_ENTROPY -DUSE_PYEXPAT_CAPI
+_elementtree -DPy_BUILD_CORE_BUILTIN -I$(srcdir)/Modules/expat -DHAVE_EXPAT_CONFIG_H -DUSE_PYEXPAT_CAPI _elementtree.c
+_md5 md5module.c -DPy_BUILD_CORE_BUILTIN -I$(srcdir)/Modules/_hacl/include _hacl/Hacl_Hash_MD5.c -D_BSD_SOURCE -D_DEFAULT_SOURCE
+_sha1 sha1module.c -DPy_BUILD_CORE_BUILTIN -I$(srcdir)/Modules/_hacl/include _hacl/Hacl_Hash_SHA1.c -D_BSD_SOURCE -D_DEFAULT_SOURCE
+_sha2 sha2module.c -DPy_BUILD_CORE_BUILTIN -I$(srcdir)/Modules/_hacl/include _hacl/Hacl_Hash_SHA2.c -D_BSD_SOURCE -D_DEFAULT_SOURCE
+_sha3 sha3module.c -DPy_BUILD_CORE_BUILTIN -I$(srcdir)/Modules/_hacl/include _hacl/Hacl_Hash_SHA3.c -D_BSD_SOURCE -D_DEFAULT_SOURCE
+_blake2 -DPy_BUILD_CORE_BUILTIN _blake2/blake2module.c _blake2/blake2b_impl.c _blake2/blake2s_impl.c -D_BSD_SOURCE -D_DEFAULT_SOURCE
+_codecs_cn -DPy_BUILD_CORE_BUILTIN cjkcodecs/_codecs_cn.c
+_codecs_hk -DPy_BUILD_CORE_BUILTIN cjkcodecs/_codecs_hk.c
+_codecs_iso2022 -DPy_BUILD_CORE_BUILTIN cjkcodecs/_codecs_iso2022.c
+_codecs_jp -DPy_BUILD_CORE_BUILTIN cjkcodecs/_codecs_jp.c
+_codecs_kr -DPy_BUILD_CORE_BUILTIN cjkcodecs/_codecs_kr.c
+_codecs_tw -DPy_BUILD_CORE_BUILTIN cjkcodecs/_codecs_tw.c
+_multibytecodec -DPy_BUILD_CORE_BUILTIN cjkcodecs/multibytecodec.c
+_socket -DPy_BUILD_CORE_BUILTIN socketmodule.c
+_ssl -DPy_BUILD_CORE_BUILTIN _ssl.c $(OPENSSL_INCLUDES) $(OPENSSL_LDFLAGS) $(OPENSSL_LIBS)
+_hashlib -DPy_BUILD_CORE_BUILTIN _hashopenssl.c $(OPENSSL_INCLUDES) $(OPENSSL_LDFLAGS) -lcrypto
+fcntl -DPy_BUILD_CORE_BUILTIN fcntlmodule.c
+_posixsubprocess -DPy_BUILD_CORE_BUILTIN _posixsubprocess.c
+
+*disabled*
+_ctypes
+_ctypes_test
+_curses
+_curses_panel
+_dbm
+_gdbm
+_tkinter
+_uuid
+_sqlite3
+_decimal
+_multiprocessing
+_posixshmem
+_scproxy
+_crypt
+audioop
+grp
+nis
+ossaudiodev
+readline
+resource
+spwd
+syslog
+termios
+xxlimited
+xxlimited_35
+xxsubtype
+_testcapi
+_testinternalcapi
+_testbuffer
+_testclinic
+_testimportmultiple
+_testmultiphase
+_testsinglephase
+_xxsubinterpreters
+_xxinterpchannels
+_xxtestfuzz
