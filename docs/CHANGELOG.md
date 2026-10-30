@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.1
+
+A test build for Ren'Py on the console: 0.2.0 crashed on a PS5 as a Ren'Py 8 game started.
+
+- **Ren'Py's cores keep an environment of their own.** On the console 0.2.0's crash came a moment after Ren'Py's
+  thread started, in a system library reading a string through a bad pointer, where Python copies the console's
+  environment (`environ`) into `os.environ`. The cores no longer read the console's environment or call its
+  `setenv`: Python, SDL and FFmpeg inside them see the core's own few variables.
+- **The log says how far a Ren'Py game got.** Each step of starting it is written to `dulcamara.log` at once
+  ("renpy: step: ..."): loading, Ren'Py's thread, Python starting and started, the boot script, SDL, OpenGL and the
+  first picture.
+- **Crash reports name what crashed.** A report now says which module the faulting instruction, the faulting
+  address and each return address are in (the title or a system module, with the offset), and whether the main
+  thread or another crashed. It reads the crashing thread's stack only as far as it is mapped: 0.2.0's report
+  stopped short on a thread that had just started.
+
 ## 0.2.0
 
 Ren'Py visual novels in the same app, on Ren'Py itself.

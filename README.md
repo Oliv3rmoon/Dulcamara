@@ -23,7 +23,7 @@ so it shares its frontend: the Vulkan screen with its CRT shaders, the black-and
 [Nightshade](https://github.com/Oliv3rmoon/Nightshade) and the updates from its own releases. It is the
 first step of a Nightshade answer to JoiPlay: Ren'Py visual novels run in the same app, on Ren'Py itself
 built in as two more cores (Ren'Py 8, and Ren'Py 7 for older games), with the same shaders and fast-forward. The current
-version is **0.2.0**; what changed is in the [changelog](docs/CHANGELOG.md).
+version is **0.2.1**; what changed is in the [changelog](docs/CHANGELOG.md).
 
 ## What you get
 
