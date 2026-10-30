@@ -16,6 +16,7 @@
 #include <pwd.h>
 #include <runetype.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,18 +40,36 @@ const _RuneLocale *__getCurrentRuneLocale(void)
 
 /* ---------------------------------------------------------------- time */
 
-/* gmtime and localtime return one shared struct: copied out under a lock */
-static pthread_mutex_t time_lock = PTHREAD_MUTEX_INITIALIZER;
-
+/* UTC by arithmetic alone (the days to a civil date, as Howard Hinnant's days_from_civil inverts them) */
 struct tm *gmtime_r(const time_t *t, struct tm *out)
 {
-    pthread_mutex_lock(&time_lock);
-    const struct tm *shared = gmtime(t);
-    if (shared)
-        *out = *shared;
-    pthread_mutex_unlock(&time_lock);
-    return shared ? out : NULL;
+    long long days = (long long)*t / 86400, seconds = (long long)*t % 86400;
+    if (seconds < 0)
+        seconds += 86400, --days;
+    memset(out, 0, sizeof(*out));
+    out->tm_hour = (int)(seconds / 3600);
+    out->tm_min = (int)(seconds / 60 % 60);
+    out->tm_sec = (int)(seconds % 60);
+    out->tm_wday = (int)((days % 7 + 11) % 7); /* 1970-01-01 was a Thursday */
+    const long long z = days + 719468, era = (z >= 0 ? z : z - 146096) / 146097;
+    const long long doe = z - era * 146097;
+    const long long yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const long long doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const long long mp = (5 * doy + 2) / 153;
+    const int day = (int)(doy - (153 * mp + 2) / 5 + 1), month = (int)(mp < 10 ? mp + 3 : mp - 9);
+    const long long year = yoe + era * 400 + (month <= 2);
+    static const int BEFORE[12] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    const bool leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    out->tm_year = (int)(year - 1900);
+    out->tm_mon = month - 1;
+    out->tm_mday = day;
+    out->tm_yday = BEFORE[month - 1] + day - 1 + (leap && month > 2);
+    return out;
 }
+
+/* localtime needs the console's time zone: its one shared struct is copied out under a lock (the app's own calls
+ * are the frontend's, between frames) */
+static pthread_mutex_t time_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct tm *localtime_r(const time_t *t, struct tm *out)
 {
@@ -210,10 +229,10 @@ int mknodat(int dir, const char *path, mode_t mode, dev_t device)
     return unsupported();
 }
 
+/* closefrom belongs in a child process, which a title never has: here it would close the app's own files */
 void closefrom(int lowest)
 {
-    for (int fd = lowest; fd < 1024; ++fd)
-        close(fd);
+    (void)lowest;
 }
 
 /* mkstemp is only in libScePosixForWebKit's stub (null in a title): FFmpeg's av_tempfile asks for it */

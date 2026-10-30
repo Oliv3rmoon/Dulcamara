@@ -40,7 +40,7 @@ static int gl_attributes[64];
 static SDL_Window *gl_window;
 static int context_token; /* SDL_GLContext is a pointer: the core's one context is this address */
 static int window_w = 1280, window_h = 720;
-static SDL_Window *picture_window; /* the window the picture is drawn for: the pointer moves in it */
+static Uint32 picture_window; /* the window the picture is drawn for (its id: SDL may have destroyed it since) */
 
 void hooks_reset(void)
 {
@@ -50,7 +50,7 @@ void hooks_reset(void)
     pthread_mutex_unlock(&timer_lock);
     memset(gl_attributes, 0, sizeof(gl_attributes));
     gl_window = NULL;
-    picture_window = NULL;
+    picture_window = 0;
     window_w = 1280;
     window_h = 720;
 }
@@ -150,7 +150,7 @@ SDL_bool dr_RemoveTimer(SDL_TimerID id)
 static void before_events(void)
 {
     fire_timers();
-    input_pump(picture_window, window_w, window_h);
+    input_pump(picture_window ? SDL_GetWindowFromID(picture_window) : NULL, window_w, window_h);
 }
 
 int dr_PollEvent(SDL_Event *event)
@@ -253,7 +253,7 @@ SDL_Window *dr_CreateWindow(const char *title, int x, int y, int w, int h, Uint3
     SDL_Window *window = SDL_CreateWindow(title, 0, 0, w, h, flags | SDL_WINDOW_HIDDEN);
     if (window)
     {
-        picture_window = window;
+        picture_window = SDL_GetWindowID(window);
         window_w = w;
         window_h = h;
         log_queue(1, "renpy: the picture is %dx%d", w, h);
