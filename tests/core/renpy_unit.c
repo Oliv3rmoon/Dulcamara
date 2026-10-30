@@ -4,9 +4,11 @@
  * has OpenGL without a screen, the read-back (gl.c). tests/test_renpy_core.py runs it.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
+#include "../../src/core/renpy/audio.h"
 #include "../../src/core/renpy/frames.h"
 #include "../../src/core/renpy/handoff.h"
 
+#include <math.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -182,12 +184,58 @@ static void check_frames(void)
     frames_reset();
 }
 
+/* ---------------------------------------------------------------- the sound */
+
+static float mixed;
+
+static void fake_mixer(void *userdata, uint8_t *stream, int len)
+{
+    (void)userdata;
+    float *samples = (float *)(void *)stream;
+    for (int i = 0; i < len / (int)sizeof(float); ++i)
+        samples[i] += mixed; /* Ren'Py's mixer adds into a stream SDL has filled with silence */
+}
+
+static void check_audio(void)
+{
+    int freq = 44100;
+    uint8_t channels = 1;
+    CHECK(audio_open(&freq, &channels, fake_mixer, NULL) == 0, "opened");
+    CHECK(freq == DR_AUDIO_RATE && channels == 2, "Ren'Py is told 48000 Hz stereo (%d Hz, %u channels)", freq,
+          channels);
+    static int16_t out[1600 * 2];
+    mixed = 0.5f;
+    audio_render(out, 1600);
+    CHECK(out[0] == 0 && out[3199] == 0, "silent until Ren'Py starts the sound");
+    audio_pause(false);
+    audio_render(out, 1600);
+    CHECK(out[0] == 16384 && out[3199] == 16384, "half volume is 16384 (%d, %d)", out[0], out[3199]);
+    mixed = 2.0f;
+    audio_render(out, 4);
+    CHECK(out[0] == 32767, "too loud is clipped (%d)", out[0]);
+    mixed = -2.0f;
+    audio_render(out, 4);
+    CHECK(out[0] == -32768, "too loud the other way is clipped (%d)", out[0]);
+    audio_lock();
+    audio_lock(); /* SDL_LockAudio may be taken twice */
+    audio_unlock();
+    audio_unlock();
+    audio_close();
+    audio_render(out, 4);
+    CHECK(out[0] == 0, "silent once closed");
+    const float odd[3] = {0.0f, NAN, -1.0f};
+    int16_t converted[3];
+    audio_float_to_s16(odd, converted, 3);
+    CHECK(converted[1] == 0 && converted[2] == -32768, "NaN is silence, -1 is -32768");
+}
+
 int main(void)
 {
     check_lockstep();
     check_a_busy_ren_py();
     check_stop();
     check_frames();
+    check_audio();
     printf("%d checks, %d failed\n", checks, failures);
     printf(failures ? "FAIL\n" : "PASS\n");
     return failures ? 1 : 0;
