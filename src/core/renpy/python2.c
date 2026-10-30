@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 
 void renpy_extend_inittab(void); /* inittab.c */
@@ -40,15 +41,27 @@ static long renpy_ident;
 
 /* ---------------------------------------------------------------- _dulcamara */
 
+/* The game's clock on Ren'Py's thread; the real one on the others (a game's own threads, a download): their timeouts
+ * then pass while the game is paused or being closed, and nothing on them is compared with Ren'Py's own times. */
+static double wall_now(void);
+
 static PyObject *py_time(PyObject *self, PyObject *unused)
 {
     (void)self, (void)unused;
+    if (!handoff_on_engine_thread())
+        return PyFloat_FromDouble(wall_now());
     return PyFloat_FromDouble(wall_start + (double)handoff_now_usec() / 1e6);
 }
 
 static PyObject *py_monotonic(PyObject *self, PyObject *unused)
 {
     (void)self, (void)unused;
+    if (!handoff_on_engine_thread())
+    {
+        struct timespec t;
+        clock_gettime(CLOCK_MONOTONIC, &t);
+        return PyFloat_FromDouble((double)t.tv_sec + (double)t.tv_nsec / 1e9);
+    }
     return PyFloat_FromDouble((double)handoff_now_usec() / 1e6);
 }
 
