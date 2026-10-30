@@ -9,6 +9,7 @@
  *   play   Cross through the dialogue, Down and Cross to choose Right; the game saves and quits.
  *   load   the game loads that save (DULCAMARA_TEST_LOAD=1); Cross, and it quits.
  *   start  the game starts and shows a picture; it is then closed while it waits.
+ *   compile  Ren'Py's compile command (DULCAMARA_RENPY_COMMAND=compile): Ren'Py compiles the scripts and ends.
  *   click  a press of the pointer (the touchpad) in the middle of the picture moves the dialogue on, as a click.
  *   skip   with fast-forward on from the start, the dialogue goes by without Cross (DULCAMARA_TEST_SKIP=1); then
  *          fast-forward is off, and Down and Cross choose in the menu as in "play".
@@ -290,6 +291,11 @@ int main(int argc, char **argv)
         press(RETRO_DEVICE_ID_JOYPAD_B);
         ended = until_shutdown();
     }
+    else if (ok && !strcmp(mode, "compile"))
+    {
+        ended = until_shutdown();
+        ok = ended && !logged("Ren'Py reported an error");
+    }
     else if (ok && !strcmp(mode, "click"))
     {
         ok = until_logged("DULCAMARA-TEST: started") && until_picture();
@@ -340,9 +346,10 @@ int main(int argc, char **argv)
     bool verdict = ok && changed && ended;
     if (refreshes != (uint64_t)ran)
         verdict = false, printf("FAIL: %llu frames called video_refresh, of %d\n", (unsigned long long)refreshes, ran);
+    const bool drew = strcmp(mode, "compile") != 0; /* compiling draws nothing */
     if (!xrgb)
         verdict = false, printf("FAIL: the core did not ask for XRGB8888\n");
-    if (distinct < (played ? 2u : 1u))
+    if (drew && distinct < (played ? 2u : 1u))
         verdict = false, printf("FAIL: the picture hardly changed\n");
     if (!strcmp(mode, "play") && sound_loud <= 10)
         verdict = false, printf("FAIL: no sound\n");

@@ -16,7 +16,7 @@
 host=$(cd "$root/build/renpy-host" && pwd -P)
 hostpy="$host/python/bin/python3.12"
 [[ -x $hostpy && -f $host/gen/inittab.c && -d $host/assets/renpy8 ]] || {
-    echo "the host build is incomplete: run tools/build-renpy.sh engine" >&2
+    echo "the host build is incomplete: run tools/build-renpy.sh host" >&2
     exit 1
 }
 
@@ -254,12 +254,12 @@ LC_ALL=C comm -23 "$work/undefined.txt" "$work/console.txt" | grep -vxE 'dirfd|n
     >"$work/unresolved.txt" || true
 
 # ---- the engine: the host's (Ren'Py's Python, the standard library, the packages are the same on the console)
-engine_key="engine-ps5-1 $(cat "$host/.engine")"
+engine_key="engine-ps5-2 $(cat "$host/.engine") $(cat "$host/.compile" 2>/dev/null)"
 if ! fresh engine "$engine_key"; then
+    [[ -f $host/.compile ]] || { echo "Ren'Py's common scripts are not compiled: run tools/build-renpy.sh host" >&2; exit 1; }
     rm -rf "$out/assets"
     mkdir -p "$out/assets"
     cp -R "$host/assets/renpy8" "$out/assets/renpy8"
-    find "$out/assets/renpy8" -name '*.rpyc' -delete
     stamp engine "$engine_key"
 fi
 

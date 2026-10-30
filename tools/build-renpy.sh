@@ -29,8 +29,9 @@ case $target in ps5|host|engine) ;; *)
     echo "usage: tools/build-renpy.sh [ps5|host|engine]" >&2
     exit 2
 esac
-# The PS5 build starts from the host's: its Python runs the build, its generated C and engine are the console's too.
-[[ $target == ps5 ]] && bash "$root/tools/build-renpy.sh" engine
+# The PS5 build starts from the host's: its Python runs the build, its generated C and engine (with Ren'Py's common
+# scripts compiled by the host core) are the console's too.
+[[ $target == ps5 ]] && bash "$root/tools/build-renpy.sh" host
 renpy="$root/third_party/renpy"
 folder=$target
 [[ $target == engine ]] && folder=host
@@ -430,4 +431,19 @@ python_modlibs=$("$py" -c "import sysconfig; print(' '.join(w for w in sysconfig
     $(pkg-config --libs SDL2_image sdl2 freetype2 harfbuzz fribidi libpng libjpeg libwebp zlib) \
     "${gl_libs[@]}" -pthread -lm \
     >>"$log/core.log" 2>&1 || fail core
+# ---- Ren'Py's common scripts, compiled into the engine by Ren'Py's own compile command, run by the core: the console's
+# app folder is read-only, and Ren'Py would otherwise compile them at every start.
+compile_key="compile-1 $engine_key"
+if ! fresh compile "$compile_key"; then
+    echo "==> [renpy] Ren'Py's common scripts, compiled"
+    find "$out/assets/renpy8/renpy/common" -name '*.rpyc' -delete
+    rm -rf "$out/work/compile"
+    mkdir -p "$out/work/compile/game/game"
+    printf 'label start:\n    return\n' >"$out/work/compile/game/game/script.rpy"
+    DULCAMARA_RENPY_COMMAND=compile "$check/renpy-headless" "$out/assets" compile "$out/work/compile/game" \
+        "$out/work/compile/data" >"$log/compile.log" 2>&1 || fail compile
+    missing=$(find "$out/assets/renpy8/renpy/common" -name '*.rpy' | while read -r f; do [[ -f ${f}c ]] || echo "$f"; done)
+    [[ -z $missing ]] || { echo "Ren'Py did not compile: $missing" >&2; exit 1; }
+    stamp compile "$compile_key"
+fi
 echo "==> [renpy] $check/renpy-headless"

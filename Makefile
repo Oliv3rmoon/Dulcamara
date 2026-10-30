@@ -94,14 +94,17 @@ doctor:
 
 test: host-checks test-unit test-integration test-elevation test-update-check test-self-update
 
-# Dulcamara's own host checks: the library's game detection (tests/test_library.py) and EasyRPG Player's
-# core run headless on EasyRPG's TestGame (tests/test_core.py). Neither needs the PS5 SDK.
-.PHONY: host-checks test-library test-core
-host-checks: test-library test-core
+# Dulcamara's own host checks: the library's game detection (tests/test_library.py), EasyRPG Player's core run
+# headless on EasyRPG's TestGame (tests/test_core.py) and Ren'Py's on tests/renpy-game (tests/test_renpy_core.py).
+# None needs the PS5 SDK.
+.PHONY: host-checks test-library test-core test-renpy-core
+host-checks: test-library test-core test-renpy-core
 test-library:
 	@python3 -m unittest tests.test_library -v
 test-core:
 	@python3 -m unittest tests.test_core -v
+test-renpy-core:
+	@python3 -m unittest tests.test_renpy_core -v
 
 .PHONY: test-elevation
 test-elevation:

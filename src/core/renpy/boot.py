@@ -68,7 +68,9 @@ os.environ["RENPY_PATH_TO_SAVES"] = saves
 # MultiPersistent data goes to ~/.renpy (or ~/Library/RenPy on macOS): with HOME the saves folder, it stays with
 # the saves, and the host check never writes into the user's own home.
 os.environ["HOME"] = saves
-sys.argv = [os.path.join(engine, "renpy.py"), game]
+# DULCAMARA_RENPY_COMMAND: a command of Ren'Py's own instead of the game ("compile", which tools/build-renpy.sh
+# runs to compile Ren'Py's common scripts into the engine)
+sys.argv = [os.path.join(engine, "renpy.py"), game] + os.environ.get("DULCAMARA_RENPY_COMMAND", "").split()
 status = 0
 try:
     runpy.run_path(sys.argv[0], run_name="__main__")
