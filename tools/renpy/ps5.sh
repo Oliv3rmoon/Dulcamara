@@ -62,6 +62,8 @@ unset CC CXX CFLAGS CXXFLAGS LDFLAGS
 # tools/renpy/Setup.local. Only the library is built: Python itself runs on the build machine (the host build's).
 build_python_ps5() {
     echo "==> [renpy ps5] CPython $python_version"
+    fetch "https://www.python.org/ftp/python/$python_version/Python-$python_version.tar.xz" \
+        "Python-$python_version.tar.xz" "$python_hash"
     unpack "Python-$python_version.tar.xz" "$out/work/python"
     rm -rf "$out/python"
     local src="$out/work/python/Python-$python_version"
@@ -87,6 +89,7 @@ build_python_ps5() {
 # ---- FFmpeg for the PS5: milestone 1's options, cross-compiled; x86 assembly when nasm is there to build it.
 build_ffmpeg_ps5() {
     echo "==> [renpy ps5] FFmpeg $ffmpeg_version"
+    fetch "https://ffmpeg.org/releases/ffmpeg-$ffmpeg_version.tar.gz" "ffmpeg-$ffmpeg_version.tar.gz" "$ffmpeg_hash"
     unpack "ffmpeg-$ffmpeg_version.tar.gz" "$out/work/ffmpeg"
     local src="$out/work/ffmpeg/ffmpeg-$ffmpeg_version" p asm=(--disable-x86asm)
     : >"$log/ffmpeg.log"
@@ -116,6 +119,8 @@ build_ffmpeg_ps5() {
 # ---- Assimp for the PS5, through a CMake toolchain like tools/build-easyrpg.sh's (CMake's checks only compile).
 build_assimp_ps5() {
     echo "==> [renpy ps5] Assimp $assimp_version"
+    fetch "https://github.com/assimp/assimp/archive/refs/tags/v$assimp_version.tar.gz" \
+        "assimp-$assimp_version.tar.gz" "$assimp_hash"
     unpack "assimp-$assimp_version.tar.gz" "$out/work/assimp"
     local src="$out/work/assimp/assimp-$assimp_version" generator=()
     command -v ninja >/dev/null && generator=(-G Ninja -DCMAKE_MAKE_PROGRAM="$(command -v ninja)")
