@@ -15,6 +15,27 @@
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t to_engine = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t to_frontend = PTHREAD_COND_INITIALIZER;
+
+/* The waits time out by the monotonic clock, which a change of the system's time does not move; macOS has no
+ * pthread_condattr_setclock, so there they keep the real-time clock pthread_cond_timedwait uses by default. */
+#if defined(__APPLE__)
+#define WAIT_CLOCK CLOCK_REALTIME
+static void use_wait_clock(void)
+{
+}
+#else
+#define WAIT_CLOCK CLOCK_MONOTONIC
+static void use_wait_clock(void)
+{
+    pthread_condattr_t monotonic;
+    pthread_condattr_init(&monotonic);
+    pthread_condattr_setclock(&monotonic, CLOCK_MONOTONIC);
+    pthread_cond_init(&to_engine, &monotonic);
+    pthread_cond_init(&to_frontend, &monotonic);
+    pthread_condattr_destroy(&monotonic);
+}
+#endif
+static pthread_once_t wait_clock_once = PTHREAD_ONCE_INIT;
 static pthread_t engine;
 static bool engine_known, stopping, ended;
 static int64_t now_usec;
@@ -22,6 +43,7 @@ static uint64_t frames, engine_frame, yields;
 
 void handoff_reset(void)
 {
+    pthread_once(&wait_clock_once, use_wait_clock); /* before either thread waits: every user resets first */
     pthread_mutex_lock(&lock);
     engine_known = stopping = ended = false;
     now_usec = 0;
@@ -33,7 +55,7 @@ void handoff_reset(void)
 static struct timespec deadline(int64_t wait_usec)
 {
     struct timespec t;
-    clock_gettime(CLOCK_REALTIME, &t);
+    clock_gettime(WAIT_CLOCK, &t);
     const int64_t ns = (int64_t)t.tv_nsec + (wait_usec % 1000000) * 1000;
     t.tv_sec += (time_t)(wait_usec / 1000000 + ns / 1000000000);
     t.tv_nsec = (long)(ns % 1000000000);
