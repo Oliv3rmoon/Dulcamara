@@ -23,13 +23,14 @@ so it shares its frontend: the Vulkan screen with its CRT shaders, the black-and
 [Nightshade](https://github.com/Oliv3rmoon/Nightshade) and the updates from its own releases. It is the
 first step of a Nightshade answer to JoiPlay: Ren'Py visual novels run in the same app, on Ren'Py itself
 built in as two more cores (Ren'Py 8, and Ren'Py 7 for older games), with the same shaders and fast-forward. The current
-version is **0.1.0**; what changed is in the [changelog](docs/CHANGELOG.md).
+version is **0.2.0**; what changed is in the [changelog](docs/CHANGELOG.md).
 
 ## What you get
 
 - **Ren'Py visual novels.** Ren'Py 8.5 is built into the app (with Python 3.12 and FFmpeg for its music, voice
   and movies), and Ren'Py 7.8 (with Python 2.7) for games made with Ren'Py 7 or 6; the library picks the one a
-  game was made with. A game brings only its `game/` folder, as with JoiPlay. Cross moves the story on and
+  game was made with. Copy a game's whole folder: the app plays its `game/` folder, and its `renpy/` or `lib/`
+  folder says which Ren'Py it needs (Ren'Py's own engine there is not used). Cross moves the story on and
   chooses, Circle opens the game's menu, L1 and R1 roll back and forward, R2 fast-forwards and skips text already
   read, and the touchpad is the mouse. Saves go to `/data/dulcamara/saves/renpy`. Ren'Py runs one game each time
   the app starts, so opening a second one starts the app again.
@@ -81,7 +82,7 @@ Like Mandrake, it needs `/data` unlocked to look into its games folder: LegacyJB
 │   ├── <Series>/<Game>/             or one folder down
 │   ├── <Game>.zip                   or a .zip of the game (the game at its root or in a folder inside it)
 │   ├── <Game>.easyrpg               or an .easyrpg (a .zip by another name)
-│   └── <Ren'Py game>/               a Ren'Py game's folder, with game/ (and renpy/, lib/... which are not used)
+│   └── <Ren'Py game>/               a Ren'Py game's folder, with game/ (its renpy/ or lib/ tells which Ren'Py)
 ├── rtp/2000/ and rtp/2003/          the RPG Maker run-time packages (RTP), for games that need them
 ├── saves/renpy/                    Ren'Py games' saves, one folder each (their config.save_directory)
 ├── settings.ini, played.txt

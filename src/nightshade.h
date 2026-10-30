@@ -14,7 +14,7 @@
 #define NP_NAME "Dulcamara"   /* identifiers: the User-Agent of network requests, the Vulkan application name */
 #define NP_TITLE "Dulcamara" /* what is shown on screen */
 #define NP_TITLE_ID "PPSA99010"
-#define NP_VERSION "0.1.0"
+#define NP_VERSION "0.2.0"
 #define NP_DATA "/data/dulcamara" /* the data folder on the console */
 #define NP_PATH_MAX 512
 
