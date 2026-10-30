@@ -91,10 +91,21 @@ static PyObject *py_log(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *py_step(PyObject *self, PyObject *args)
+{
+    (void)self;
+    const char *text;
+    if (!PyArg_ParseTuple(args, "s", &text))
+        return NULL;
+    log_step("%s", text);
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef methods[] = {
     {"time", py_time, METH_NOARGS, "time.time() by the core's clock."},
     {"monotonic", py_monotonic, METH_NOARGS, "time.monotonic() by the core's clock."},
     {"sleep", py_sleep, METH_O, "time.sleep() on Ren'Py's thread, by the core's clock."},
+    {"step", py_step, METH_VARARGS, "step(text): a step of starting Ren'Py, written to Dulcamara's log at once."},
     {"log", py_log, METH_VARARGS, "log(level, text): a line of Dulcamara's log."},
     {NULL, NULL, 0, NULL},
 };
@@ -132,6 +143,7 @@ static bool start_interpreter(const char *boot)
     PyPreConfig pre;
     PyPreConfig_InitIsolatedConfig(&pre);
     pre.utf8_mode = 1; /* file names are UTF-8, as the console's are */
+    log_step("Python's pre-configuration");
     if (!ok(Py_PreInitialize(&pre), "start"))
         return false;
     PyImport_AppendInittab("_dulcamara", init_dulcamara);
@@ -156,11 +168,16 @@ static bool start_interpreter(const char *boot)
     search_path(&config, path);
     search_path(&config, engine);
     char *argv[] = {(char *)boot, engine, game, saves};
-    const bool up = ok(PyConfig_SetBytesString(&config, &config.home, engine), "set its home") &&
-                    ok(PyConfig_SetBytesString(&config, &config.program_name, "renpy"), "set its name") &&
-                    ok(PyConfig_SetBytesArgv(&config, 4, argv), "set its arguments") &&
-                    ok(Py_InitializeFromConfig(&config), "start");
+    log_step("Python's configuration");
+    const bool set = ok(PyConfig_SetBytesString(&config, &config.home, engine), "set its home") &&
+                     ok(PyConfig_SetBytesString(&config, &config.program_name, "renpy"), "set its name") &&
+                     ok(PyConfig_SetBytesArgv(&config, 4, argv), "set its arguments");
+    if (set)
+        log_step("Python starting");
+    const bool up = set && ok(Py_InitializeFromConfig(&config), "start");
     PyConfig_Clear(&config);
+    if (up)
+        log_step("Python started");
     return up;
 }
 
@@ -168,6 +185,7 @@ static void *renpy_main(void *unused)
 {
     (void)unused;
     handoff_engine_begin();
+    log_step("Ren'Py's thread running");
     char boot[1100];
     snprintf(boot, sizeof(boot), "%s/dulcamara_boot.py", engine);
     if (start_interpreter(boot))
@@ -183,6 +201,8 @@ static void *renpy_main(void *unused)
         PyObject *run_path = runpy ? PyObject_GetAttrString(runpy, "run_path") : NULL;
         PyObject *args = run_path ? Py_BuildValue("(s)", boot) : NULL;
         PyObject *kwargs = args ? Py_BuildValue("{s:s}", "run_name", "__main__") : NULL;
+        if (kwargs)
+            log_step("the boot script running");
         PyObject *result = kwargs ? PyObject_Call(run_path, args, kwargs) : NULL;
         Py_XDECREF(kwargs);
         Py_XDECREF(args);

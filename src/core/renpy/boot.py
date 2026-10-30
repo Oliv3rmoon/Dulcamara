@@ -17,6 +17,7 @@ import _dulcamara
 import dulcamara_errors
 
 engine, game, saves = sys.argv[1:4]
+_dulcamara.step("the boot script's modules imported")
 
 
 class Log(io.TextIOBase):
@@ -71,6 +72,7 @@ os.environ["HOME"] = saves
 # DULCAMARA_RENPY_COMMAND: a command of Ren'Py's own instead of the game ("compile", which tools/build-renpy.sh
 # runs to compile Ren'Py's common scripts into the engine)
 sys.argv = [os.path.join(engine, "renpy.py"), game] + os.environ.get("DULCAMARA_RENPY_COMMAND", "").split()
+_dulcamara.step("Ren'Py starting")
 status = 0
 try:
     runpy.run_path(sys.argv[0], run_name="__main__")

@@ -228,6 +228,12 @@ void gl_present(void)
 {
     if (!made)
         return;
+    static bool first = true;
+    if (first)
+    {
+        log_step("the first picture, %dx%d", width, height);
+        first = false;
+    }
     const int64_t start = now_usec();
     const Bindings b = save_bindings();
     gl.BindFramebuffer(GL_FRAMEBUFFER, fbo);

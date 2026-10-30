@@ -89,10 +89,21 @@ static PyObject *py_log(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *py_step(PyObject *self, PyObject *args)
+{
+    (void)self;
+    const char *text;
+    if (!PyArg_ParseTuple(args, "s", &text))
+        return NULL;
+    log_step("%s", text);
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef methods[] = {
     {"time", py_time, METH_NOARGS, "time.time() by the core's clock."},
     {"monotonic", py_monotonic, METH_NOARGS, "time.time() since the game started, by the core's clock."},
     {"sleep", py_sleep, METH_O, "time.sleep() on Ren'Py's thread, by the core's clock."},
+    {"step", py_step, METH_VARARGS, "step(text): a step of starting Ren'Py, written to Dulcamara's log at once."},
     {"log", py_log, METH_VARARGS, "log(level, text): a line of Dulcamara's log (text in UTF-8)."},
     {NULL, NULL, 0, NULL},
 };
@@ -108,6 +119,7 @@ static void *renpy_main(void *unused)
 {
     (void)unused;
     handoff_engine_begin();
+    log_step("Ren'Py's thread running");
     static char boot[1100], home[1024], path[4200], name[] = "renpy", encoding[] = "utf-8";
     snprintf(boot, sizeof(boot), "%s/dulcamara_boot.py", engine);
     snprintf(home, sizeof(home), "%s", engine);
@@ -123,7 +135,9 @@ static void *renpy_main(void *unused)
     Py_SetPythonHome(home); /* the standard library: <engine>/lib/python27.zip */
     PyImport_AppendInittab("_dulcamara", init_dulcamara);
     renpy_extend_inittab();
+    log_step("Python starting");
     Py_InitializeEx(0);
+    log_step("Python started");
     PyEval_InitThreads(); /* the GIL, for Ren'Py's own threads and for python_stop */
     char *argv[] = {boot, engine, game, saves};
     PySys_SetArgvEx(4, argv, 0);
@@ -140,6 +154,8 @@ static void *renpy_main(void *unused)
     PyObject *run_path = runpy ? PyObject_GetAttrString(runpy, "run_path") : NULL;
     PyObject *args = run_path ? Py_BuildValue("(s)", boot) : NULL;
     PyObject *kwargs = args ? Py_BuildValue("{s:s}", "run_name", "__main__") : NULL;
+    if (kwargs)
+        log_step("the boot script running");
     PyObject *result = kwargs ? PyObject_Call(run_path, args, kwargs) : NULL;
     Py_XDECREF(kwargs);
     Py_XDECREF(args);

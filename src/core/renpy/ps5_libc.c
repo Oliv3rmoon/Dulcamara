@@ -28,6 +28,119 @@
 #include <time.h>
 #include <unistd.h>
 
+/* ---------------------------------------------------------------- the environment: the core's own */
+
+/* A title's environment is not one to rely on: libkernel's environ (which Python copies into os.environ as it starts,
+ * reading every entry) is the console's to set up, and libSceLibcInternal's setenv keeps its own. Dulcamara 0.2.0
+ * crashed on the console a moment after Ren'Py's thread started, in a system library reading a string through a bad
+ * pointer, which is where that copy reads. The core keeps its own environment instead, for Python's os.environ,
+ * SDL's hints and FFmpeg's settings alike: a few entries, its own strings. */
+#define ENVIRONMENT_SIZE 64
+static pthread_mutex_t environment_lock = PTHREAD_MUTEX_INITIALIZER;
+static char *entries[ENVIRONMENT_SIZE + 1]; /* "NAME=value", then NULL */
+char **environ = entries;
+
+/* the entry for name (n bytes long), or -1 */
+static int entry_of(const char *name, size_t n)
+{
+    for (int i = 0; entries[i]; ++i)
+        if (!strncmp(entries[i], name, n) && entries[i][n] == '=')
+            return i;
+    return -1;
+}
+
+static bool valid_name(const char *name)
+{
+    return name && *name && !strchr(name, '=');
+}
+
+char *getenv(const char *name)
+{
+    if (!valid_name(name))
+        return NULL;
+    pthread_mutex_lock(&environment_lock);
+    const size_t n = strlen(name);
+    const int i = entry_of(name, n);
+    char *value = i >= 0 ? entries[i] + n + 1 : NULL;
+    pthread_mutex_unlock(&environment_lock);
+    return value;
+}
+
+/* entry ("NAME=value", which the environment keeps) for name; an entry it replaces is kept too, as a getenv's answer
+ * may still be in use */
+static int put_entry(const char *name, size_t n, char *entry, bool overwrite)
+{
+    pthread_mutex_lock(&environment_lock);
+    int i = entry_of(name, n), result = 0;
+    if (i >= 0)
+    {
+        if (overwrite)
+            entries[i] = entry;
+    }
+    else
+    {
+        for (i = 0; entries[i]; ++i)
+            ;
+        if (i < ENVIRONMENT_SIZE)
+        {
+            entries[i] = entry;
+            entries[i + 1] = NULL;
+        }
+        else
+        {
+            errno = ENOMEM;
+            result = -1;
+        }
+    }
+    pthread_mutex_unlock(&environment_lock);
+    return result;
+}
+
+int setenv(const char *name, const char *value, int overwrite)
+{
+    if (!valid_name(name) || !value)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    const size_t n = strlen(name), size = n + strlen(value) + 2;
+    char *entry = malloc(size);
+    if (!entry)
+    {
+        errno = ENOMEM;
+        return -1;
+    }
+    snprintf(entry, size, "%s=%s", name, value);
+    return put_entry(name, n, entry, overwrite != 0);
+}
+
+int putenv(char *string)
+{
+    const char *equals = string ? strchr(string, '=') : NULL;
+    if (!equals || equals == string)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    return put_entry(string, (size_t)(equals - string), string, true);
+}
+
+int unsetenv(const char *name)
+{
+    if (!valid_name(name))
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    pthread_mutex_lock(&environment_lock);
+    const size_t n = strlen(name);
+    for (int i = entry_of(name, n); i >= 0; i = entry_of(name, n))
+        for (int j = i; entries[j]; ++j)
+            entries[j] = entries[j + 1];
+    pthread_mutex_unlock(&environment_lock);
+    return 0;
+}
+
 /* ---------------------------------------------------------------- the locale */
 
 /* The SDK's headers have no thread-local locale (__NO_TLS), so <ctype.h>'s inline tolower and isalpha (Python 2.7's
