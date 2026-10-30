@@ -67,6 +67,21 @@ def make_game(directory, width=1280, height=720, sound_rate=48000, broken=False)
     return directory
 
 
+# RENPY_EDIT_PY's editor: it notes the file it is asked to open, beside itself
+PROBE_EDITOR = """
+class Editor(object):
+    def begin(self, new_window=False, **kwargs):
+        pass
+
+    def open(self, filename, line=None, **kwargs):
+        with open(__file__ + ".opened", "w") as f:
+            f.write(filename)
+
+    def end(self, **kwargs):
+        pass
+"""
+
+
 class RenpyCoreTest(unittest.TestCase):
     # the build script and its host build (tests/test_renpy7_core.py runs the same tests on Ren'Py 7's)
     SCRIPT = "tools/build-renpy.sh"
@@ -173,6 +188,43 @@ class RenpyCoreTest(unittest.TestCase):
                                    env={"DULCAMARA_TEST_HOLD": "1"})
             self.assertIn("DULCAMARA-TEST: held on to a quit", output)
             self.assertIn("Ren'Py has not stopped; its thread is at:", output)
+
+    def test_a_game_closed_with_its_thread_running(self):
+        # A game's own thread (renpy.invoke_in_thread) still running as the game is closed: Ren'Py stops all the same
+        # (Python 2.7, which could crash finalising under it, is then left as it is).
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("start", make_game(work / "Threaded"), work / "data",
+                                   env={"DULCAMARA_TEST_THREAD": "1"})
+            self.assertIn("stopped", output)
+            self.assertEqual("still running" in output, self.SCRIPT.endswith("renpy7.sh"), output[-2000:])
+
+    def test_an_error_opens_no_editor(self):
+        # Ren'Py opens traceback.txt in an editor for an error that escapes it (a process of its own, which the console
+        # cannot start): the core's error log tells it not to. RENPY_EDIT_PY's stand-in editor shows whether it would.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            probe = work / "probe.edit.py"
+            probe.write_text(PROBE_EDITOR, encoding="utf-8")
+            opened = work / "probe.edit.py.opened"
+            env = {"RENPY_EDIT_PY": str(probe)}
+            self.run_core("start", make_game(work / "Editor"), work / "data1",
+                          env={**env, "DULCAMARA_TEST_REPORT": "editor"})
+            self.assertTrue(opened.exists(), "the stand-in editor sees Ren'Py open an editor")
+            opened.unlink()
+            output = self.run_core("start", make_game(work / "Reported"), work / "data2",
+                                   env={**env, "DULCAMARA_TEST_REPORT": "error"})
+            self.assertIn("Ren'Py reported an error", output)
+            self.assertFalse(opened.exists(), "Ren'Py opened an editor for the error")
+
+    def test_fast_forward_skips_unread_text_when_set(self):
+        # Settings > Ren'Py's "skip unread text too": the game's own preference (here, the default: unread text stops
+        # the skip) reads as on.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("skip", make_game(work / "Skip all"), work / "data",
+                                   env={"RENPY_HEADLESS_SKIP_UNSEEN": "on"})
+            self.assertIn("fast-forward: the dialogue went by without Cross", output)
 
     def test_a_game_with_an_error(self):
         with tempfile.TemporaryDirectory() as directory:

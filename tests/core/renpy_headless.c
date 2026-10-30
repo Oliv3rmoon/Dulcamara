@@ -54,7 +54,8 @@ static void core_log(enum retro_log_level level, const char *fmt, ...)
         log_used += n;
     }
     if (getenv("RENPY_HEADLESS_VERBOSE") || strstr(line, "DULCAMARA-TEST: ") || strstr(line, "Ren'Py reported") ||
-        strstr(line, ".rpy") || strstr(line, "Dulcamara starts") || strstr(line, "not stop") || strstr(line, "File \""))
+        strstr(line, ".rpy") || strstr(line, "Dulcamara starts") || strstr(line, "not stop") || strstr(line, "File \"") ||
+        strstr(line, "still running"))
         printf("log: %s", line);
 }
 
@@ -103,6 +104,17 @@ static bool environment(unsigned cmd, void *data)
         if (data)
             *(bool *)data = true;
         return true;
+    case RETRO_ENVIRONMENT_SET_VARIABLES:
+        return true;
+    case RETRO_ENVIRONMENT_GET_VARIABLE:
+    {
+        /* the core's option, as Dulcamara's Settings set it: RENPY_HEADLESS_SKIP_UNSEEN=on */
+        struct retro_variable *variable = data;
+        if (!variable || !variable->key || strcmp(variable->key, "renpy_skip_unseen"))
+            return false;
+        variable->value = getenv("RENPY_HEADLESS_SKIP_UNSEEN") ? getenv("RENPY_HEADLESS_SKIP_UNSEEN") : "off";
+        return true;
+    }
     default:
         return false;
     }

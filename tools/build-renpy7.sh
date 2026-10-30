@@ -25,11 +25,13 @@ case $target in ps5|host) ;; *)
     echo "usage: tools/build-renpy7.sh [ps5|host]" >&2
     exit 2
 esac
-# Ren'Py 8's build first: its libraries are this one's. The PS5 build starts from Ren'Py 7's host build: its Python
-# runs the build, its generated C and its engine (with Ren'Py's common scripts compiled by the host core) are the
-# console's too.
-bash "$root/tools/build-renpy.sh" "$target"
-[[ $target == ps5 ]] && bash "$root/tools/build-renpy7.sh" host
+# Ren'Py 8's build first: its libraries are this one's (DULCAMARA_RENPY8_READY=1: the caller has just run it). The
+# PS5 build starts from Ren'Py 7's host build: its Python runs the build, its generated C and its engine (with
+# Ren'Py's common scripts compiled by the host core) are the console's too.
+[[ -n ${DULCAMARA_RENPY8_READY:-} ]] || bash "$root/tools/build-renpy.sh" "$target"
+if [[ $target == ps5 ]]; then
+    DULCAMARA_RENPY8_READY=1 bash "$root/tools/build-renpy7.sh" host
+fi
 renpy="$root/third_party/renpy7"
 pygame="$root/third_party/pygame_sdl2"
 source "$root/tools/renpy/common.sh"

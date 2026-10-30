@@ -283,7 +283,7 @@ endif
 core:
 	@bash tools/build-easyrpg.sh
 	@bash tools/build-renpy.sh ps5
-	@bash tools/build-renpy7.sh ps5
+	@DULCAMARA_RENPY8_READY=1 bash tools/build-renpy7.sh ps5
 ifeq ($(APP_VULKAN),1)
 	@bash tools/build-framegen.sh
 endif

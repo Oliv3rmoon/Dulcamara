@@ -34,6 +34,28 @@ init python:
     if os.environ.get("DULCAMARA_TEST_HOLD") == "1":
         config.periodic_callbacks.append(dulcamara_hold_on)
 
+    # DULCAMARA_TEST_THREAD=1: a thread of the game's own that is still running when the game is closed
+    def dulcamara_forever():
+        import time
+        while True:
+            time.sleep(0.05)
+
+    if os.environ.get("DULCAMARA_TEST_THREAD") == "1":
+        renpy.invoke_in_thread(dulcamara_forever)
+
+    # DULCAMARA_TEST_REPORT=error: an error reported as Ren'Py reports one that escapes it (in an editor too, unless
+    # told not to); =editor: the editor opened as Ren'Py would, to show the test's stand-in editor would see it.
+    def dulcamara_report():
+        import sys
+        what = os.environ.get("DULCAMARA_TEST_REPORT")
+        if what == "error":
+            try:
+                raise Exception("a test error, reported")
+            except Exception as e:
+                sys.modules["renpy.error"].report_exception(e)
+        elif what == "editor":
+            renpy.launch_editor([config.gamedir + "/script.rpy"], 1, transient=True)
+
 default choice = None
 
 # DULCAMARA_TEST_SKIP=1: unread dialogue may be skipped too, so that fast-forward's skip shows on a first run.
@@ -45,6 +67,7 @@ label main_menu:
 
 label start:
     $ dulcamara_test("started")
+    $ dulcamara_report()
     if os.environ.get("DULCAMARA_TEST_LOAD") == "1" and renpy.can_load("1-1"):
         $ renpy.load("1-1")
     scene expression Solid("#203040")

@@ -416,6 +416,60 @@ ssize_t sendmmsg(int fd, struct mmsghdr *messages, size_t count, int flags)
     return unsupported();
 }
 
+/* ---------------------------------------------------------------- the pads: the app's, never the core's */
+
+/* The core's controller is the frontend's (input.c's virtual one). SDL's PS5 joystick driver, inside the core, would
+ * read the app's pads besides, light and shake them, and close the app's handles as SDL quits (it takes one the app
+ * holds through scePadGetHandle): here it finds none. */
+#define NO_PAD ((int)0x80920001) /* an error, as the console's calls return them */
+
+int scePadInit(void)
+{
+    return 0;
+}
+
+int scePadOpen(int user, int type, int index, const void *parameters)
+{
+    (void)user, (void)type, (void)index, (void)parameters;
+    return NO_PAD;
+}
+
+int scePadGetHandle(int user, int type, int index)
+{
+    (void)user, (void)type, (void)index;
+    return NO_PAD;
+}
+
+int scePadClose(int handle)
+{
+    (void)handle;
+    return 0;
+}
+
+int scePadReadState(int handle, void *state)
+{
+    (void)handle, (void)state;
+    return NO_PAD;
+}
+
+int scePadSetLightBar(int handle, const void *colour)
+{
+    (void)handle, (void)colour;
+    return NO_PAD;
+}
+
+int scePadSetVibration(int handle, const void *vibration)
+{
+    (void)handle, (void)vibration;
+    return NO_PAD;
+}
+
+int scePadSetVibrationMode(int handle, int mode)
+{
+    (void)handle, (void)mode;
+    return NO_PAD;
+}
+
 /* ---------------------------------------------------------------- names: the console's resolver is not used */
 
 int *__h_errno(void)

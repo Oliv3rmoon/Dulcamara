@@ -150,7 +150,17 @@ static void *renpy_main(void *unused)
     pthread_mutex_unlock(&state_lock);
     Py_END_ALLOW_THREADS
     PyThreadState_SetAsyncExc(renpy_ident, NULL); /* a stop that came as the boot script ended */
-    Py_Finalize();
+    /* Python 2.7 finalising under a thread still running (a game's renpy.invoke_in_thread, say) can crash: then it is
+     * left up, holding the GIL, so that thread waits for good. A process runs one game, so nothing else needs it. */
+    PyObject *threading = PyDict_GetItemString(PyImport_GetModuleDict(), "threading"); /* only if imported */
+    PyObject *count = threading ? PyObject_CallMethod(threading, "active_count", NULL) : NULL;
+    const long threads = count ? PyInt_AsLong(count) : 1;
+    Py_XDECREF(count);
+    PyErr_Clear();
+    if (threads <= 1)
+        Py_Finalize();
+    else
+        log_queue(1, "renpy: %ld of the game's threads still running: Python is left as it is", threads - 1);
 
     input_detach();
     SDL_Quit();
