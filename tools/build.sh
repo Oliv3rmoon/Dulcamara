@@ -332,6 +332,10 @@ for asset in icon0.png pic0.dds pic1.dds snd0.at9; do
     [[ -f $root/$app_sce_sys/$asset ]] && cp "$root/$app_sce_sys/$asset" "$app/sce_sys/$asset"
 done
 [[ -z $app_assets ]] || cp -a "$root/$app_assets" "$app/assets"
+# Ren'Py's engine (tools/build-renpy.sh), read by its core from the app's assets
+if [[ -n $app_assets && -d $root/build/renpy-ps5/assets/renpy8 ]]; then
+    cp -a "$root/build/renpy-ps5/assets/renpy8" "$app/assets/renpy8"
+fi
 
 root_files=()
 [[ -z ${APP_ROOT_FILES:-} ]] || read -r -a root_files <<< "$APP_ROOT_FILES"
@@ -372,6 +376,8 @@ for pair in "third_party/easyrpg-player/COPYING:LICENSE-EasyRPG-Player.txt" \
     [[ -f $root/${pair%%:*} ]] || { echo "missing licence: ${pair%%:*}" >&2; exit 2; }
     cp "$root/${pair%%:*}" "$app/licenses/${pair##*:}"
 done
+# Ren'Py's core: its licences, gathered by tools/build-renpy.sh
+[[ ! -d $root/build/renpy-ps5/licenses ]] || cp "$root"/build/renpy-ps5/licenses/* "$app/licenses/"
 
 [[ -f $root/runtime/libc.prx ]] || bash "$root/tools/rebuild-libc.sh"
 (cd "$root/runtime" && sha256sum --check --strict libc.prx.sha256)

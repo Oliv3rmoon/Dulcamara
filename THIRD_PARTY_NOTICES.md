@@ -25,11 +25,12 @@
 
 ## Cores shipped
 
-Dulcamara ships **one** core:
+Dulcamara ships **two** cores:
 
 | Core | Upstream | License | Notes |
 | --- | --- | --- | --- |
 | EasyRPG Player (libretro) | [EasyRPG/Player](https://github.com/EasyRPG/Player) at `096c004def987f3545198304b1b7a8352f284a50`, with [EasyRPG/liblcf](https://github.com/EasyRPG/liblcf) at `6854310c3432e553fd4ae672ce861899c80c3bd0` | GPL-3.0-or-later (`third_party/easyrpg-player/COPYING`); liblcf MIT (`third_party/liblcf/COPYING`) | RPG Maker 2000 and 2003. Built from source into the app by `tools/build-easyrpg.sh` |
+| Ren'Py 8 (Dulcamara's own libretro core, `src/core/renpy`) | [renpy/renpy](https://github.com/renpy/renpy) 8.5.3.26051504 at `39895c1e017f0b36ffea2447d97eccd69d76ee1c` (`third_party/renpy`) | Ren'Py: MIT, with LGPL-derived parts (`third_party/renpy/sphinx/source/license.rst`); the core's own code GPL-3.0-or-later | Ren'Py 8 visual novels. Built from source by `tools/build-renpy.sh`; its engine (Ren'Py's Python files, scripts and fonts) is packed as `assets/renpy8` |
 
 EasyRPG Player carries, built in: [FMMidi](http://unhaut.epizy.com/fmmidi) by yuno (Yoshio Uno),
 BSD-3-Clause; [dr_wav](https://github.com/mackron/dr_libs) by David Reid, public domain or MIT-0; the
@@ -56,6 +57,23 @@ libsndfile (LGPL-2.1-or-later), FLAC (BSD-3-Clause), Opus (BSD-3-Clause), LAME (
 too. The LGPL libraries are linked statically into a GPL-3.0-or-later program whose whole source is published.
 
 The core is free, and Dulcamara has no paid features, ads or in-app purchases.
+
+Ren'Py's core is built with, from pinned sources (the tarballs are checked against their SHA-256 by
+`tools/build-renpy.sh`):
+
+| Component | Source | License |
+| --- | --- | --- |
+| [CPython](https://www.python.org) 3.12.8 | `Python-3.12.8.tar.xz`, SHA-256 `c909157bb25ec114e5869124cc2a9c4a4d4c1e957ca4ff553f1edc692101154e`; for the PS5 with `tools/patches/python-3.12.8-cross-freebsd.diff` | PSF License (`licenses/LICENSE-Python.txt`); its standard library is packed as `assets/renpy8/lib/python312.zip` |
+| [FFmpeg](https://ffmpeg.org) 4.3.1 | `ffmpeg-4.3.1.tar.gz`, SHA-256 `45035f15d6f192772de2309c846e1d60472694f479679354a39c699719e53772`, with Ren'Py's two patches (`tools/patches/ffmpeg-4.3.1-*.diff`) | LGPL-2.1-or-later (`licenses/LICENSE-FFmpeg.txt`). Configured with LGPL parts only (no `--enable-gpl`, no `--enable-nonfree`; the build checks `CONFIG_GPL 0`); decoders only, no network |
+| [Assimp](https://github.com/assimp/assimp) 5.4.3 | GitHub's `v5.4.3` archive, SHA-256 `66dfbaee288f2bc43172440a55d0235dfc7bf885dda6435c038e8000e79582cb`; glTF and STL importers only | BSD-3-Clause (`licenses/LICENSE-Assimp.txt`) |
+| [ps5-opengl](https://github.com/darkxex/ps5-opengl) 1.0.2 | its SDK release, SHA-256 `30d8e51dd062739b629346102be5932728ba714bc50b1bdcdf08306c8843d9a4` (the one Nightshade pins) | MIT, with Mesa's licences (`licenses/LICENSE-ps5-opengl.txt`, `licenses/NOTICES-ps5-opengl.md`) |
+| Cython 3.1.4, setuptools 80.10.2 | PyPI wheels, by SHA-256 (`tools/renpy/wheels.txt`) | Apache-2.0, MIT: run on the build machine only, not shipped |
+| six 1.17.0, ecdsa 0.19.1, requests 2.33.0, urllib3 2.7.0, idna 3.11, certifi 2026.1.4, charset-normalizer 3.4.4, rsa 4.9.1, pyasn1 0.6.2, future 1.0.0 | PyPI wheels at the versions of Ren'Py's `uv.lock`, by SHA-256 (`tools/renpy/wheels.txt`) | MIT, MIT, Apache-2.0, MIT, BSD-3-Clause, MPL-2.0, MIT, Apache-2.0, BSD-2-Clause, MIT; each package's licence travels in its `*.dist-info` folder under `assets/renpy8/lib/site-packages` |
+
+From the PacBrew prefix (below), linked into Ren'Py's core: SDL2 and SDL2_image (zlib), FreeType (FreeType
+License), HarfBuzz (MIT), GNU FriBidi (LGPL-2.1-or-later), libpng (libpng license), libjpeg-turbo (IJG and
+BSD-3-Clause), libwebp (BSD-3-Clause), zlib (zlib), bzip2 (bzip2 license), xz (0BSD and public domain), OpenSSL
+(Apache-2.0) and GNU libiconv (LGPL-2.1-or-later). Live2D's Cubism SDK, which Ren'Py can use, is not included.
 
 ### Test data, never shipped
 

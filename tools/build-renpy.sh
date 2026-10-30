@@ -9,6 +9,8 @@
 #   tools/build-renpy.sh host   -> build/renpy-host/: the same core for this computer, linked into its checks
 #                                  (tests/core/renpy_headless.c and renpy_unit.c, run by tests/test_renpy_core.py),
 #                                  and build/renpy-host/assets/renpy8
+#   tools/build-renpy.sh engine -> build/renpy-host/: only what the PS5 build needs from the host (the Python that
+#                                  runs the build, Cython's C for Ren'Py's modules, the engine folder)
 #
 # Sources: third_party/renpy (Ren'Py 8.5.3, a pinned submodule; its pygame_sdl2 lives in it as renpy/pygame) and
 # release tarballs pinned by SHA-256: CPython 3.12.8 (the Python Ren'Py 8.5.3 is built with), FFmpeg 4.3.1 (Ren'Py's,
@@ -23,20 +25,22 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 target=${1:-ps5}
-case $target in ps5|host) ;; *)
-    echo "usage: tools/build-renpy.sh [ps5|host]" >&2
+case $target in ps5|host|engine) ;; *)
+    echo "usage: tools/build-renpy.sh [ps5|host|engine]" >&2
     exit 2
 esac
 # The PS5 build starts from the host's: its Python runs the build, its generated C and engine are the console's too.
-[[ $target == ps5 ]] && bash "$root/tools/build-renpy.sh" host
+[[ $target == ps5 ]] && bash "$root/tools/build-renpy.sh" engine
 renpy="$root/third_party/renpy"
-out="$root/build/renpy-$target"
+folder=$target
+[[ $target == engine ]] && folder=host
+out="$root/build/renpy-$folder"
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
 # Autotools (fribidi's libtool, CPython's and FFmpeg's configure) cannot build under a path with spaces in it, as a
 # checkout's may have. Then build/renpy-<target> is a link to a folder in TMPDIR whose path has none.
 if [[ $out == *[[:space:]]* ]]; then
     real="${TMPDIR:-/tmp}"
-    real="${real%/}/dulcamara-renpy-$target-$(printf '%s' "$out" | sha256 | cut -c1-12)"
+    real="${real%/}/dulcamara-renpy-$folder-$(printf '%s' "$out" | sha256 | cut -c1-12)"
     [[ $real == *[[:space:]]* ]] && { echo "no folder without spaces for the build (TMPDIR has them)" >&2; exit 2; }
     mkdir -p "$real" "$(dirname "$out")"
     if [[ ! -L $out ]]; then
@@ -240,19 +244,25 @@ unpack_wheels() {
     done <"$root/tools/renpy/wheels.txt"
 }
 
-deps_key="deps-1 $python_version $ffmpeg_version $assimp_version $fribidi_version $sdl2_image_version $(
-    digest "$root/tools/renpy/Setup.local" "$root/tools/renpy/wheels.txt" "$root"/tools/patches/ffmpeg-4.3.1-*.diff)"
+# The Python that runs the build (and, on the host, the engine's), with Cython and setuptools beside it.
+python_key="python-1 $python_version $(digest "$root/tools/renpy/Setup.local" "$root/tools/renpy/wheels.txt")"
 py="$out/python/bin/python3.12"
-if ! fresh deps "$deps_key"; then
-    build_fribidi
-    build_sdl2_image
+if ! fresh python "$python_key"; then
     build_python
-    build_ffmpeg
-    build_assimp
     unpack_wheels build "$out/tools"
     printf '#!/bin/sh\nPYTHONPATH="%s" exec "%s" -m cython "$@"\n' "$out/tools" "$py" >"$out/bin/cython"
     chmod +x "$out/bin/cython"
-    stamp deps "$deps_key"
+    stamp python "$python_key"
+fi
+# The host core's libraries (the PS5 build makes its own).
+libs_key="libs-1 $ffmpeg_version $assimp_version $fribidi_version $sdl2_image_version $(
+    digest "$root"/tools/patches/ffmpeg-4.3.1-*.diff)"
+if [[ $target == host ]] && ! fresh libs "$libs_key"; then
+    build_fribidi
+    build_sdl2_image
+    build_ffmpeg
+    build_assimp
+    stamp libs "$libs_key"
 fi
 # ---- Ren'Py's own C: setup.py turns its .pyx into C for a static build (RENPY_STATIC: each module's init function
 # named after its whole dotted name), then each module listed in src/Setup is compiled with the core's renamed SDL
@@ -260,21 +270,16 @@ fi
 # tinyfiledialogs (renpy.tfd, desktop file dialogs) and renpy.gl2.live2dmodel, which needs Live2D's Cubism SDK
 # (not free to give away; Ren'Py's own builds add it only where it is installed).
 sdl_cflags() { pkg-config --cflags sdl2 SDL2_image freetype2 harfbuzz fribidi libpng libjpeg libwebp zlib; }
-build_modules() {
-    echo "==> [renpy] Ren'Py's modules (Cython $("$out/bin/cython" --version 2>&1 | awk '{print $NF}'))"
-    local src="$out/renpy-src" objects="$out/modules" generated
-    rm -rf "$src" "$objects" "$out/gen"
-    mkdir -p "$src" "$objects" "$out/gen"
+build_generate() {
+    echo "==> [renpy] Ren'Py's modules as C (Cython $("$out/bin/cython" --version 2>&1 | awk '{print $NF}'))"
+    local src="$out/renpy-src" generated
+    rm -rf "$src" "$out/gen"
+    mkdir -p "$src" "$out/gen"
     git -C "$renpy" archive HEAD | tar -x -C "$src"
     (cd "$src" && RENPY_STATIC=1 RENPY_REGENERATE_CYTHON=1 RENPY_CYTHON="$out/bin/cython" PYTHONPATH="$out/tools" \
-        CC="$cc" CXX="$cxx" CFLAGS="$(sdl_cflags)" "$py" setup.py generate) >"$log/modules.log" 2>&1 ||
-        fail modules
+        CC="$cc" CXX="$cxx" CFLAGS="-O2" "$py" setup.py generate) >"$log/generate.log" 2>&1 || fail generate
     generated="$src/tmp/gen3-static"
     [[ -d $generated ]] || { echo "Ren'Py's setup.py did not write $generated" >&2; exit 1; }
-    # this build's own headers first: the build machine may have other versions (Homebrew's FFmpeg)
-    local cflags=(-O2 -g -fPIC -w -fno-strict-aliasing -include "$root/src/core/renpy/sdl_renames.h"
-        -I"$src/src" -I"$generated" -I"$prefix/include" $("$out/python/bin/python3.12-config" --includes)
-        $(sdl_cflags))
     local modules=() sources=() line parts s
     while read -r line; do
         line=${line%%#*}
@@ -287,6 +292,26 @@ build_modules() {
     done <"$src/src/Setup"
     printf '%s\n' "${modules[@]}" >"$out/modules.txt"
     printf '%s\n' "${sources[@]}" | sort -u >"$out/sources.txt" # the PS5 build compiles the same files
+    {
+        printf '/* Dulcamara - written by tools/build-renpy.sh: the engine'"'"'s compiled modules, built in. */\n'
+        printf '#include <Python.h>\n\n'
+        for s in "${modules[@]}"; do printf 'PyMODINIT_FUNC PyInit_%s(void);\n' "${s//./_}"; done
+        printf '\nstatic struct _inittab renpy_modules[] = {\n'
+        for s in "${modules[@]}"; do printf '    {"%s", PyInit_%s},\n' "$s" "${s//./_}"; done
+        printf '    {NULL, NULL},\n};\n\nvoid renpy_extend_inittab(void)\n{\n    PyImport_ExtendInittab(renpy_modules);\n}\n'
+    } >"$out/gen/inittab.c"
+}
+
+build_modules() {
+    echo "==> [renpy] Ren'Py's modules"
+    local src="$out/renpy-src" objects="$out/modules" generated="$out/renpy-src/tmp/gen3-static"
+    rm -rf "$objects"
+    mkdir -p "$objects"
+    : >"$log/modules.log"
+    # this build's own headers first: the build machine may have other versions (Homebrew's FFmpeg)
+    local cflags=(-O2 -g -fPIC -w -fno-strict-aliasing -include "$root/src/core/renpy/sdl_renames.h"
+        -I"$src/src" -I"$generated" -I"$prefix/include" $("$out/python/bin/python3.12-config" --includes)
+        $(sdl_cflags))
     # compile every source once, $jobs at a time
     local pids=() objs=() f o
     while read -r f; do
@@ -301,14 +326,6 @@ build_modules() {
         if (( ${#pids[@]} >= jobs )); then wait "${pids[0]}" || fail modules; pids=("${pids[@]:1}"); fi
     done <"$out/sources.txt"
     for f in "${pids[@]}"; do wait "$f" || fail modules; done
-    {
-        printf '/* Dulcamara - written by tools/build-renpy.sh: the engine'"'"'s compiled modules, built in. */\n'
-        printf '#include <Python.h>\n\n'
-        for s in "${modules[@]}"; do printf 'PyMODINIT_FUNC PyInit_%s(void);\n' "${s//./_}"; done
-        printf '\nstatic struct _inittab renpy_modules[] = {\n'
-        for s in "${modules[@]}"; do printf '    {"%s", PyInit_%s},\n' "$s" "${s//./_}"; done
-        printf '    {NULL, NULL},\n};\n\nvoid renpy_extend_inittab(void)\n{\n    PyImport_ExtendInittab(renpy_modules);\n}\n'
-    } >"$out/gen/inittab.c"
     rm -f "$out/librenpy-modules.a"
     ar rcs "$out/librenpy-modules.a" "${objs[@]}"
 }
@@ -350,15 +367,24 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as z, tempfile.Temporary
 PY
 }
 
-modules_key="modules-3 $(git -C "$renpy" rev-parse HEAD) $deps_key $(digest "$root/src/core/renpy/sdl_renames.h")"
-if ! fresh modules "$modules_key"; then
-    build_modules
-    stamp modules "$modules_key"
+generate_key="generate-1 $(git -C "$renpy" rev-parse HEAD) $python_key"
+if ! fresh generate "$generate_key"; then
+    build_generate
+    stamp generate "$generate_key"
 fi
-engine_key="engine-1 $renpy_version $modules_key $(digest "$root"/src/core/renpy/{boot,errors}.py "$root/tools/renpy/wheels.txt")"
+engine_key="engine-2 $renpy_version $generate_key $(digest "$root"/src/core/renpy/{boot,errors}.py "$root/tools/renpy/wheels.txt")"
 if ! fresh engine "$engine_key"; then
     build_engine
     stamp engine "$engine_key"
+fi
+if [[ $target == engine ]]; then
+    echo "==> [renpy] the engine in $out/assets/renpy8, and Ren'Py's modules as C"
+    exit 0
+fi
+modules_key="modules-4 $generate_key $libs_key $(digest "$root/src/core/renpy/sdl_renames.h")"
+if ! fresh modules "$modules_key"; then
+    build_modules
+    stamp modules "$modules_key"
 fi
 echo "==> [renpy] $(wc -l <"$out/modules.txt" | tr -d ' ') Ren'Py modules built in, the engine in $out/assets/renpy8"
 

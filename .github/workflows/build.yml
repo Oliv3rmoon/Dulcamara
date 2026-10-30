@@ -31,7 +31,8 @@ jobs:
   ps5:
     name: PS5 app
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # Ren'Py's core takes about half an hour when its caches are cold
+    timeout-minutes: 90
     # The attest step signs with this run's identity and stores the attestation.
     permissions:
       contents: read
@@ -70,7 +71,7 @@ jobs:
           sudo apt-get install --yes clang-18 lld-18 llvm-18 libclang-rt-18-dev make ninja-build ccache cmake \
             pkg-config tar unzip wget zip python3 python3-venv zstd \
             libfmt-dev libpng-dev zlib1g-dev libfreetype-dev libharfbuzz-dev libvorbis-dev libmpg123-dev \
-            libpixman-1-dev
+            libpixman-1-dev libssl-dev libbz2-dev liblzma-dev nasm patch
 
       - name: Restore downloaded SDK, libraries and test games
         uses: actions/cache@v4
@@ -92,6 +93,18 @@ jobs:
         with:
           path: build/easyrpg-ps5
           key: easyrpg-ps5-${{ hashFiles('build-core-sources.txt', 'tools/build-easyrpg.sh', 'tools/patches/*', 'tooling/prospero-clang18') }}
+
+      # Ren'Py's core for the PS5 and what it starts from on the build machine (tools/build-renpy.sh ps5): each
+      # stage is rebuilt only when what it is built from changed.
+      - name: Restore Ren'Py's core
+        uses: actions/cache@v4
+        with:
+          path: |
+            .deps/renpy
+            build/renpy-host
+            build/renpy-ps5
+          key: renpy-ps5-${{ hashFiles('build-core-sources.txt', 'tools/build-renpy.sh', 'tools/renpy/*', 'tools/patches/*', 'src/core/renpy/*') }}
+          restore-keys: renpy-ps5-
 
       # On the build machine: the update's release decision, the library's game detection, and EasyRPG Player's
       # core (the same revisions and patch as the PS5's) run headless on EasyRPG's TestGame.
@@ -130,11 +143,16 @@ jobs:
                   raise SystemExit(f"ZIP check failed: entries outside {title}/: {outside[:5]}")
               for needed in ("eboot.bin", "sce_sys/param.json", "sce_sys/icon0.png", "sce_sys/pic0.dds",
                              "sce_sys/pic1.dds", "licenses/LICENSE-EasyRPG-Player.txt", "licenses/LICENSE-liblcf.txt",
-                             "licenses/LICENSE-pixman.txt", "licenses/LICENSE-inih.txt", "licenses/THIRD-PARTY.txt"):
+                             "licenses/LICENSE-pixman.txt", "licenses/LICENSE-inih.txt", "licenses/THIRD-PARTY.txt",
+                             "licenses/LICENSE-RenPy.rst", "licenses/LICENSE-Python.txt", "licenses/LICENSE-FFmpeg.txt",
+                             "licenses/LICENSE-Assimp.txt", "licenses/LICENSE-ps5-opengl.txt",
+                             "assets/renpy8/renpy/__init__.py", "assets/renpy8/lib/python312.zip",
+                             "assets/renpy8/dulcamara_boot.py"):
                   if f"{title}/{needed}" not in names:
                       raise SystemExit(f"ZIP check failed: {title}/{needed} is missing")
-              # no game files of any kind: players copy their own
-              games = sorted(n for n in names if re.search(r"(?i)rpg_rt\.(ldb|lmt|ini)$|\.(lmu|lsd|easyrpg)$", n))
+              # no game files of any kind: players copy their own (Ren'Py's own scripts are its engine's)
+              games = sorted(n for n in names if re.search(r"(?i)rpg_rt\.(ldb|lmt|ini)$|\.(lmu|lsd|easyrpg|rpa)$", n)
+                             or (re.search(r"(?i)\.rpyc?$", n) and not n.startswith(f"{title}/assets/renpy8/renpy/")))
               if games:
                   raise SystemExit(f"ZIP check failed: game files in the package: {games[:5]}")
               param = json.loads(archive.read(f"{title}/sce_sys/param.json"))

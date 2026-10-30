@@ -18,6 +18,8 @@ APP_DEFINITIONS ?= NP_HAVE_CURL=1
 endif
 # The cores (src/core/cores.h): EasyRPG Player, built by tools/build-easyrpg.sh with its API renamed easyrpg_retro_*.
 NP_EASYRPG := build/easyrpg-ps5/libeasyrpg.a
+# Ren'Py 8, built by tools/build-renpy.sh with its API renamed renpy_retro_*; its engine is packed as assets/renpy8.
+NP_RENPY := build/renpy-ps5/librenpy.a
 NP_LIBRETRO_INCLUDE := third_party/easyrpg-player/builds/libretro/libretro-common/include
 APP_INCLUDE_PATHS ?= $(NP_LIBRETRO_INCLUDE) third_party/stb examples/update-check $(NP_VULKAN_INCLUDE)
 ifeq ($(APP_VULKAN),1)
@@ -25,7 +27,7 @@ ifeq ($(APP_VULKAN),1)
 # screen (src/platform/vk) is Mandrake's and links it.
 NP_FRAMEGEN := build/framegen-ps5/libframegen.a
 endif
-APP_STATIC_ARCHIVES ?= $(NP_EASYRPG) $(NP_FRAMEGEN)
+APP_STATIC_ARCHIVES ?= $(NP_EASYRPG) $(NP_RENPY) $(NP_FRAMEGEN)
 APP_RUNTIME_MODULES ?=
 # fcntl: console_curl. The allocator family: ps5_heap.c (the C heap is too small).
 APP_WRAP_SYMBOLS ?= fcntl malloc free calloc realloc reallocf memalign posix_memalign aligned_alloc malloc_usable_size
@@ -272,6 +274,7 @@ endif
 
 core:
 	@bash tools/build-easyrpg.sh
+	@bash tools/build-renpy.sh ps5
 ifeq ($(APP_VULKAN),1)
 	@bash tools/build-framegen.sh
 endif

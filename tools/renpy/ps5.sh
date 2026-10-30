@@ -16,7 +16,7 @@
 host=$(cd "$root/build/renpy-host" && pwd -P)
 hostpy="$host/python/bin/python3.12"
 [[ -x $hostpy && -f $host/gen/inittab.c && -d $host/assets/renpy8 ]] || {
-    echo "the host build is incomplete: run tools/build-renpy.sh host" >&2
+    echo "the host build is incomplete: run tools/build-renpy.sh engine" >&2
     exit 1
 }
 
@@ -193,7 +193,7 @@ build_modules_ps5() {
     rm -f "$out/librenpy-modules.a"
     "$ar" rcs "$out/librenpy-modules.a" "${objs[@]}"
 }
-modules_key="modules-ps5-1 $(cat "$host/.modules") $(digest "$host/sources.txt")"
+modules_key="modules-ps5-2 $(cat "$host/.generate") $(digest "$host/sources.txt" "$root/src/core/renpy/sdl_renames.h")"
 fresh modules "$modules_key" || { build_modules_ps5; stamp modules "$modules_key"; }
 
 # ---- the core's own C, and everything in one object
@@ -262,6 +262,19 @@ if ! fresh engine "$engine_key"; then
     find "$out/assets/renpy8" -name '*.rpyc' -delete
     stamp engine "$engine_key"
 fi
+
+# ---- the licences the app carries for the core (THIRD_PARTY_NOTICES.md lists the rest)
+rm -rf "$out/licenses"
+mkdir -p "$out/licenses"
+for pair in "$root/third_party/renpy/sphinx/source/license.rst:LICENSE-RenPy.rst" \
+    "$out/work/python/Python-$python_version/LICENSE:LICENSE-Python.txt" \
+    "$out/work/ffmpeg/ffmpeg-$ffmpeg_version/COPYING.LGPLv2.1:LICENSE-FFmpeg.txt" \
+    "$out/work/assimp/assimp-$assimp_version/LICENSE:LICENSE-Assimp.txt" \
+    "$out/ps5-opengl/LICENSE:LICENSE-ps5-opengl.txt" \
+    "$out/ps5-opengl/THIRD_PARTY_NOTICES.md:NOTICES-ps5-opengl.md"; do
+    [[ -f ${pair%%:*} ]] || { echo "missing licence: ${pair%%:*}" >&2; exit 1; }
+    cp "${pair%%:*}" "$out/licenses/${pair##*:}"
+done
 
 echo "==> [renpy ps5] $(wc -l <"$work/api.txt" | tr -d ' ') libretro functions as renpy_retro_*," \
     "$(wc -l <"$work/undefined.txt" | tr -d ' ') symbols left for the app's link"
