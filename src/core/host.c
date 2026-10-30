@@ -442,8 +442,11 @@ void host_set_input(const PadState *pad, const Settings *s)
     if (pad)
     {
         for (int b = 0; b < MAP_BUTTONS; ++b)
-            if ((pad->buttons & BIT(b)) && s->button_map[b] >= 0 && s->button_map[b] < 16)
-                bits |= (uint16_t)(1u << s->button_map[b]);
+        {
+            const int8_t to = core ? s->button_map[core - CORES][b] : PAD_NONE;
+            if ((pad->buttons & BIT(b)) && to >= 0 && to < 16)
+                bits |= (uint16_t)(1u << to);
+        }
         if (s->stick_dpad)
         {
             const int16_t dead = 16000;

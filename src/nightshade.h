@@ -90,6 +90,7 @@ enum
     PAD_NONE = -1
 };
 #define MAP_BUTTONS 16 /* BTN_CROSS..BTN_R3 */
+#define NP_CORES 2 /* CORE_COUNT (core/cores.h), for the settings' button maps */
 
 typedef struct
 {
@@ -111,7 +112,8 @@ typedef struct
     int ff_toggle;      /* 1: R2 turns fast-forward on and off; 0: while it is held */
     bool stick_dpad;    /* the left stick moves like the D-pad */
     bool show_fps;
-    int8_t button_map[MAP_BUTTONS]; /* each controller button (BTN_*): the game's button it presses (PAD_*), or -1 */
+    /* each core's (CORE_*): each controller button (BTN_*) the game's button it presses (PAD_*), or -1 */
+    int8_t button_map[NP_CORES][MAP_BUTTONS];
     /* the app */
     int ui_sound;       /* SFX_STYLE_* in ui/sfx.h; SFX_STYLE_OFF mutes */
     int ui_volume;      /* 0..3 = 25/50/75/100 % */

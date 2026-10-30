@@ -13,8 +13,17 @@
 
 void config_default_buttons(Settings *s, int core)
 {
-    const CoreInfo *c = &CORES[core >= 0 && core < CORE_COUNT ? core : CORE_EASYRPG];
-    memcpy(s->button_map, c->buttons, sizeof(s->button_map));
+    core = core >= 0 && core < CORE_COUNT ? core : CORE_EASYRPG;
+    memcpy(s->button_map[core], CORES[core].buttons, sizeof(s->button_map[core]));
+}
+
+/* "button_<n>" is EasyRPG Player's (the key the settings file has always had), "<core>_button_<n>" the others'. */
+static void button_key(char *out, size_t size, int core, int button)
+{
+    if (core == CORE_EASYRPG)
+        snprintf(out, size, "button_%d", button);
+    else
+        snprintf(out, size, "%s_button_%d", CORES[core].id, button);
 }
 
 void config_defaults(Settings *s)
@@ -31,7 +40,8 @@ void config_defaults(Settings *s)
     s->ff_toggle = 0;
     s->stick_dpad = true;
     s->show_fps = false;
-    config_default_buttons(s, CORE_EASYRPG);
+    for (int core = 0; core < CORE_COUNT; ++core)
+        config_default_buttons(s, core);
     s->ui_sound = SFX_STYLE_SOFT;
     s->ui_volume = 2;
     s->game_volume = 10;
@@ -89,12 +99,15 @@ void config_load(Settings *s, const char *path)
             s->sort_mode = clamp(v, 0, 1);
         else if (!strcmp(key, "last_game"))
             s->last_game = v < 0 ? 0 : v;
-        else if (!strncmp(key, "button_", 7))
-        {
-            const int b = atoi(key + 7);
-            if (b >= 0 && b < MAP_BUTTONS)
-                s->button_map[b] = (int8_t)clamp(v, -1, 15);
-        }
+        else
+            for (int core = 0; core < CORE_COUNT; ++core)
+                for (int b = 0; b < MAP_BUTTONS; ++b)
+                {
+                    char name[48];
+                    button_key(name, sizeof(name), core, b);
+                    if (!strcmp(key, name))
+                        s->button_map[core][b] = (int8_t)clamp(v, -1, 15);
+                }
     }
     fclose(f);
 }
@@ -112,8 +125,13 @@ bool config_save(const Settings *s, const char *path)
             s->integer_scale, s->smooth, s->shader, s->aspect, s->upscale, s->upscale_filter);
     fprintf(f, "ff_speed = %d\nff_toggle = %d\nstick_dpad = %d\nshow_fps = %d\n", s->ff_speed, s->ff_toggle,
             s->stick_dpad, s->show_fps);
-    for (int b = 0; b < MAP_BUTTONS; ++b)
-        fprintf(f, "button_%d = %d\n", b, s->button_map[b]);
+    for (int core = 0; core < CORE_COUNT; ++core)
+        for (int b = 0; b < MAP_BUTTONS; ++b)
+        {
+            char name[48];
+            button_key(name, sizeof(name), core, b);
+            fprintf(f, "%s = %d\n", name, s->button_map[core][b]);
+        }
     fprintf(f, "ui_sound = %d\nui_volume = %d\ngame_volume = %d\nupdate_check = %d\nsort_mode = %d\nlast_game = %d\n",
             s->ui_sound, s->ui_volume, s->game_volume, s->update_check, s->sort_mode, s->last_game);
     const bool ok = fclose(f) == 0;

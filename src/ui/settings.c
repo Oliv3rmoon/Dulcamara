@@ -119,9 +119,11 @@ static const Row CONTROLS[] = {
     BUTTON_ROW("L3", BTN_L3),
     BUTTON_ROW("R3", BTN_R3),
     BUTTON_ROW("OPTIONS", BTN_START),
-    {"Default buttons", "Cross Decision, Circle Cancel, Triangle the menu, Square Shift, OPTIONS EasyRPG's settings.",
+    {"Default buttons", "The core's own: for RPG Maker, Cross Decision, Circle Cancel, Triangle the menu; for Ren'Py, "
+                        "Cross on, Circle the game menu, L1 and R1 back and forward. Each core keeps its own buttons.",
      K_ACTION, 0, NULL, 0, NULL, A_DEFAULT_BUTTONS, -1},
-    {"The D-pad and the left stick move; R2 fast-forwards; the touchpad opens Dulcamara's menu.", NULL, K_INFO,
+    {"The D-pad and the left stick move; R2 fast-forwards (in Ren'Py, it skips read text too); pressing the "
+     "touchpad opens Dulcamara's menu, and in Ren'Py the touchpad is the mouse (a tap clicks).", NULL, K_INFO,
      0, NULL, 0, NULL, A_NONE, -1},
 };
 
@@ -149,11 +151,14 @@ static const Row ABOUT[] = {
      A_NONE, -1},
     {"Games run on EasyRPG Player (GPL-3.0-or-later) and liblcf (MIT), by the EasyRPG team.", NULL, K_INFO, 0, NULL,
      0, NULL, A_NONE, -1},
+    {"Ren'Py games run on Ren'Py 8.5 (MIT) by Tom Rothamel and its contributors, in Python 3.12 (PSF), with FFmpeg "
+     "(LGPL-2.1).", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
     {"Built on Mandrake (formerly Nightshade Station): darkxex's SwanStationPS5 on BlackBearReloaded's boilerplate.", NULL, K_INFO,
      0, NULL, 0, NULL, A_NONE, -1},
-    {"Games: " NP_DATA "/games, one folder (or .zip, .easyrpg) each.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
-    {"RTP: " NP_DATA "/rtp/2000 and rtp/2003. Saves stay in each game's folder.", NULL, K_INFO, 0, NULL, 0, NULL,
-     A_NONE, -1},
+    {"Games: " NP_DATA "/games, one folder (or .zip, .easyrpg) each. A Ren'Py game is its folder with game/ in it.",
+     NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"RTP: " NP_DATA "/rtp/2000 and rtp/2003. RPG Maker saves stay in each game's folder; Ren'Py's are in "
+     NP_DATA "/saves/renpy.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
     {"Licences and credits: the licenses folder of the app, and THIRD_PARTY_NOTICES.md on GitHub.", NULL, K_INFO, 0,
      NULL, 0, NULL, A_NONE, -1},
     {"No games come with Dulcamara: copy your own.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
@@ -189,12 +194,18 @@ void settings_opened(void)
 
 /* ---------------------------------------------------------------- values */
 
+/* The core whose buttons the Controls page shows: the running game's, else EasyRPG Player's. */
+static int controls_core(void)
+{
+    return app.game >= 0 ? app.library.games[app.game].core : CORE_EASYRPG;
+}
+
 static int *int_field(const Row *r)
 {
     if (r->button >= 0)
     {
         static int value;
-        value = app.settings.button_map[r->button];
+        value = app.settings.button_map[controls_core()][r->button];
         return &value;
     }
     return (int *)((char *)&app.settings + r->field);
@@ -213,7 +224,7 @@ static void choice_set(const Row *r, int index)
 {
     const int v = r->values ? r->values[index] : index;
     if (r->button >= 0)
-        app.settings.button_map[r->button] = (int8_t)v;
+        app.settings.button_map[controls_core()][r->button] = (int8_t)v;
     else
         *int_field(r) = v;
 }
@@ -235,7 +246,7 @@ static void run_action(int action)
     switch (action)
     {
     case A_DEFAULT_BUTTONS:
-        config_default_buttons(&app.settings, app.game >= 0 ? app.library.games[app.game].core : CORE_EASYRPG);
+        config_default_buttons(&app.settings, controls_core());
         app_toast("The buttons are back to their defaults.");
         break;
     case A_RESCAN:

@@ -86,6 +86,8 @@ const CoreInfo CORES[CORE_COUNT] = {
                     RENPY_BUTTONS, true, true},
 };
 
+_Static_assert(CORE_COUNT == NP_CORES, "NP_CORES (nightshade.h) is the number of cores");
+
 const CoreInfo *core_by_id(const char *id)
 {
     for (int i = 0; i < CORE_COUNT; ++i)
