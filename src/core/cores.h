@@ -26,6 +26,7 @@
 enum
 {
     CORE_EASYRPG = 0, /* EasyRPG Player: RPG Maker 2000 and 2003 */
+    CORE_RENPY,       /* Ren'Py 8 (tools/build-renpy.sh); the desktop build has it without its functions */
     CORE_COUNT
 };
 

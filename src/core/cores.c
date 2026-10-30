@@ -49,6 +49,16 @@
 
 DECLARE_WITH(EASYRPG_PREFIX)
 
+/* Ren'Py's core is built for the console only (tools/build-renpy.sh ps5; its host build is a test program). The
+ * desktop build lists it without functions, and host_load refuses its games there. */
+#if defined(__PROSPERO__) || defined(NP_HAVE_RENPY)
+CORE_DECLARE(renpy_)
+#define RENPY_FUNCTIONS CORE_FUNCTIONS(renpy_)
+#else
+#define RENPY_FUNCTIONS                                                                                            \
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+#endif
+
 /* EasyRPG Player's buttons (src/platform/libretro/input_buttons.cpp in it): A Decision, B and X Cancel, Y Shift,
  * L3 and R3 the 0 and 5 keys, Start its own settings, Select Reset. Cross confirms and Circle cancels, as on the
  * PS5; Triangle opens the game's menu; Select (the game's reset) and the debug keys on L1 / R1 are left off. */
@@ -59,9 +69,21 @@ static const int8_t EASYRPG_BUTTONS[MAP_BUTTONS] = {
     [BTN_L2] = PAD_NONE,   [BTN_R2] = PAD_NONE,    [BTN_L3] = PAD_L3,       [BTN_R3] = PAD_R3,
 };
 
+/* Ren'Py's buttons are SDL's controller buttons, by where they sit (src/core/renpy/input.c): Cross is the bottom one,
+ * which Ren'Py takes as "confirm", Circle opens the game menu, L1 and R1 roll back and forward, Start is the menu
+ * too; Square and Triangle are Ren'Py's own (hide the window, skip). */
+static const int8_t RENPY_BUTTONS[MAP_BUTTONS] = {
+    [BTN_CROSS] = PAD_B,   [BTN_SQUARE] = PAD_Y,   [BTN_SELECT] = PAD_SELECT, [BTN_START] = PAD_START,
+    [BTN_UP] = PAD_UP,     [BTN_DOWN] = PAD_DOWN,  [BTN_LEFT] = PAD_LEFT,     [BTN_RIGHT] = PAD_RIGHT,
+    [BTN_CIRCLE] = PAD_A,  [BTN_TRIANGLE] = PAD_X, [BTN_L1] = PAD_L,          [BTN_R1] = PAD_R,
+    [BTN_L2] = PAD_NONE,   [BTN_R2] = PAD_NONE,    [BTN_L3] = PAD_L3,         [BTN_R3] = PAD_R3,
+};
+
 const CoreInfo CORES[CORE_COUNT] = {
     [CORE_EASYRPG] = {"easyrpg", "EasyRPG Player", "RPG Maker 2000 / 2003", "GPL-3.0-or-later",
                       FUNCTIONS_WITH(EASYRPG_PREFIX), EASYRPG_BUTTONS, true},
+    [CORE_RENPY] = {"renpy", "Ren'Py", "Ren'Py 8", "MIT (Ren'Py), PSF (Python), LGPL-2.1 (FFmpeg)", RENPY_FUNCTIONS,
+                    RENPY_BUTTONS, true},
 };
 
 const CoreInfo *core_by_id(const char *id)

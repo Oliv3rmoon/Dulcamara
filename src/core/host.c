@@ -28,6 +28,7 @@ typedef struct
 static const CoreInfo *core;
 static bool loaded, shutdown_asked, fast_forward;
 static char system_dir[NP_PATH_MAX];
+static char assets_dir[NP_PATH_MAX];
 static char game_path[NP_PATH_MAX];
 static Option options[MAX_OPTIONS];
 static int option_count;
@@ -132,6 +133,10 @@ static bool environment(unsigned cmd, void *data)
     case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
         *(const char **)data = system_dir;
         return true;
+    case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY:
+        /* the app's own read-only assets: Ren'Py's engine is assets/renpy8 */
+        *(const char **)data = assets_dir;
+        return true;
     case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
         ((struct retro_log_callback *)data)->log = core_log;
         return true;
@@ -225,7 +230,7 @@ static bool environment(unsigned cmd, void *data)
         return true;
     }
     default:
-        /* the VFS, MIDI out, the core assets folder, a hardware context...: the cores do without */
+        /* the VFS, MIDI out, a hardware context...: the cores do without */
         return false;
     }
 }
@@ -302,8 +307,14 @@ bool host_load(const Game *g, const char *system, char *error, size_t error_size
         snprintf(error, error_size, "No core runs this game.");
         return false;
     }
+    if (!CORES[g->core].init)
+    {
+        snprintf(error, error_size, "%s games play on the console.", CORES[g->core].name);
+        return false;
+    }
     core = &CORES[g->core];
     str_copy(system_dir, sizeof(system_dir), system);
+    plat_asset_path(assets_dir, sizeof(assets_dir), "");
     str_copy(game_path, sizeof(game_path), g->path);
     option_count = 0;
     shutdown_asked = false;

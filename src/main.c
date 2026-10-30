@@ -458,6 +458,8 @@ int main(int argc, char **argv)
     {
         struct retro_system_info info;
         memset(&info, 0, sizeof(info));
+        if (!CORES[i].get_system_info)
+            continue; /* not in this build */
         CORES[i].get_system_info(&info);
         np_log("core: %s %s for %s", CORES[i].name, info.library_version ? info.library_version : "", CORES[i].runs);
     }

@@ -6,6 +6,10 @@
  * (games/Series/Game), or a .zip or .easyrpg archive that holds them, at its root or in a folder inside it. Its
  * title is RPG_RT.ini's GameTitle, else the folder's or archive's name; its cover is the picture of its title screen
  * (Title/ in the game, the one RPG_RT.ldb names).
+ *
+ * A Ren'Py game is a folder with game/ holding its scripts or archives (.rpy, .rpyc, .rpa). Its title is its
+ * launcher's name (<name>.exe or <name>.sh beside game/), else the folder's; its cover is game/gui/main_menu.png, else
+ * game/gui/window_icon.png; its Ren'Py version comes from its renpy/ folder.
  */
 #ifndef NP_LIBRARY_H
 #define NP_LIBRARY_H
@@ -21,7 +25,8 @@ typedef struct
     char path[NP_PATH_MAX];       /* what the core loads: the folder, or <archive>/<inner> */
     char id[24];                  /* a stable key for the game: its location's hash */
     bool archive;
-    int engine;                   /* 2000, 2003; 0 until the cover is looked up (it reads RPG_RT.ldb) */
+    int engine;                   /* 2000, 2003; 0 until the cover is looked up (it reads RPG_RT.ldb). Ren'Py: its
+                                     major version (8, 7), 0 when the game does not say */
     int core;                     /* which core runs it (CORE_* in core/cores.h) */
     long long played;             /* when it was last played (seconds since 1970), 0 never */
 } Game;
@@ -37,7 +42,7 @@ typedef struct
 bool library_dir_is_game(const char *dir);
 /* An archive that holds a game: fills g (title, inner, path...) and returns true. */
 bool library_read_archive(const char *archive, Game *g);
-/* A game folder: fills g. */
+/* A game folder (RPG Maker or Ren'Py): fills g. */
 bool library_read_folder(const char *dir, Game *g);
 
 /* Every game in root (the games folder), in no particular order. */

@@ -131,10 +131,12 @@ bool library_dir_is_game(const char *dir)
     return ldb && lmt;
 }
 
+static bool library_read_renpy(const char *dir, Game *g); /* below, with the rest of Ren'Py's */
+
 bool library_read_folder(const char *dir, Game *g)
 {
     if (!library_dir_is_game(dir))
-        return false;
+        return library_read_renpy(dir, g);
     memset(g, 0, sizeof(*g));
     str_copy(g->location, sizeof(g->location), dir);
     str_copy(g->path, sizeof(g->path), dir);
@@ -147,6 +149,125 @@ bool library_read_folder(const char *dir, Game *g)
     title_from_ini(ini, len, g);
     free(ini);
     return true;
+}
+
+/* ---------------------------------------------------------------- Ren'Py */
+
+/* A folder with game/ holding Ren'Py's scripts (.rpy, .rpyc) or archives (.rpa): game/ into game_dir. */
+static bool renpy_game_dir(const char *dir, char *game_dir, size_t size)
+{
+    if (!find_in_dir(dir, "game", game_dir, size) || !path_is_dir(game_dir))
+        return false;
+    DIR *d = opendir(game_dir);
+    if (!d)
+        return false;
+    bool found = false;
+    for (struct dirent *e; !found && (e = readdir(d));)
+    {
+        const char *ext = path_ext(e->d_name);
+        found = !str_icmp(ext, "rpy") || !str_icmp(ext, "rpyc") || !str_icmp(ext, "rpa");
+    }
+    closedir(d);
+    return found;
+}
+
+/* The number that starts the value of `key` in a Python file's line "key = '8.3.7...'" or "key = (7, 4, ...)". */
+static int version_in(const char *text, const char *key)
+{
+    const size_t n = strlen(key);
+    for (const char *line = text; line && *line; line = strchr(line, '\n') ? strchr(line, '\n') + 1 : NULL)
+    {
+        if (strncmp(line, key, n))
+            continue;
+        const char *p = line + n;
+        while (*p == ' ' || *p == '\t')
+            ++p;
+        if (*p++ != '=')
+            continue;
+        while (*p == ' ' || *p == '\t' || *p == 'u' || *p == 'b' || *p == '(' || *p == '\'' || *p == '"')
+            ++p;
+        if (*p >= '0' && *p <= '9')
+            return atoi(p);
+    }
+    return 0;
+}
+
+/* The game's Ren'Py version: the major number of renpy/vc_version.py's version, or of renpy/__init__.py's
+ * version_tuple in older releases; 0 when the game has no renpy/ folder (some repacks) or neither says. */
+static int renpy_version(const char *dir)
+{
+    static const struct
+    {
+        const char *file, *key;
+    } SOURCES[] = {{"vc_version.py", "version"}, {"__init__.py", "version_tuple"}};
+    char renpy_dir[NP_PATH_MAX], path[NP_PATH_MAX];
+    if (!find_in_dir(dir, "renpy", renpy_dir, sizeof(renpy_dir)))
+        return 0;
+    for (size_t i = 0; i < sizeof(SOURCES) / sizeof(SOURCES[0]); ++i)
+    {
+        size_t len = 0;
+        char *text = find_in_dir(renpy_dir, SOURCES[i].file, path, sizeof(path)) ? read_file(path, MAX_INI, &len)
+                                                                                 : NULL;
+        const int version = text ? version_in(text, SOURCES[i].key) : 0;
+        free(text);
+        if (version)
+            return version;
+    }
+    return 0;
+}
+
+/* The name of the game's launcher beside game/ (<name>.exe or <name>.sh, not the 32-bit <name>-32.exe): the
+ * first, by name. */
+static bool renpy_launcher_name(const char *dir, char *out, size_t size)
+{
+    DIR *d = opendir(dir);
+    if (!d)
+        return false;
+    char best[256] = "";
+    for (struct dirent *e; (e = readdir(d));)
+    {
+        const char *ext = path_ext(e->d_name);
+        if (e->d_name[0] == '.' || (str_icmp(ext, "exe") && str_icmp(ext, "sh")))
+            continue;
+        size_t n = (size_t)(strrchr(e->d_name, '.') - e->d_name);
+        if (n == 0 || n >= sizeof(best) || (n > 3 && !strncmp(e->d_name + n - 3, "-32", 3)))
+            continue;
+        char stem[256];
+        memcpy(stem, e->d_name, n);
+        stem[n] = '\0';
+        if (!best[0] || str_icmp(stem, best) < 0)
+            str_copy(best, sizeof(best), stem);
+    }
+    closedir(d);
+    if (best[0])
+        str_copy(out, size, best);
+    return best[0] != '\0';
+}
+
+static bool library_read_renpy(const char *dir, Game *g)
+{
+    char game_dir[NP_PATH_MAX];
+    if (!renpy_game_dir(dir, game_dir, sizeof(game_dir)))
+        return false;
+    memset(g, 0, sizeof(*g));
+    str_copy(g->location, sizeof(g->location), dir);
+    str_copy(g->path, sizeof(g->path), dir);
+    str_copy(g->name, sizeof(g->name), base_name(dir));
+    hash_id(dir, g->id, sizeof(g->id));
+    g->core = CORE_RENPY;
+    g->engine = renpy_version(dir);
+    if (!renpy_launcher_name(dir, g->title, sizeof(g->title)))
+        str_copy(g->title, sizeof(g->title), g->name);
+    return true;
+}
+
+/* game/gui/main_menu.png, else game/gui/window_icon.png */
+static bool renpy_title_image(const Game *g, char *out, size_t size)
+{
+    char game_dir[NP_PATH_MAX], gui[NP_PATH_MAX];
+    if (!find_in_dir(g->location, "game", game_dir, sizeof(game_dir)) || !find_in_dir(game_dir, "gui", gui, sizeof(gui)))
+        return false;
+    return find_in_dir(gui, "main_menu.png", out, size) || find_in_dir(gui, "window_icon.png", out, size);
 }
 
 /* ---------------------------------------------------------------- archives */
@@ -459,6 +580,8 @@ bool library_title_image(Game *g, char *out, size_t size)
 {
     if (size)
         out[0] = '\0';
+    if (g->core == CORE_RENPY)
+        return renpy_title_image(g, out, size);
     return g->archive ? archive_title_image(g, out, size) : folder_title_image(g, out, size);
 }
 

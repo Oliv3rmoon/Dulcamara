@@ -6,6 +6,7 @@
  *
  *   library-check <empty temporary folder> [TestGame folder]
  */
+#include "../src/core/cores.h"
 #include "../src/library.h"
 #include "../src/rpgmaker.h"
 
@@ -351,6 +352,76 @@ static void check_pieces(void)
     CHECK(strlen(out) == 15, "and cut between characters when it doesn't: %zu", strlen(out));
 }
 
+/* Ren'Py games: a folder with game/ holding scripts or archives; its version from renpy/, its title from its
+ * launcher, its cover from game/gui. In a games folder of their own. */
+static void check_renpy_games(void)
+{
+    char root[NP_PATH_MAX], dir[NP_PATH_MAX], sub[NP_PATH_MAX], more[NP_PATH_MAX];
+    path_join(root, sizeof(root), base, "renpy-games");
+    make_dirs(root);
+
+    make_dir(dir, sizeof(dir), root, "Moonlit Tale");
+    make_dir(sub, sizeof(sub), dir, "game");
+    write_text(sub, "script.rpyc", "compiled");
+    make_dir(more, sizeof(more), sub, "gui");
+    write_text(more, "main_menu.png", "png");
+    write_text(more, "window_icon.png", "png");
+    make_dir(sub, sizeof(sub), dir, "renpy");
+    write_text(sub, "vc_version.py", "branch = 'fix'\nversion = '8.3.7.24110503'\nofficial = True\n");
+    write_text(dir, "MoonlitTale.exe", "MZ");
+    write_text(dir, "MoonlitTale-32.exe", "MZ");
+    write_text(dir, "MoonlitTale.sh", "#!/bin/sh\n");
+
+    make_dir(dir, sizeof(dir), root, "old-story-1.0-pc");
+    make_dir(sub, sizeof(sub), dir, "game");
+    write_text(sub, "archive.RPA", "RPA-3.0");
+    make_dir(more, sizeof(more), sub, "gui");
+    write_text(more, "window_icon.png", "png");
+    make_dir(sub, sizeof(sub), dir, "renpy");
+    write_text(sub, "vc_version.py", "vc_version = 2266\nversion = u'7.4.11.2266'\n");
+    write_text(dir, "OldStory.sh", "#!/bin/sh\n");
+
+    make_dir(dir, sizeof(dir), root, "Older");
+    make_dir(sub, sizeof(sub), dir, "game");
+    write_text(sub, "script.rpy", "label start:\n");
+    make_dir(sub, sizeof(sub), dir, "renpy");
+    write_text(sub, "__init__.py", "import os\nversion_tuple = (7, 3, 5, vc_version)\n");
+
+    make_dir(dir, sizeof(dir), root, "Repack");
+    make_dir(sub, sizeof(sub), dir, "game");
+    write_text(sub, "script.rpy", "label start:\n");
+
+    make_dir(dir, sizeof(dir), root, "Notes");
+    make_dir(sub, sizeof(sub), dir, "game");
+    write_text(sub, "readme.txt", "not a game");
+
+    Library lib = {0};
+    library_scan(&lib, root);
+    CHECK(lib.count == 4, "4 Ren'Py games, found %d", lib.count);
+    char cover[NP_PATH_MAX];
+    Game *m = (Game *)find(&lib, "Moonlit Tale");
+    CHECK(m && m->core == CORE_RENPY && m->engine == 8, "Moonlit Tale is Ren'Py 8: core %d, version %d",
+          m ? m->core : -1, m ? m->engine : -1);
+    CHECK(m && !strcmp(m->title, "MoonlitTale"), "its title is its launcher's name: %s", m ? m->title : "-");
+    CHECK(m && !strcmp(m->path, m->location), "the core loads its folder");
+    CHECK(m && library_title_image(m, cover, sizeof(cover)) && strstr(cover, "/game/gui/main_menu.png"),
+          "its cover is game/gui/main_menu.png: %s", cover);
+    Game *o = (Game *)find(&lib, "old-story-1.0-pc");
+    CHECK(o && o->core == CORE_RENPY && o->engine == 7, "old-story is Ren'Py 7: %d", o ? o->engine : -1);
+    CHECK(o && !strcmp(o->title, "OldStory"), "its title: %s", o ? o->title : "-");
+    CHECK(o && library_title_image(o, cover, sizeof(cover)) && strstr(cover, "/game/gui/window_icon.png"),
+          "without main_menu.png its cover is window_icon.png: %s", cover);
+    Game *old = (Game *)find(&lib, "Older");
+    CHECK(old && old->engine == 7, "Older's version from renpy/__init__.py: %d", old ? old->engine : -1);
+    Game *r = (Game *)find(&lib, "Repack");
+    CHECK(r && r->core == CORE_RENPY && r->engine == 0, "a repack without renpy/ is tried as Ren'Py 8: %d",
+          r ? r->engine : -1);
+    CHECK(r && !strcmp(r->title, "Repack"), "and is called by its folder: %s", r ? r->title : "-");
+    CHECK(r && !library_title_image(r, cover, sizeof(cover)), "and has no cover");
+    CHECK(!find(&lib, "Notes"), "a game/ folder without scripts is not a game");
+    library_free(&lib);
+}
+
 static void check_testgame(const char *dir)
 {
     Library lib = {0};
@@ -396,6 +467,7 @@ int main(int argc, char **argv)
     make_dirs(games);
     make_games();
     check_made_up_games();
+    check_renpy_games();
     check_pieces();
     if (argc > 2)
         check_testgame(argv[2]);
