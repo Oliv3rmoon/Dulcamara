@@ -32,6 +32,8 @@ static char assets_dir[NP_PATH_MAX];
 static char game_path[NP_PATH_MAX];
 static Option options[MAX_OPTIONS];
 static int option_count;
+static Option settings_options[4]; /* host_set_option's */
+static int settings_option_count;
 
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
 static struct retro_system_av_info av;
@@ -175,9 +177,13 @@ static bool environment(unsigned cmd, void *data)
         return true;
     case RETRO_ENVIRONMENT_GET_VARIABLE:
     {
-        /* every option at its default; a core that asks for one it never declared gets NULL, as libretro says */
+        /* the options Dulcamara's Settings set, every other at its default; a core that asks for one it never
+         * declared gets NULL, as libretro says */
         struct retro_variable *var = data;
         const Option *o = var && var->key ? find_option(var->key) : NULL;
+        for (int i = 0; o && i < settings_option_count; ++i)
+            if (!strcmp(settings_options[i].key, var->key))
+                o = &settings_options[i];
         var->value = o ? o->value : NULL;
         return o != NULL;
     }
@@ -495,6 +501,20 @@ void host_feed_audio(double seconds)
 void host_set_volume(int tenths)
 {
     volume = tenths < 0 ? 0 : tenths > 10 ? 10 : tenths;
+}
+
+void host_set_option(const char *key, const char *value)
+{
+    int i = 0;
+    while (i < settings_option_count && strcmp(settings_options[i].key, key))
+        ++i;
+    if (i == settings_option_count)
+    {
+        if (settings_option_count == (int)(sizeof(settings_options) / sizeof(settings_options[0])))
+            return;
+        str_copy(settings_options[settings_option_count++].key, sizeof(settings_options[0].key), key);
+    }
+    str_copy(settings_options[i].value, sizeof(settings_options[i].value), value);
 }
 
 void host_set_fast_forward(bool on)

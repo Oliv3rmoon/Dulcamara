@@ -1,10 +1,13 @@
 # Dulcamara - logs Ren'Py's errors in full before Ren'Py shows them: renpy.error.report_exception (which writes
 # traceback.txt) and renpy.display.error.report_parse_errors (the script's errors) are wrapped as their modules load.
+# With Settings > Ren'Py's "skip unread text too" (DULCAMARA_SKIP_UNSEEN=1), Ren'Py's skip_unseen preference reads
+# as on, while the game's own value is kept for when it is off again.
 # Shipped as the engine's dulcamara_errors.py and installed by the boot script (boot.py). It is a module of its own
 # because Ren'Py pickles its modules' globals as a backup: the wrappers must be functions it can find by name.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import importlib.abc
+import os
 import sys
 
 import _dulcamara
@@ -35,6 +38,14 @@ def report_parse_errors(errors, error_fn, *args, **kwargs):
     return originals["report_parse_errors"](errors, error_fn, *args, **kwargs)
 
 
+def skip_unseen_get(preferences):
+    return True
+
+
+def skip_unseen_set(preferences, value):
+    preferences.__dict__["skip_unseen"] = value
+
+
 def wrap(module):
     if module.__name__ == "renpy.error":
         originals["report_exception"] = module.report_exception
@@ -42,6 +53,8 @@ def wrap(module):
     elif module.__name__ == "renpy.display.error":
         originals["report_parse_errors"] = module.report_parse_errors
         module.report_parse_errors = report_parse_errors
+    elif module.__name__ == "renpy.preferences" and os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
+        module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
 
 
 class Loader(importlib.abc.Loader):
@@ -62,7 +75,7 @@ class Finder(importlib.abc.MetaPathFinder):
     """Finds the two modules as the other finders do, with Loader around their loader. Ren'Py imports them itself,
     and again when it reloads."""
 
-    names = ("renpy.error", "renpy.display.error")
+    names = ("renpy.error", "renpy.display.error", "renpy.preferences")
 
     def find_spec(self, name, path, target=None):
         if name not in self.names:

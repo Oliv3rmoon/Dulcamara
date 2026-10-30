@@ -112,6 +112,7 @@ typedef struct
     int ff_toggle;      /* 1: R2 turns fast-forward on and off; 0: while it is held */
     bool stick_dpad;    /* the left stick moves like the D-pad */
     bool show_fps;
+    bool renpy_skip_unseen; /* Ren'Py: fast-forward skips unread text too (its skip_unseen preference) */
     /* each core's (CORE_*): each controller button (BTN_*) the game's button it presses (PAD_*), or -1 */
     int8_t button_map[NP_CORES][MAP_BUTTONS];
     /* the app */

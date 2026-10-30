@@ -40,6 +40,7 @@ void config_defaults(Settings *s)
     s->ff_toggle = 0;
     s->stick_dpad = true;
     s->show_fps = false;
+    s->renpy_skip_unseen = false;
     for (int core = 0; core < CORE_COUNT; ++core)
         config_default_buttons(s, core);
     s->ui_sound = SFX_STYLE_SOFT;
@@ -87,6 +88,8 @@ void config_load(Settings *s, const char *path)
             s->stick_dpad = v != 0;
         else if (!strcmp(key, "show_fps"))
             s->show_fps = v != 0;
+        else if (!strcmp(key, "renpy_skip_unseen"))
+            s->renpy_skip_unseen = v != 0;
         else if (!strcmp(key, "ui_sound"))
             s->ui_sound = clamp(v, 0, SFX_STYLE_OFF);
         else if (!strcmp(key, "ui_volume"))
@@ -123,8 +126,8 @@ bool config_save(const Settings *s, const char *path)
     fprintf(f, "version = %s\n", NP_VERSION);
     fprintf(f, "integer_scale = %d\nsmooth = %d\nshader = %d\naspect = %d\nupscale = %d\nupscale_filter = %d\n",
             s->integer_scale, s->smooth, s->shader, s->aspect, s->upscale, s->upscale_filter);
-    fprintf(f, "ff_speed = %d\nff_toggle = %d\nstick_dpad = %d\nshow_fps = %d\n", s->ff_speed, s->ff_toggle,
-            s->stick_dpad, s->show_fps);
+    fprintf(f, "ff_speed = %d\nff_toggle = %d\nstick_dpad = %d\nshow_fps = %d\nrenpy_skip_unseen = %d\n", s->ff_speed,
+            s->ff_toggle, s->stick_dpad, s->show_fps, s->renpy_skip_unseen);
     for (int core = 0; core < CORE_COUNT; ++core)
         for (int b = 0; b < MAP_BUTTONS; ++b)
         {

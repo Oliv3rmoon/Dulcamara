@@ -24,6 +24,9 @@ void host_run(int times, double seconds);
 void host_feed_audio(double seconds);
 void host_set_volume(int tenths); /* 0..10 */
 void host_set_fast_forward(bool on); /* what RETRO_ENVIRONMENT_GET_FASTFORWARDING answers */
+/* A core option's value from Dulcamara's Settings ("renpy_skip_unseen", "on"), kept across loads: what
+ * RETRO_ENVIRONMENT_GET_VARIABLE answers for it before the core's default. */
+void host_set_option(const char *key, const char *value);
 /* The core asked to close (EasyRPG: Exit on the title screen). */
 bool host_shutdown_requested(void);
 void host_reset(void);

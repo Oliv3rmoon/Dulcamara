@@ -127,6 +127,20 @@ static const Row CONTROLS[] = {
      0, NULL, 0, NULL, A_NONE, -1},
 };
 
+static const Row RENPY_ROWS[] = {
+    {"Fast-forward skips unread text too", "R2 skips text not read yet as well as what was read, whatever the game's "
+                                            "own Skip setting says. Off: the game's setting decides. From the next "
+                                            "Ren'Py game started.",
+     K_TOGGLE, FIELD(renpy_skip_unseen), NULL, 0, NULL, A_NONE, -1},
+    {"Ren'Py's own preferences (text speed, volumes, auto-forward, rollback) are in each game's menu: Circle.", NULL,
+     K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"The touchpad is the mouse (a tap clicks); pressing it down opens Dulcamara's menu.", NULL, K_INFO, 0, NULL, 0,
+     NULL, A_NONE, -1},
+    {"Saves: " NP_DATA "/saves/renpy, one folder each game.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"Ren'Py 8 games run on Ren'Py 8.5, Ren'Py 7 and 6 games on 7.8; a second one starts the app again.", NULL,
+     K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+};
+
 static const Row LIBRARY_ROWS[] = {
     {"Order", "The library by title, or the games last played first. Triangle on the library switches it too.",
      K_CHOICE, FIELD(sort_mode), ORDERS, N(ORDERS), NULL, A_NONE, -1},
@@ -177,6 +191,7 @@ static const Tab TABS[] = {
     {"Picture", ICON_DEVICE_TV, PICTURE, N(PICTURE)},
     {"Playing", ICON_PLAYER_PLAY, PLAYING, N(PLAYING)},
     {"Controls", ICON_DEVICE_GAMEPAD_2, CONTROLS, N(CONTROLS)},
+    {"Ren'Py", ICON_FILE_TEXT, RENPY_ROWS, N(RENPY_ROWS)},
     {"Library", ICON_BOOKS, LIBRARY_ROWS, N(LIBRARY_ROWS)},
     {"System", ICON_SETTINGS, SYSTEM, N(SYSTEM)},
     {"About", ICON_INFO_CIRCLE, ABOUT, N(ABOUT)},

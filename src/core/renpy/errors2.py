@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-# Dulcamara - errors.py's work for Ren'Py 7, in Python 2.7: renpy.error.report_exception (which writes traceback.txt)
+# Dulcamara - errors.py's work for Ren'Py 7, in Python 2.7 (with its skip_unseen preference): renpy.error.report_exception (which writes traceback.txt)
 # and renpy.display.error.report_parse_errors are wrapped as their modules load, so that Ren'Py's errors are logged in
 # full before Ren'Py shows them. Shipped as the Ren'Py 7 engine's dulcamara_errors.py; a module of its own, since Ren'Py
 # pickles its modules' globals and must find the wrappers by name.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
 import sys
 
 import _dulcamara
@@ -37,6 +38,14 @@ def report_parse_errors(errors, error_fn, *args, **kwargs):
     return originals["report_parse_errors"](errors, error_fn, *args, **kwargs)
 
 
+def skip_unseen_get(preferences):
+    return True
+
+
+def skip_unseen_set(preferences, value):
+    preferences.__dict__["skip_unseen"] = value
+
+
 def wrap(module):
     if module.__name__ == "renpy.error" and "report_exception" not in originals:
         originals["report_exception"] = module.report_exception
@@ -44,12 +53,14 @@ def wrap(module):
     elif module.__name__ == "renpy.display.error" and "report_parse_errors" not in originals:
         originals["report_parse_errors"] = module.report_parse_errors
         module.report_parse_errors = report_parse_errors
+    elif module.__name__ == "renpy.preferences" and os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
+        module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
 
 
 class Finder(object):
     """Python 2's import hook: the two modules are imported as they would be, then wrapped."""
 
-    names = ("renpy.error", "renpy.display.error")
+    names = ("renpy.error", "renpy.display.error", "renpy.preferences")
     busy = False
 
     def find_module(self, name, path=None):
@@ -64,7 +75,7 @@ class Finder(object):
         finally:
             Finder.busy = False
         module = sys.modules[name]
-        originals.pop("report_exception" if name == "renpy.error" else "report_parse_errors", None)
+        originals.pop({"renpy.error": "report_exception", "renpy.display.error": "report_parse_errors"}.get(name), None)
         wrap(module)
         return module
 

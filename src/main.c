@@ -335,6 +335,7 @@ void app_start_game(int index)
 #endif
     np_log("game: starting %s (%s)", g->title, g->path);
     ps5_crash_step("loading a game");
+    host_set_option("renpy_skip_unseen", app.settings.renpy_skip_unseen ? "on" : "off");
     if (!host_load(g, app.paths.root, error, sizeof(error)))
     {
         app_message_box(error);

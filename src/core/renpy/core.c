@@ -18,6 +18,7 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
@@ -90,6 +91,12 @@ static bool make_folders(const char *path)
 void retro_set_environment(retro_environment_t cb)
 {
     environ_cb = cb;
+    /* the core's one option (Dulcamara's Settings > Ren'Py) */
+    static const struct retro_variable variables[] = {
+        {"renpy_skip_unseen", "Fast-forward skips unread text too; off|on"},
+        {NULL, NULL},
+    };
+    cb(RETRO_ENVIRONMENT_SET_VARIABLES, (void *)variables);
 }
 
 void retro_set_video_refresh(retro_video_refresh_t cb)
@@ -210,6 +217,11 @@ bool retro_load_game(const struct retro_game_info *info)
     shutdown_sent = false;
 
     char error[256];
+    /* read by the engine's dulcamara_errors, which holds Ren'Py's preference to it */
+    struct retro_variable skip_unseen = {"renpy_skip_unseen", NULL};
+    const bool skip_all = environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &skip_unseen) && skip_unseen.value &&
+                          !strcmp(skip_unseen.value, "on");
+    setenv("DULCAMARA_SKIP_UNSEEN", skip_all ? "1" : "0", 1);
     if (!python_start(engine, info->path, saves, error, sizeof(error)))
     {
         emit(2, error);
