@@ -261,12 +261,78 @@ void app_rescan(void)
 
 /* ---------------------------------------------------------------- the game */
 
+/* Ren'Py runs one game each time the app starts (src/core/renpy/python.c): for another, the app starts again and opens
+ * it then. Its id waits in this file, which the next start reads once. */
+static void restart_file(char *out, size_t size)
+{
+    path_join(out, size, app.paths.root, "restart-game.txt");
+}
+
+#if defined(__PROSPERO__)
+extern int sceSystemServiceLoadExec(const char *path, const char **arguments);
+
+/* Starts the app again for g. The console's shell may refuse to start a title from itself: then the app closes, as
+ * its own exit does, and the game opens at the next start. Does not return. */
+static void restart_for(const Game *g)
+{
+    char file[NP_PATH_MAX], eboot[NP_PATH_MAX];
+    restart_file(file, sizeof(file));
+    FILE *f = fopen(file, "w");
+    if (f)
+    {
+        fprintf(f, "%s\n", g->id);
+        fclose(f);
+    }
+    plat_asset_path(eboot, sizeof(eboot), "../eboot.bin");
+    np_log("game: starting again for %s (%s)", g->title, eboot);
+    app_save_settings();
+    icons_shutdown();
+    text_shutdown();
+    plat_release();
+    fflush(NULL);
+    int rc = sceSystemServiceLoadExec(eboot, NULL);
+    np_log("game: LoadExec %s refused rc=0x%x; closing, the game opens at the next start", eboot, (unsigned)rc);
+    fflush(NULL);
+    for (;;)
+    {
+        rc = sceSystemServiceLoadExec("exit", NULL);
+        plat_sleep_us(1000000);
+    }
+}
+#endif
+
+/* At start: the game a restart was for, if any (and the file gone, so it opens once). */
+static void open_restart_game(void)
+{
+    char file[NP_PATH_MAX], id[64] = "";
+    restart_file(file, sizeof(file));
+    FILE *f = fopen(file, "r");
+    if (!f)
+        return;
+    if (!fgets(id, sizeof(id), f))
+        id[0] = '\0';
+    fclose(f);
+    remove(file);
+    id[strcspn(id, "\r\n")] = '\0';
+    for (int i = 0; i < app.library.count; ++i)
+        if (!strcmp(app.library.games[i].id, id))
+        {
+            np_log("game: opening %s, which the app started again for", app.library.games[i].title);
+            app_start_game(i);
+            return;
+        }
+}
+
 void app_start_game(int index)
 {
     if (index < 0 || index >= app.library.count)
         return;
     Game *g = &app.library.games[index];
     char error[256];
+#if defined(__PROSPERO__)
+    if (g->core == CORE_RENPY && app.renpy_ran)
+        restart_for(g);
+#endif
     np_log("game: starting %s (%s)", g->title, g->path);
     ps5_crash_step("loading a game");
     if (!host_load(g, app.paths.root, error, sizeof(error)))
@@ -276,6 +342,8 @@ void app_start_game(int index)
         return;
     }
     host_set_volume(app.settings.game_volume);
+    if (g->core == CORE_RENPY)
+        app.renpy_ran = true;
     app.game = index;
     app.fast_forward = app.fast_latched = false;
     app.screen = SCREEN_GAME;
@@ -477,6 +545,8 @@ int main(int argc, char **argv)
     shelf_open();
     if (app.storage_error[0])
         app_message_box(app.storage_error);
+    else
+        open_restart_game();
 
     bool quit = false;
     PadState pads[NP_MAX_PADS];

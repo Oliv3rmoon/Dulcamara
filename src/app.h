@@ -23,6 +23,7 @@ typedef struct
     Settings settings;
     Library library;
     int game;                 /* the running game's library index, -1 on the shelf */
+    bool renpy_ran;           /* a Ren'Py game has run since the app started: the next one needs a restart */
     enum Screen screen;
     enum Screen settings_return;
     char storage_error[256];  /* the data folder can't be written */
