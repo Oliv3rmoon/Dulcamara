@@ -35,25 +35,10 @@ esac
 renpy="$root/third_party/renpy"
 folder=$target
 [[ $target == engine ]] && folder=host
-out="$root/build/renpy-$folder"
-sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
-# Autotools (fribidi's libtool, CPython's and FFmpeg's configure) cannot build under a path with spaces in it, as a
-# checkout's may have. Then build/renpy-<target> is a link to a folder in TMPDIR whose path has none.
-if [[ $out == *[[:space:]]* ]]; then
-    real="${TMPDIR:-/tmp}"
-    real="${real%/}/dulcamara-renpy-$folder-$(printf '%s' "$out" | sha256 | cut -c1-12)"
-    [[ $real == *[[:space:]]* ]] && { echo "no folder without spaces for the build (TMPDIR has them)" >&2; exit 2; }
-    mkdir -p "$real" "$(dirname "$out")"
-    if [[ ! -L $out ]]; then
-        rm -rf "$out"
-        ln -s "$real" "$out"
-    fi
-    out=$(cd "$out" && pwd -P)
-fi
+source "$root/tools/renpy/common.sh"
+out=$(build_folder "renpy-$folder")
 prefix="$out/prefix"
-cache="$root/.deps/renpy"
 log="$out/logs"
-jobs=${BUILD_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}
 cc=${CC:-cc}
 cxx=${CXX:-c++}
 
@@ -77,35 +62,6 @@ sdl2_image_hash=48355fb4d8d00bac639cd1c4f4a7661c4afef2c212af60b340e06b7059814777
 for need in cmake curl make pkg-config tar patch; do
     command -v "$need" >/dev/null || { echo "$need is required to build Ren'Py's core" >&2; exit 2; }
 done
-digest() { cat "$@" | sha256 | cut -c1-16; }
-fail() { echo "the $1 build failed; the end of $log/$1.log:" >&2; tail -60 "$log/$1.log" >&2; exit 1; }
-# fresh <stage> <key>: the stage was last built from <key>. stamp <stage> <key> records it.
-fresh() { [[ -f $out/.$1 && $(cat "$out/.$1") == "$2" ]]; }
-stamp() { echo "$2" >"$out/.$1"; }
-
-# fetch <url> <name in .deps/renpy> <sha256>
-fetch() {
-    local file="$cache/$2"
-    mkdir -p "$cache"
-    if [[ -f $file ]] && printf '%s  %s\n' "$3" "$file" | sha256 -c - >/dev/null 2>&1; then
-        return
-    fi
-    echo "==> [renpy] downloading $2"
-    curl -fsSL "$1" -o "$file.download"
-    printf '%s  %s\n' "$3" "$file.download" | sha256 -c - >/dev/null || {
-        echo "$2 does not match its pinned SHA-256" >&2
-        exit 1
-    }
-    mv "$file.download" "$file"
-}
-
-# unpack <archive in .deps/renpy> <work folder>: a clean copy of the sources
-unpack() {
-    rm -rf "$2"
-    mkdir -p "$2"
-    tar -xf "$cache/$1" -C "$2"
-}
-
 mkdir -p "$out" "$prefix/include" "$prefix/lib/pkgconfig" "$log" "$out/bin"
 
 if [[ $target == ps5 ]]; then
