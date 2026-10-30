@@ -176,6 +176,46 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+  # Ren'Py 8's core built for the build machine and run headless on tests/renpy-game (tests/test_renpy_core.py):
+  # the same Ren'Py, CPython, FFmpeg and Assimp as the PS5's, drawing through Mesa's EGL without a screen.
+  renpy:
+    name: Ren'Py core (host check)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Fetch Ren'Py and libretro.h
+        run: git submodule update --init --depth=1 third_party/renpy third_party/easyrpg-player
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-18 cmake ninja-build pkg-config python3 \
+            libsdl2-dev libsdl2-image-dev libfreetype-dev libharfbuzz-dev libfribidi-dev libpng-dev \
+            libjpeg-dev libwebp-dev zlib1g-dev libbz2-dev liblzma-dev libssl-dev \
+            libegl-dev libegl-mesa0 libgl1-mesa-dri
+
+      - name: Note Ren'Py's revision
+        run: git -C third_party/renpy rev-parse HEAD > renpy-revision.txt
+
+      - name: Restore the downloads and the built stages
+        uses: actions/cache@v4
+        with:
+          path: |
+            .deps/renpy
+            build/renpy-host
+          key: renpy-host-${{ hashFiles('renpy-revision.txt', 'tools/build-renpy.sh', 'tools/renpy/*', 'tools/patches/ffmpeg-*', 'src/core/renpy/sdl_renames.h', 'src/core/renpy/boot.py', 'src/core/renpy/errors.py') }}
+          restore-keys: renpy-host-
+
+      - name: Ren'Py core check
+        env:
+          CC: clang-18
+          CXX: clang++-18
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: python3 -m unittest tests.test_renpy_core -v
+
   release:
     name: GitHub release
     if: github.ref_type == 'tag'
