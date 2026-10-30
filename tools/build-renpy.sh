@@ -27,10 +27,8 @@ case $target in ps5|host) ;; *)
     echo "usage: tools/build-renpy.sh [ps5|host]" >&2
     exit 2
 esac
-if [[ $target == ps5 ]]; then
-    echo "tools/build-renpy.sh: the PS5 build is milestone 2 of docs/superpowers/plans/2026-10-29-renpy-core.md" >&2
-    exit 2
-fi
+# The PS5 build starts from the host's: its Python runs the build, its generated C and engine are the console's too.
+[[ $target == ps5 ]] && bash "$root/tools/build-renpy.sh" host
 renpy="$root/third_party/renpy"
 out="$root/build/renpy-$target"
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
@@ -104,6 +102,11 @@ unpack() {
 }
 
 mkdir -p "$out" "$prefix/include" "$prefix/lib/pkgconfig" "$log" "$out/bin"
+
+if [[ $target == ps5 ]]; then
+    source "$root/tools/renpy/ps5.sh"
+    exit 0
+fi
 
 # The build machine's libraries, found by pkg-config; on macOS, Homebrew's keg-only ones too.
 pc_path="$prefix/lib/pkgconfig"
@@ -283,9 +286,10 @@ build_modules() {
         done
     done <"$src/src/Setup"
     printf '%s\n' "${modules[@]}" >"$out/modules.txt"
+    printf '%s\n' "${sources[@]}" | sort -u >"$out/sources.txt" # the PS5 build compiles the same files
     # compile every source once, $jobs at a time
     local pids=() objs=() f o
-    for f in $(printf '%s\n' "${sources[@]}" | sort -u); do
+    while read -r f; do
         o="$objects/$(basename "${f%.*}").o"
         objs+=("$o")
         if [[ $f == *.cc ]]; then
@@ -295,7 +299,7 @@ build_modules() {
         fi
         pids+=($!)
         if (( ${#pids[@]} >= jobs )); then wait "${pids[0]}" || fail modules; pids=("${pids[@]:1}"); fi
-    done
+    done <"$out/sources.txt"
     for f in "${pids[@]}"; do wait "$f" || fail modules; done
     {
         printf '/* Dulcamara - written by tools/build-renpy.sh: the engine'"'"'s compiled modules, built in. */\n'
@@ -346,7 +350,7 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as z, tempfile.Temporary
 PY
 }
 
-modules_key="modules-2 $(git -C "$renpy" rev-parse HEAD) $deps_key $(digest "$root/src/core/renpy/sdl_renames.h")"
+modules_key="modules-3 $(git -C "$renpy" rev-parse HEAD) $deps_key $(digest "$root/src/core/renpy/sdl_renames.h")"
 if ! fresh modules "$modules_key"; then
     build_modules
     stamp modules "$modules_key"

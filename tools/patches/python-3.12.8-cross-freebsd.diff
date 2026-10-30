@@ -1,0 +1,23 @@
+--- a/configure
++++ b/configure
+@@ -4279,6 +4279,10 @@
+ 	*-*-wasi)
+ 	    ac_sys_system=WASI
+ 	    ;;
++	*-*-freebsd*)
++		# the PS5 (Dulcamara): FreeBSD's headers, the console's libc
++		ac_sys_system=FreeBSD
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -4341,6 +4345,9 @@
+ 	wasm32-*-* | wasm64-*-*)
+ 		_host_cpu=$host_cpu
+ 		;;
++	*-*-freebsd*)
++		_host_cpu=$host_cpu
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
