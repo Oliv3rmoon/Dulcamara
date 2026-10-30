@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "../app.h"
+#include "../core/cores.h"
 #include "../covers.h"
 #include "../i18n.h"
 #include "../platform/platform.h"
@@ -291,7 +292,12 @@ void shelf_screen(uint32_t pressed)
         const float ty = CARD_Y + CARD_W * 0.75f + 72;
         text_draw_fit(plat_width() * 0.5f, ty, 46, FONT_BOLD, TH_TEXT, ALIGN_CENTER, 1500, g->title);
         char meta[200], played[64];
-        const char *engine = g->engine == 2003 ? "RPG Maker 2003" : g->engine == 2000 ? "RPG Maker 2000" : "RPG Maker";
+        char renpy[16];
+        snprintf(renpy, sizeof(renpy), g->engine ? "Ren'Py %d" : "Ren'Py", g->engine);
+        const char *engine = core_is_renpy(g->core) ? renpy
+                             : g->engine == 2003    ? "RPG Maker 2003"
+                             : g->engine == 2000    ? "RPG Maker 2000"
+                                                    : "RPG Maker";
         snprintf(meta, sizeof(meta), "%s   \xC2\xB7   %s   \xC2\xB7   %s", engine,
                  g->archive ? tr("Archive") : tr("Folder"), played_text(g->played, played, sizeof(played)));
         text_draw_fit(plat_width() * 0.5f, ty + 66, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_CENTER, 1500, meta);

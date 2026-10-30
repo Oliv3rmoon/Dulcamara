@@ -20,6 +20,9 @@ endif
 NP_EASYRPG := build/easyrpg-ps5/libeasyrpg.a
 # Ren'Py 8, built by tools/build-renpy.sh with its API renamed renpy_retro_*; its engine is packed as assets/renpy8.
 NP_RENPY := build/renpy-ps5/librenpy.a
+# Ren'Py 7, for Ren'Py 7 and 6 games, built by tools/build-renpy7.sh with its API renamed renpy7_retro_*; its engine is
+# packed as assets/renpy7.
+NP_RENPY7 := build/renpy7-ps5/librenpy7.a
 NP_LIBRETRO_INCLUDE := third_party/easyrpg-player/builds/libretro/libretro-common/include
 APP_INCLUDE_PATHS ?= $(NP_LIBRETRO_INCLUDE) third_party/stb examples/update-check $(NP_VULKAN_INCLUDE)
 ifeq ($(APP_VULKAN),1)
@@ -27,7 +30,7 @@ ifeq ($(APP_VULKAN),1)
 # screen (src/platform/vk) is Mandrake's and links it.
 NP_FRAMEGEN := build/framegen-ps5/libframegen.a
 endif
-APP_STATIC_ARCHIVES ?= $(NP_EASYRPG) $(NP_RENPY) $(NP_FRAMEGEN)
+APP_STATIC_ARCHIVES ?= $(NP_EASYRPG) $(NP_RENPY) $(NP_RENPY7) $(NP_FRAMEGEN)
 APP_RUNTIME_MODULES ?=
 # fcntl: console_curl. The allocator family: ps5_heap.c (the C heap is too small).
 APP_WRAP_SYMBOLS ?= fcntl malloc free calloc realloc reallocf memalign posix_memalign aligned_alloc malloc_usable_size
@@ -95,16 +98,18 @@ doctor:
 test: host-checks test-unit test-integration test-elevation test-update-check test-self-update
 
 # Dulcamara's own host checks: the library's game detection (tests/test_library.py), EasyRPG Player's core run
-# headless on EasyRPG's TestGame (tests/test_core.py) and Ren'Py's on tests/renpy-game (tests/test_renpy_core.py).
-# None needs the PS5 SDK.
-.PHONY: host-checks test-library test-core test-renpy-core
-host-checks: test-library test-core test-renpy-core
+# headless on EasyRPG's TestGame (tests/test_core.py) and Ren'Py's two on tests/renpy-game (tests/test_renpy_core.py,
+# tests/test_renpy7_core.py). None needs the PS5 SDK.
+.PHONY: host-checks test-library test-core test-renpy-core test-renpy7-core
+host-checks: test-library test-core test-renpy-core test-renpy7-core
 test-library:
 	@python3 -m unittest tests.test_library -v
 test-core:
 	@python3 -m unittest tests.test_core -v
 test-renpy-core:
 	@python3 -m unittest tests.test_renpy_core -v
+test-renpy7-core:
+	@python3 -m unittest tests.test_renpy7_core -v
 
 .PHONY: test-elevation
 test-elevation:
@@ -278,6 +283,7 @@ endif
 core:
 	@bash tools/build-easyrpg.sh
 	@bash tools/build-renpy.sh ps5
+	@bash tools/build-renpy7.sh ps5
 ifeq ($(APP_VULKAN),1)
 	@bash tools/build-framegen.sh
 endif

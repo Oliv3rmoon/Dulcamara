@@ -192,8 +192,30 @@ static int version_in(const char *text, const char *key)
     return 0;
 }
 
+/* The Ren'Py version of the Python a game ships, by its lib/ folder: py3-<platform>/ is Ren'Py 8's, py2-<platform>/
+ * Ren'Py 7.4's and later, pythonlib2.7/ the older ones'; 0 when it has none of them. */
+static int renpy_lib_version(const char *dir)
+{
+    char lib[NP_PATH_MAX];
+    if (!find_in_dir(dir, "lib", lib, sizeof(lib)))
+        return 0;
+    DIR *d = opendir(lib);
+    if (!d)
+        return 0;
+    int version = 0;
+    for (struct dirent *e; !version && (e = readdir(d));)
+    {
+        if (!strncmp(e->d_name, "py3-", 4))
+            version = 8;
+        else if (!strncmp(e->d_name, "py2-", 4) || !strcmp(e->d_name, "pythonlib2.7"))
+            version = 7;
+    }
+    closedir(d);
+    return version;
+}
+
 /* The game's Ren'Py version: the major number of renpy/vc_version.py's version, or of renpy/__init__.py's
- * version_tuple in older releases; 0 when the game has no renpy/ folder (some repacks) or neither says. */
+ * version_tuple in older releases, else what its lib/ folder holds; 0 when nothing says (some repacks). */
 static int renpy_version(const char *dir)
 {
     static const struct
@@ -201,19 +223,19 @@ static int renpy_version(const char *dir)
         const char *file, *key;
     } SOURCES[] = {{"vc_version.py", "version"}, {"__init__.py", "version_tuple"}};
     char renpy_dir[NP_PATH_MAX], path[NP_PATH_MAX];
-    if (!find_in_dir(dir, "renpy", renpy_dir, sizeof(renpy_dir)))
-        return 0;
-    for (size_t i = 0; i < sizeof(SOURCES) / sizeof(SOURCES[0]); ++i)
-    {
-        size_t len = 0;
-        char *text = find_in_dir(renpy_dir, SOURCES[i].file, path, sizeof(path)) ? read_file(path, MAX_INI, &len)
-                                                                                 : NULL;
-        const int version = text ? version_in(text, SOURCES[i].key) : 0;
-        free(text);
-        if (version)
-            return version;
-    }
-    return 0;
+    if (find_in_dir(dir, "renpy", renpy_dir, sizeof(renpy_dir)))
+        for (size_t i = 0; i < sizeof(SOURCES) / sizeof(SOURCES[0]); ++i)
+        {
+            size_t len = 0;
+            char *text = find_in_dir(renpy_dir, SOURCES[i].file, path, sizeof(path))
+                             ? read_file(path, MAX_INI, &len)
+                             : NULL;
+            const int version = text ? version_in(text, SOURCES[i].key) : 0;
+            free(text);
+            if (version)
+                return version;
+        }
+    return renpy_lib_version(dir);
 }
 
 /* The name of the game's launcher beside game/ (<name>.exe or <name>.sh, not the 32-bit <name>-32.exe): the
@@ -254,8 +276,9 @@ static bool library_read_renpy(const char *dir, Game *g)
     str_copy(g->path, sizeof(g->path), dir);
     str_copy(g->name, sizeof(g->name), base_name(dir));
     hash_id(dir, g->id, sizeof(g->id));
-    g->core = CORE_RENPY;
     g->engine = renpy_version(dir);
+    /* Ren'Py 7 and 6 games (Python 2) on Ren'Py 7's core; Ren'Py 8's, and those that do not say, on Ren'Py 8's */
+    g->core = g->engine >= 1 && g->engine <= 7 ? CORE_RENPY7 : CORE_RENPY;
     if (!renpy_launcher_name(dir, g->title, sizeof(g->title)))
         str_copy(g->title, sizeof(g->title), g->name);
     return true;
@@ -580,7 +603,7 @@ bool library_title_image(Game *g, char *out, size_t size)
 {
     if (size)
         out[0] = '\0';
-    if (g->core == CORE_RENPY)
+    if (core_is_renpy(g->core))
         return renpy_title_image(g, out, size);
     return g->archive ? archive_title_image(g, out, size) : folder_title_image(g, out, size);
 }

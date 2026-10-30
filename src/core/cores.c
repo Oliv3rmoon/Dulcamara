@@ -49,14 +49,17 @@
 
 DECLARE_WITH(EASYRPG_PREFIX)
 
-/* Ren'Py's core is built for the console only (tools/build-renpy.sh ps5; its host build is a test program). The
- * desktop build lists it without functions, and host_load refuses its games there. */
+/* Ren'Py's two cores are built for the console only (tools/build-renpy.sh and build-renpy7.sh ps5; their host builds
+ * are test programs). The desktop build lists them without functions, and host_load refuses their games there. */
 #if defined(__PROSPERO__) || defined(NP_HAVE_RENPY)
 CORE_DECLARE(renpy_)
+CORE_DECLARE(renpy7_)
 #define RENPY_FUNCTIONS CORE_FUNCTIONS(renpy_)
+#define RENPY7_FUNCTIONS CORE_FUNCTIONS(renpy7_)
 #else
 #define RENPY_FUNCTIONS                                                                                            \
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+#define RENPY7_FUNCTIONS RENPY_FUNCTIONS
 #endif
 
 /* EasyRPG Player's buttons (src/platform/libretro/input_buttons.cpp in it): A Decision, B and X Cancel, Y Shift,
@@ -71,7 +74,7 @@ static const int8_t EASYRPG_BUTTONS[MAP_BUTTONS] = {
 
 /* Ren'Py's buttons are SDL's controller buttons, by where they sit (src/core/renpy/input.c): Cross is the bottom one,
  * which Ren'Py takes as "confirm", Circle opens the game menu, L1 and R1 roll back and forward, Start is the menu
- * too; Square and Triangle are Ren'Py's own (hide the window, skip). */
+ * too; Square and Triangle are Ren'Py's own (hide the window, skip). Ren'Py 7 takes them as Ren'Py 8 does. */
 static const int8_t RENPY_BUTTONS[MAP_BUTTONS] = {
     [BTN_CROSS] = PAD_B,   [BTN_SQUARE] = PAD_Y,   [BTN_SELECT] = PAD_SELECT, [BTN_START] = PAD_START,
     [BTN_UP] = PAD_UP,     [BTN_DOWN] = PAD_DOWN,  [BTN_LEFT] = PAD_LEFT,     [BTN_RIGHT] = PAD_RIGHT,
@@ -84,6 +87,9 @@ const CoreInfo CORES[CORE_COUNT] = {
                       FUNCTIONS_WITH(EASYRPG_PREFIX), EASYRPG_BUTTONS, true, false},
     [CORE_RENPY] = {"renpy", "Ren'Py", "Ren'Py 8", "MIT (Ren'Py), PSF (Python), LGPL-2.1 (FFmpeg)", RENPY_FUNCTIONS,
                     RENPY_BUTTONS, true, true},
+    [CORE_RENPY7] = {"renpy7", "Ren'Py 7", "Ren'Py 7 / 6",
+                     "MIT (Ren'Py), PSF (Python), zlib (pygame_sdl2), LGPL-2.1 (FFmpeg)", RENPY7_FUNCTIONS,
+                     RENPY_BUTTONS, true, true},
 };
 
 _Static_assert(CORE_COUNT == NP_CORES, "NP_CORES (nightshade.h) is the number of cores");

@@ -115,7 +115,8 @@ source "$root/tools/ninja-build.sh"
 ninja_begin "$build/app.ninja"
 target_compiler=$(command -v "${PS5_CLANG:-clang-18}")
 
-# src/core/renpy is Ren'Py's core: tools/build-renpy.sh builds it into its own archive, with its own libraries.
+# src/core/renpy holds Ren'Py's cores: tools/build-renpy.sh and build-renpy7.sh build each into its own archive, with
+# its own libraries.
 mapfile -d '' -t source_paths < <(
     find "$root/$app_source_dir" -type f \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' \) \
         -not -path "$root/$app_source_dir/core/renpy/*" -print0 | sort -z
@@ -332,9 +333,12 @@ for asset in icon0.png pic0.dds pic1.dds snd0.at9; do
     [[ -f $root/$app_sce_sys/$asset ]] && cp "$root/$app_sce_sys/$asset" "$app/sce_sys/$asset"
 done
 [[ -z $app_assets ]] || cp -a "$root/$app_assets" "$app/assets"
-# Ren'Py's engine (tools/build-renpy.sh), read by its core from the app's assets
+# Ren'Py's engines (tools/build-renpy.sh, build-renpy7.sh), read by their cores from the app's assets
 if [[ -n $app_assets && -d $root/build/renpy-ps5/assets/renpy8 ]]; then
     cp -a "$root/build/renpy-ps5/assets/renpy8" "$app/assets/renpy8"
+fi
+if [[ -n $app_assets && -d $root/build/renpy7-ps5/assets/renpy7 ]]; then
+    cp -a "$root/build/renpy7-ps5/assets/renpy7" "$app/assets/renpy7"
 fi
 
 root_files=()
@@ -376,8 +380,9 @@ for pair in "third_party/easyrpg-player/COPYING:LICENSE-EasyRPG-Player.txt" \
     [[ -f $root/${pair%%:*} ]] || { echo "missing licence: ${pair%%:*}" >&2; exit 2; }
     cp "$root/${pair%%:*}" "$app/licenses/${pair##*:}"
 done
-# Ren'Py's core: its licences, gathered by tools/build-renpy.sh
+# Ren'Py's cores: their licences, gathered by tools/build-renpy.sh and build-renpy7.sh
 [[ ! -d $root/build/renpy-ps5/licenses ]] || cp "$root"/build/renpy-ps5/licenses/* "$app/licenses/"
+[[ ! -d $root/build/renpy7-ps5/licenses ]] || cp "$root"/build/renpy7-ps5/licenses/* "$app/licenses/"
 
 [[ -f $root/runtime/libc.prx ]] || bash "$root/tools/rebuild-libc.sh"
 (cd "$root/runtime" && sha256sum --check --strict libc.prx.sha256)

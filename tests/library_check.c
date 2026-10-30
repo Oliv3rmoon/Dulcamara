@@ -391,13 +391,25 @@ static void check_renpy_games(void)
     make_dir(sub, sizeof(sub), dir, "game");
     write_text(sub, "script.rpy", "label start:\n");
 
+    make_dir(dir, sizeof(dir), root, "Repack 7");
+    make_dir(sub, sizeof(sub), dir, "game");
+    write_text(sub, "script.rpyc", "compiled");
+    make_dir(sub, sizeof(sub), dir, "lib");
+    make_dir(more, sizeof(more), sub, "py2-linux-x86_64");
+
+    make_dir(dir, sizeof(dir), root, "Classic");
+    make_dir(sub, sizeof(sub), dir, "game");
+    write_text(sub, "script.rpy", "label start:\n");
+    make_dir(sub, sizeof(sub), dir, "renpy");
+    write_text(sub, "__init__.py", "version_tuple = (6, 99, 14, vc_version)\n");
+
     make_dir(dir, sizeof(dir), root, "Notes");
     make_dir(sub, sizeof(sub), dir, "game");
     write_text(sub, "readme.txt", "not a game");
 
     Library lib = {0};
     library_scan(&lib, root);
-    CHECK(lib.count == 4, "4 Ren'Py games, found %d", lib.count);
+    CHECK(lib.count == 6, "6 Ren'Py games, found %d", lib.count);
     char cover[NP_PATH_MAX];
     Game *m = (Game *)find(&lib, "Moonlit Tale");
     CHECK(m && m->core == CORE_RENPY && m->engine == 8, "Moonlit Tale is Ren'Py 8: core %d, version %d",
@@ -407,12 +419,20 @@ static void check_renpy_games(void)
     CHECK(m && library_title_image(m, cover, sizeof(cover)) && strstr(cover, "/game/gui/main_menu.png"),
           "its cover is game/gui/main_menu.png: %s", cover);
     Game *o = (Game *)find(&lib, "old-story-1.0-pc");
-    CHECK(o && o->core == CORE_RENPY && o->engine == 7, "old-story is Ren'Py 7: %d", o ? o->engine : -1);
+    CHECK(o && o->core == CORE_RENPY7 && o->engine == 7, "old-story is Ren'Py 7, on its core: core %d, version %d",
+          o ? o->core : -1, o ? o->engine : -1);
     CHECK(o && !strcmp(o->title, "OldStory"), "its title: %s", o ? o->title : "-");
     CHECK(o && library_title_image(o, cover, sizeof(cover)) && strstr(cover, "/game/gui/window_icon.png"),
           "without main_menu.png its cover is window_icon.png: %s", cover);
     Game *old = (Game *)find(&lib, "Older");
-    CHECK(old && old->engine == 7, "Older's version from renpy/__init__.py: %d", old ? old->engine : -1);
+    CHECK(old && old->engine == 7 && old->core == CORE_RENPY7, "Older's version from renpy/__init__.py: %d",
+          old ? old->engine : -1);
+    Game *classic = (Game *)find(&lib, "Classic");
+    CHECK(classic && classic->engine == 6 && classic->core == CORE_RENPY7, "a Ren'Py 6 game runs on Ren'Py 7: %d %d",
+          classic ? classic->engine : -1, classic ? classic->core : -1);
+    Game *r7 = (Game *)find(&lib, "Repack 7");
+    CHECK(r7 && r7->engine == 7 && r7->core == CORE_RENPY7, "a repack with lib/py2-* is Ren'Py 7: %d %d",
+          r7 ? r7->engine : -1, r7 ? r7->core : -1);
     Game *r = (Game *)find(&lib, "Repack");
     CHECK(r && r->core == CORE_RENPY && r->engine == 0, "a repack without renpy/ is tried as Ren'Py 8: %d",
           r ? r->engine : -1);

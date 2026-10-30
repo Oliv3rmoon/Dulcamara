@@ -25,12 +25,13 @@
 
 ## Cores shipped
 
-Dulcamara ships **two** cores:
+Dulcamara ships **three** cores:
 
 | Core | Upstream | License | Notes |
 | --- | --- | --- | --- |
 | EasyRPG Player (libretro) | [EasyRPG/Player](https://github.com/EasyRPG/Player) at `096c004def987f3545198304b1b7a8352f284a50`, with [EasyRPG/liblcf](https://github.com/EasyRPG/liblcf) at `6854310c3432e553fd4ae672ce861899c80c3bd0` | GPL-3.0-or-later (`third_party/easyrpg-player/COPYING`); liblcf MIT (`third_party/liblcf/COPYING`) | RPG Maker 2000 and 2003. Built from source into the app by `tools/build-easyrpg.sh` |
 | Ren'Py 8 (Dulcamara's own libretro core, `src/core/renpy`) | [renpy/renpy](https://github.com/renpy/renpy) 8.5.3.26051504 at `39895c1e017f0b36ffea2447d97eccd69d76ee1c` (`third_party/renpy`) | Ren'Py: MIT, with LGPL-derived parts (`third_party/renpy/sphinx/source/license.rst`); the core's own code GPL-3.0-or-later | Ren'Py 8 visual novels. Built from source by `tools/build-renpy.sh`; its engine (Ren'Py's Python files, scripts and fonts) is packed as `assets/renpy8` |
+| Ren'Py 7 (the same core, `src/core/renpy`, with Python 2.7) | [renpy/renpy](https://github.com/renpy/renpy) 7.8.7.25031702 at `b38cc6a5018edc7da3f201c33f46de666a64f3cd` (`third_party/renpy7`), with [renpy/pygame_sdl2](https://github.com/renpy/pygame_sdl2) at `7e61ebdbf1fbc2cbff4994dd5c9bdd23411d8d37` (`third_party/pygame_sdl2`) | Ren'Py: MIT, with LGPL-derived parts (`licenses/LICENSE-RenPy7.rst`); pygame_sdl2: zlib, with parts from Pygame under LGPL-2.1 (`licenses/LICENSE-pygame_sdl2.txt`, `licenses/LICENSE-pygame_sdl2-LGPL.txt`); the core's own code GPL-3.0-or-later | Ren'Py 7 and 6 visual novels. Built from source by `tools/build-renpy7.sh`; its engine is packed as `assets/renpy7` |
 
 EasyRPG Player carries, built in: [FMMidi](http://unhaut.epizy.com/fmmidi) by yuno (Yoshio Uno),
 BSD-3-Clause; [dr_wav](https://github.com/mackron/dr_libs) by David Reid, public domain or MIT-0; the
@@ -70,10 +71,19 @@ Ren'Py's core is built with, from pinned sources (the tarballs are checked again
 | Cython 3.1.4, setuptools 80.10.2 | PyPI wheels, by SHA-256 (`tools/renpy/wheels.txt`) | Apache-2.0, MIT: run on the build machine only, not shipped |
 | six 1.17.0, ecdsa 0.19.1, requests 2.33.0, urllib3 2.7.0, idna 3.11, certifi 2026.1.4, charset-normalizer 3.4.4, rsa 4.9.1, pyasn1 0.6.2, future 1.0.0 | PyPI wheels at the versions of Ren'Py's `uv.lock`, by SHA-256 (`tools/renpy/wheels.txt`) | MIT, MIT, Apache-2.0, MIT, BSD-3-Clause, MPL-2.0, MIT, Apache-2.0, BSD-2-Clause, MIT; each package's licence travels in its `*.dist-info` folder under `assets/renpy8/lib/site-packages` |
 
-From the PacBrew prefix (below), linked into Ren'Py's core: SDL2 and SDL2_image (zlib), FreeType (FreeType
+Ren'Py 7's core is built with the same FFmpeg and ps5-opengl (Ren'Py 8's build's, which it starts from) and, from
+pinned sources (checked against their SHA-256 by `tools/build-renpy7.sh`):
+
+| Component | Source | License |
+| --- | --- | --- |
+| [CPython](https://www.python.org) 2.7.18 | `Python-2.7.18.tgz`, SHA-256 `da3080e3b488f648a3d7a4560ddee895284c3380b11d6de75edb986526b9a814`, with Ren'Py's two UTF-8 patches (`tools/patches/python-2.7.18-utf8.diff`, `python-2.7.18-c-locale-utf8.diff`, from renpy-build) and `tools/patches/python-2.7.18-configure.diff` | PSF License (`licenses/LICENSE-Python2.txt`); its standard library is packed as `assets/renpy7/lib/python27.zip` |
+| Cython 0.29.32, setuptools 44.1.1, typing 3.10.0.0 | PyPI wheels, by SHA-256 (`tools/renpy7/wheels.txt`) | Apache-2.0, MIT, PSF: run on the build machine only, not shipped (typing is also shipped, below) |
+| six 1.12.0, future 0.18.3, rsa 3.4.2, pyasn1 0.4.2, ecdsa 0.18.0, urllib3 1.22, certifi 2021.10.8, idna 2.6, requests 2.20.0, chardet 3.0.4, typing 3.10.0.0, PySocks 1.7.1 | PyPI wheels (future's source archive) at the versions Ren'Py 7.8.7's own build installs, by SHA-256 (`tools/renpy7/wheels.txt`) | MIT, MIT, Apache-2.0, BSD-2-Clause, MIT, MIT, MPL-2.0, BSD-3-Clause, Apache-2.0, LGPL-2.1-or-later, PSF, BSD-3-Clause; each package's licence travels in its `*.dist-info` (future's `future.egg-info`) folder under `assets/renpy7/lib/site-packages`, taken from its source archive where the wheel has none |
+
+From the PacBrew prefix (below), linked into Ren'Py's cores: SDL2 and SDL2_image (zlib), FreeType (FreeType
 License), HarfBuzz (MIT), GNU FriBidi (LGPL-2.1-or-later), libpng (libpng license), libjpeg-turbo (IJG and
 BSD-3-Clause), libwebp (BSD-3-Clause), zlib (zlib), bzip2 (bzip2 license), xz (0BSD and public domain), OpenSSL
-(Apache-2.0) and GNU libiconv (LGPL-2.1-or-later). Live2D's Cubism SDK, which Ren'Py can use, is not included.
+(Apache-2.0; Ren'Py 8's only) and GNU libiconv (LGPL-2.1-or-later). Live2D's Cubism SDK, which Ren'Py can use, is not included.
 
 ### Test data, never shipped
 

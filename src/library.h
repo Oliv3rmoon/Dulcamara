@@ -26,7 +26,7 @@ typedef struct
     char id[24];                  /* a stable key for the game: its location's hash */
     bool archive;
     int engine;                   /* 2000, 2003; 0 until the cover is looked up (it reads RPG_RT.ldb). Ren'Py: its
-                                     major version (8, 7), 0 when the game does not say */
+                                     major version (8, 7, 6), 0 when the game does not say */
     int core;                     /* which core runs it (CORE_* in core/cores.h) */
     long long played;             /* when it was last played (seconds since 1970), 0 never */
 } Game;

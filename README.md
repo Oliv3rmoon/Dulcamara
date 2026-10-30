@@ -21,18 +21,18 @@ plays them on [EasyRPG Player](https://easyrpg.org), the free reimplementation o
 into the app as a libretro core, and it is built on [Mandrake (formerly Nightshade Station)](https://github.com/Oliv3rmoon/Mandrake),
 so it shares its frontend: the Vulkan screen with its CRT shaders, the black-and-red look of
 [Nightshade](https://github.com/Oliv3rmoon/Nightshade) and the updates from its own releases. It is the
-first step of a Nightshade answer to JoiPlay: Ren'Py 8 visual novels run in the same app, on Ren'Py itself
-built in as a second core, with the same shaders and fast-forward. The current
+first step of a Nightshade answer to JoiPlay: Ren'Py visual novels run in the same app, on Ren'Py itself
+built in as two more cores (Ren'Py 8, and Ren'Py 7 for older games), with the same shaders and fast-forward. The current
 version is **0.1.0**; what changed is in the [changelog](docs/CHANGELOG.md).
 
 ## What you get
 
-- **Ren'Py 8 visual novels.** Ren'Py 8.5 is built into the app (with Python 3.12 and FFmpeg for its music, voice
-  and movies); a game brings only its `game/` folder, as with JoiPlay. Cross moves the story on and chooses,
-  Circle opens the game's menu, L1 and R1 roll back and forward, R2 fast-forwards and skips text already read,
-  and the touchpad is the mouse. Saves go to `/data/dulcamara/saves/renpy`. Ren'Py 7 games are listed but need a
-  Ren'Py 7 core that is still to come; Ren'Py runs one game each time the app starts, so opening a second one
-  starts the app again.
+- **Ren'Py visual novels.** Ren'Py 8.5 is built into the app (with Python 3.12 and FFmpeg for its music, voice
+  and movies), and Ren'Py 7.8 (with Python 2.7) for games made with Ren'Py 7 or 6; the library picks the one a
+  game was made with. A game brings only its `game/` folder, as with JoiPlay. Cross moves the story on and
+  chooses, Circle opens the game's menu, L1 and R1 roll back and forward, R2 fast-forwards and skips text already
+  read, and the touchpad is the mouse. Saves go to `/data/dulcamara/saves/renpy`. Ren'Py runs one game each time
+  the app starts, so opening a second one starts the app again.
 
 - **RPG Maker 2000 and 2003 games.** Everything EasyRPG Player runs, from its pinned source: the original
   engines' events, battles, pictures and sound (MIDI through EasyRPG's own synthesiser, WAV, Ogg Vorbis

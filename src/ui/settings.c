@@ -152,7 +152,8 @@ static const Row ABOUT[] = {
     {"Games run on EasyRPG Player (GPL-3.0-or-later) and liblcf (MIT), by the EasyRPG team.", NULL, K_INFO, 0, NULL,
      0, NULL, A_NONE, -1},
     {"Ren'Py games run on Ren'Py 8.5 (MIT) by Tom Rothamel and its contributors, in Python 3.12 (PSF), with FFmpeg "
-     "(LGPL-2.1).", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+     "(LGPL-2.1); Ren'Py 7 and 6 games on Ren'Py 7.8, in Python 2.7 (PSF), with pygame_sdl2 (zlib).", NULL, K_INFO, 0,
+     NULL, 0, NULL, A_NONE, -1},
     {"Built on Mandrake (formerly Nightshade Station): darkxex's SwanStationPS5 on BlackBearReloaded's boilerplate.", NULL, K_INFO,
      0, NULL, 0, NULL, A_NONE, -1},
     {"Games: " NP_DATA "/games, one folder (or .zip, .easyrpg) each. A Ren'Py game is its folder with game/ in it.",

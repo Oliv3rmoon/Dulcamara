@@ -21,4 +21,8 @@ The first Dulcamara, a Nightshade app: RPG Maker 2000 and 2003 games on the PS5,
   by their `game/` folder, with their launcher's name and `gui/main_menu.png` as the cover; R2 also skips read
   text, the touchpad is the mouse, each core keeps its own buttons. Checked on the build machine and in CI by
   `tests/test_renpy_core.py`, which plays a test game written for it.
+- **Ren'Py 7 inside the app,** for Ren'Py 7 and 6 games: Ren'Py 7.8.7 on the same core (`src/core/renpy`), with
+  CPython 2.7.18 and pygame_sdl2 (`tools/build-renpy7.sh`). The library sends each game to the Ren'Py it was made
+  with, by its `renpy/` folder or, without one, its `lib/`. `tests/test_renpy7_core.py` plays the same test game
+  on it.
 - Built on the frontend of Mandrake (formerly Nightshade Station) 1.6.0, without its PS1 parts.

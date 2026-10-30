@@ -27,6 +27,7 @@ enum
 {
     CORE_EASYRPG = 0, /* EasyRPG Player: RPG Maker 2000 and 2003 */
     CORE_RENPY,       /* Ren'Py 8 (tools/build-renpy.sh); the desktop build has it without its functions */
+    CORE_RENPY7,      /* Ren'Py 7, for Ren'Py 7 and 6 games (tools/build-renpy7.sh); the same on the desktop */
     CORE_COUNT
 };
 
@@ -66,5 +67,11 @@ extern const CoreInfo CORES[CORE_COUNT];
 
 /* The core with this id ("easyrpg"), or NULL. */
 const CoreInfo *core_by_id(const char *id);
+
+/* Whether the core is one of Ren'Py's (8's or 7's). */
+static inline bool core_is_renpy(int core)
+{
+    return core == CORE_RENPY || core == CORE_RENPY7;
+}
 
 #endif

@@ -90,7 +90,7 @@ enum
     PAD_NONE = -1
 };
 #define MAP_BUTTONS 16 /* BTN_CROSS..BTN_R3 */
-#define NP_CORES 2 /* CORE_COUNT (core/cores.h), for the settings' button maps */
+#define NP_CORES 3 /* CORE_COUNT (core/cores.h), for the settings' button maps */
 
 typedef struct
 {

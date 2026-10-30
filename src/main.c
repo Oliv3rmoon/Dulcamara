@@ -330,8 +330,8 @@ void app_start_game(int index)
     Game *g = &app.library.games[index];
     char error[256];
 #if defined(__PROSPERO__)
-    if (g->core == CORE_RENPY && app.renpy_ran)
-        restart_for(g);
+    if (core_is_renpy(g->core) && app.renpy_ran)
+        restart_for(g); /* either Ren'Py's: each brings its own SDL and OpenGL driver, set up once in a process */
 #endif
     np_log("game: starting %s (%s)", g->title, g->path);
     ps5_crash_step("loading a game");
@@ -342,7 +342,7 @@ void app_start_game(int index)
         return;
     }
     host_set_volume(app.settings.game_volume);
-    if (g->core == CORE_RENPY)
+    if (core_is_renpy(g->core))
         app.renpy_ran = true;
     app.game = index;
     app.fast_forward = app.fast_latched = false;
