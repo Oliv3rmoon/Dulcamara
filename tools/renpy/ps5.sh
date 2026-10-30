@@ -57,6 +57,9 @@ cc="$sdk/bin/prospero-clang"
 cxx="$sdk/bin/prospero-clang++"
 ps5_flags="-O2 -fPIC -march=znver2 -ffunction-sections -fdata-sections"
 unset CC CXX CFLAGS CXXFLAGS LDFLAGS
+# what every stage is built with: the SDK, PacBrew's release (its folder's name) and the flags
+toolchain_key="$sdk_key $(basename "$(dirname "$(readlink "$out/pacbrew")")") $ps5_flags"
+echo "$toolchain_key" >"$out/.toolchain" # for Ren'Py 7's build
 
 # ---- CPython for the PS5: a FreeBSD host (its headers are FreeBSD's) with the console's libc, the modules of
 # tools/renpy/Setup.local. Only the library is built: Python itself runs on the build machine (the host build's).
@@ -162,11 +165,13 @@ fetch_opengl() {
     [[ -f $out/ps5-opengl/sdk/lib/libPS5OpenGL.a ]] || { echo "ps5-opengl's SDK has no libPS5OpenGL.a" >&2; exit 1; }
 }
 
-python_key="python-ps5-1 $python_version $(digest "$root/tools/renpy/Setup.local" "$root/tools/patches/python-3.12.8-cross-freebsd.diff")"
+python_key="python-ps5-2 $python_version $toolchain_key $(recipe build_python_ps5) $(
+    digest "$root/tools/renpy/Setup.local" "$root/tools/patches/python-3.12.8-cross-freebsd.diff")"
 fresh python "$python_key" || { build_python_ps5; stamp python "$python_key"; }
-ffmpeg_key="ffmpeg-ps5-1 $ffmpeg_version $(command -v nasm >/dev/null && echo asm) $(digest "$root"/tools/patches/ffmpeg-4.3.1-*.diff)"
+ffmpeg_key="ffmpeg-ps5-2 $ffmpeg_version $toolchain_key $(recipe build_ffmpeg_ps5) $(command -v nasm >/dev/null && echo asm) $(
+    digest "$root"/tools/patches/ffmpeg-4.3.1-*.diff)"
 fresh ffmpeg "$ffmpeg_key" || { build_ffmpeg_ps5; stamp ffmpeg "$ffmpeg_key"; }
-assimp_key="assimp-ps5-1 $assimp_version"
+assimp_key="assimp-ps5-2 $assimp_version $toolchain_key $(recipe build_assimp_ps5)"
 fresh assimp "$assimp_key" || { build_assimp_ps5; stamp assimp "$assimp_key"; }
 opengl_key="opengl-1 $opengl_version"
 fresh opengl "$opengl_key" || { fetch_opengl; stamp opengl "$opengl_key"; }
@@ -198,7 +203,8 @@ build_modules_ps5() {
     rm -f "$out/librenpy-modules.a"
     "$ar" rcs "$out/librenpy-modules.a" "${objs[@]}"
 }
-modules_key="modules-ps5-2 $(cat "$host/.generate") $(digest "$host/sources.txt" "$root/src/core/renpy/sdl_renames.h")"
+modules_key="modules-ps5-3 $python_key $(cat "$host/.generate") $(recipe build_modules_ps5 pc_cflags) $(
+    digest "$host/sources.txt" "$root/src/core/renpy/sdl_renames.h")"
 fresh modules "$modules_key" || { build_modules_ps5; stamp modules "$modules_key"; }
 
 # ---- the core's own C, and everything in one object
@@ -274,7 +280,8 @@ if ! fresh engine "$engine_key"; then
     stamp engine "$engine_key"
 fi
 
-# ---- the licences the app carries for the core (THIRD_PARTY_NOTICES.md lists the rest)
+# ---- the licences the app carries for the core (THIRD_PARTY_NOTICES.md lists the rest): PacBrew's own copies where
+# it ships them, and the Apache License 2.0 that OpenSSL is under (the copy in requests' wheel, the same text)
 rm -rf "$out/licenses"
 mkdir -p "$out/licenses"
 for pair in "$root/third_party/renpy/sphinx/source/license.rst:LICENSE-RenPy.rst" \
@@ -282,7 +289,11 @@ for pair in "$root/third_party/renpy/sphinx/source/license.rst:LICENSE-RenPy.rst
     "$out/work/ffmpeg/ffmpeg-$ffmpeg_version/COPYING.LGPLv2.1:LICENSE-FFmpeg.txt" \
     "$out/work/assimp/assimp-$assimp_version/LICENSE:LICENSE-Assimp.txt" \
     "$out/ps5-opengl/LICENSE:LICENSE-ps5-opengl.txt" \
-    "$out/ps5-opengl/THIRD_PARTY_NOTICES.md:NOTICES-ps5-opengl.md"; do
+    "$out/ps5-opengl/THIRD_PARTY_NOTICES.md:NOTICES-ps5-opengl.md" \
+    "$hb/share/licenses/SDL2/LICENSE.txt:LICENSE-SDL2.txt" \
+    "$hb/share/doc/libjpeg-turbo/LICENSE.md:LICENSE-libjpeg-turbo.md" \
+    "$hb/share/doc/xz/COPYING:LICENSE-xz.txt" \
+    "$out/assets/renpy8/lib/site-packages/requests-2.33.0.dist-info/licenses/LICENSE:LICENSE-Apache-2.0.txt"; do
     [[ -f ${pair%%:*} ]] || { echo "missing licence: ${pair%%:*}" >&2; exit 1; }
     cp "${pair%%:*}" "$out/licenses/${pair##*:}"
 done

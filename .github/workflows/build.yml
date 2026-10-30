@@ -164,7 +164,9 @@ jobs:
                              "assets/renpy8/renpy/__init__.py", "assets/renpy8/lib/python312.zip",
                              "assets/renpy8/dulcamara_boot.py", "licenses/LICENSE-RenPy7.rst",
                              "licenses/LICENSE-Python2.txt", "licenses/LICENSE-pygame_sdl2.txt",
-                             "licenses/LICENSE-pygame_sdl2-LGPL.txt",
+                             "licenses/LICENSE-pygame_sdl2-LGPL.txt", "licenses/LICENSE-SDL2.txt",
+                             "licenses/LICENSE-libjpeg-turbo.md", "licenses/LICENSE-xz.txt",
+                             "licenses/LICENSE-Apache-2.0.txt",
                              "assets/renpy7/renpy/__init__.py", "assets/renpy7/lib/python27.zip",
                              "assets/renpy7/dulcamara_boot.py"):
                   if f"{title}/{needed}" not in names:

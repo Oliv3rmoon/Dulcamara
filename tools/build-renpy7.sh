@@ -155,8 +155,8 @@ unpack_wheels() {
     rm -rf "$out/work/sdist"
 }
 
-python_key="python-3 $python_version $(digest "$root/tools/renpy7/Setup.local" "$root/tools/renpy7/wheels.txt" \
-    "$root"/tools/patches/python-2.7.18-*.diff)"
+python_key="python-4 $python_version $(recipe build_python python_cflags unpack_wheels) $(
+    digest "$root/tools/renpy7/Setup.local" "$root/tools/renpy7/wheels.txt" "$root"/tools/patches/python-2.7.18-*.diff)"
 py="$out/python/bin/python2.7"
 if ! fresh python "$python_key"; then
     build_python
@@ -249,7 +249,7 @@ build_modules() {
 # tools/renpy7/wheels.txt. The Python is compiled and its source left out (but Ren'Py's renpy.py and
 # renpy/__init__.py, which the core looks for): Python 2 checks a compiled file against its source's time, which
 # copying the app may change, and the app folder may be read-only. renpy/common stays as it is: its _ren.py files
-# are scripts, which Ren'Py compiles with its others.
+# are scripts, which Ren'Py compiles with its others; chardet (LGPL-2.1) keeps its source beside its compiled files.
 build_engine() {
     echo "==> [renpy7] the engine folder"
     local rsrc="$out/renpy-src" psrc="$out/pygame_sdl2-src" engine="$out/assets/renpy7"
@@ -270,7 +270,8 @@ build_engine() {
     "$py" -m compileall -q -x '/renpy/common/' "$engine/renpy" "$engine/pygame_sdl2" "$engine/lib/site-packages" \
         "$engine/dulcamara_errors.py" >"$log/engine.log" 2>&1 || fail engine
     find "$engine/renpy" "$engine/pygame_sdl2" "$engine/lib/site-packages" "$engine/dulcamara_errors.py" -name '*.py' \
-        ! -path "$engine/renpy/__init__.py" ! -path "$engine/renpy/common/*" | while read -r f; do
+        ! -path "$engine/renpy/__init__.py" ! -path "$engine/renpy/common/*" ! -path "$engine/lib/site-packages/chardet/*" |
+        while read -r f; do
         [[ -f ${f}c ]] && rm "$f"
     done
     "$py" - "$out/python/lib/python2.7" "$engine/lib/python27.zip" <<'PY' >>"$log/engine.log" 2>&1 || fail engine
@@ -297,18 +298,21 @@ z.close()
 PY
 }
 
-generate_key="generate-2 $(git -C "$renpy" rev-parse HEAD) $(git -C "$pygame" rev-parse HEAD) $python_key"
+generate_key="generate-3 $(git -C "$renpy" rev-parse HEAD) $(git -C "$pygame" rev-parse HEAD) $python_key $(
+    recipe build_generate)"
 if ! fresh generate "$generate_key"; then
     build_generate
     stamp generate "$generate_key"
 fi
-engine_key="engine-2 $renpy_version $generate_key $(digest "$root"/src/core/renpy/{boot2,errors2}.py "$root/tools/renpy7/wheels.txt")"
+engine_key="engine-3 $renpy_version $generate_key $(recipe build_engine) $(
+    digest "$root"/src/core/renpy/{boot2,errors2}.py "$root/tools/renpy7/wheels.txt")"
 if ! fresh engine "$engine_key"; then
     build_engine
     stamp engine "$engine_key"
 fi
 libs_key=$(cat "$renpy8/.libs")
-modules_key="modules-1 $generate_key $libs_key $(digest "$root/src/core/renpy/sdl_renames.h")"
+modules_key="modules-2 $generate_key $libs_key $(recipe build_modules sdl_cflags module_includes) $(
+    digest "$root/src/core/renpy/sdl_renames.h")"
 if ! fresh modules "$modules_key"; then
     build_modules
     stamp modules "$modules_key"

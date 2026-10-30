@@ -6,20 +6,29 @@ cache="$root/.deps/renpy"
 jobs=${BUILD_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
 digest() { cat "$@" | sha256 | cut -c1-16; }
+# recipe <function>...: a digest of the functions that build a stage (their commands and options), for its key
+recipe() { declare -f "$@" | sha256 | cut -c1-16; }
 
 # build_folder <name>: build/<name>, printed as its real path. Autotools (libtool, CPython's and FFmpeg's configure)
-# cannot build under a path with spaces in it, as a checkout's may have: then build/<name> is a link to a folder in
-# TMPDIR whose path has none.
+# cannot build under a path with spaces in it, as a checkout's may have: then build/<name> is a link to a folder
+# whose path has none, in the user's cache folder (~/Library/Caches on macOS, ~/.cache elsewhere), else in TMPDIR.
+# Not TMPDIR first: macOS deletes what is three days old there, under a build whose stamps would still hold. A build
+# this made in TMPDIR before is built again in the new place (its paths are written into it) and removed.
 build_folder() {
-    local wanted="$root/build/$1" real
+    local wanted="$root/build/$1" base real old
     if [[ $wanted == *[[:space:]]* ]]; then
-        real="${TMPDIR:-/tmp}"
-        real="${real%/}/dulcamara-$1-$(printf '%s' "$wanted" | sha256 | cut -c1-12)"
+        base="${XDG_CACHE_HOME:-$HOME/.cache}/dulcamara"
+        [[ $(uname -s) == Darwin ]] && base="$HOME/Library/Caches/Dulcamara"
+        [[ $base == *[[:space:]]* ]] && base="${TMPDIR:-/tmp}"
+        real="${base%/}/build-$1-$(printf '%s' "$wanted" | sha256 | cut -c1-12)"
         [[ $real == *[[:space:]]* ]] && { echo "no folder without spaces for the build (TMPDIR has them)" >&2; exit 2; }
-        mkdir -p "$real" "$(dirname "$wanted")"
-        if [[ ! -L $wanted ]]; then
+        mkdir -p "$(dirname "$real")" "$(dirname "$wanted")"
+        old=$(readlink "$wanted" 2>/dev/null || true)
+        mkdir -p "$real"
+        if [[ ! -L $wanted || $old != "$real" ]]; then
             rm -rf "$wanted"
             ln -s "$real" "$wanted"
+            [[ $(basename "$old") == dulcamara-"$1"-* ]] && rm -rf "$old"
         fi
     fi
     mkdir -p "$wanted"

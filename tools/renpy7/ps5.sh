@@ -14,7 +14,7 @@ hostpy="$host/python/bin/python2.7"
     echo "Ren'Py 7's host build is incomplete: run tools/build-renpy7.sh host" >&2
     exit 1
 }
-[[ -f $renpy8/librenpy.a && -f $renpy8/ps5-opengl/sdk/lib/libPS5OpenGL.a ]] || {
+[[ -f $renpy8/librenpy.a && -f $renpy8/ps5-opengl/sdk/lib/libPS5OpenGL.a && -f $renpy8/.toolchain ]] || {
     echo "Ren'Py 8's PS5 build is incomplete: run tools/build-renpy.sh" >&2
     exit 1
 }
@@ -40,6 +40,7 @@ export PKG_CONFIG_LIBDIR="$hb/lib/pkgconfig:$hb/libdata/pkgconfig" PKG_CONFIG_PA
 cc="$sdk/bin/prospero-clang"
 ps5_flags="-O2 -fPIC -march=znver2 -ffunction-sections -fdata-sections"
 unset CC CXX CFLAGS CXXFLAGS LDFLAGS
+toolchain_key=$(cat "$renpy8/.toolchain") # Ren'Py 8's build's SDK, PacBrew and flags
 
 # ---- CPython 2.7 for the PS5: a FreeBSD host (its headers are FreeBSD's) with the console's libc, the modules of
 # tools/renpy7/Setup.local. Only the library is built: Python itself runs on the build machine (the host build's).
@@ -74,7 +75,8 @@ build_python_ps5() {
     cp "$src/pyconfig.h" "$out/python/include/python2.7/"
     cp "$src/libpython2.7.a" "$out/python/lib/"
 }
-python_key="python-ps5-2 $python_version $(digest "$root/tools/renpy7/Setup.local" "$root"/tools/patches/python-2.7.18-*.diff)"
+python_key="python-ps5-3 $python_version $toolchain_key $(recipe build_python_ps5) $(
+    digest "$root/tools/renpy7/Setup.local" "$root"/tools/patches/python-2.7.18-*.diff)"
 fresh python "$python_key" || { build_python_ps5; stamp python "$python_key"; }
 
 # ---- Ren'Py's and pygame_sdl2's modules: the host build's generated C, compiled for the PS5 with the renamed SDL
@@ -101,7 +103,8 @@ build_modules_ps5() {
     rm -f "$out/librenpy7-modules.a"
     "$ar" rcs "$out/librenpy7-modules.a" "${objs[@]}"
 }
-modules_key="modules-ps5-1 $python_key $(cat "$host/.generate") $(cat "$renpy8/.ffmpeg") $(digest "$host/sources.txt" "$root/src/core/renpy/sdl_renames.h")"
+modules_key="modules-ps5-2 $python_key $(cat "$host/.generate") $(cat "$renpy8/.ffmpeg") $(
+    recipe build_modules_ps5 pc_cflags module_includes) $(digest "$host/sources.txt" "$root/src/core/renpy/sdl_renames.h")"
 fresh modules "$modules_key" || { build_modules_ps5; stamp modules "$modules_key"; }
 
 # ---- the core's own C, and everything in one object

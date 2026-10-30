@@ -1,4 +1,4 @@
-Dulcamara, a Nightshade app - RPG Maker 2000 / 2003 games on the PS5
+Dulcamara, a Nightshade app - RPG Maker 2000 / 2003 games and Ren'Py visual novels on the PS5
 Copyright (C) 2026 Oliv3rmoon, and the authors of what it is built from. GNU General Public License v3 or later
 (LICENSE-Dulcamara.txt).
 Source code: https://github.com/Oliv3rmoon/Dulcamara (the release's tag holds the exact source, with
@@ -33,6 +33,26 @@ From PacBrew (https://github.com/ps5-payload-dev/pacbrew-repo), each under its o
   zstd (BSD-3-Clause), libpsl (MIT).
   The LGPL libraries are linked statically into this GPL-3.0 program; its whole source is published, so they can
   be replaced and the program relinked.
+
+Ren'Py 8 and Ren'Py 7 (the libretro cores that run visual novels; their engines are assets/renpy8 and assets/renpy7)
+  Ren'Py 8.5.3 and 7.8.7 - MIT License, with LGPL parts - LICENSE-RenPy.rst, LICENSE-RenPy7.rst
+  https://www.renpy.org - by Tom Rothamel and the Ren'Py contributors. The cores' own code (src/core/renpy) is
+  GPL-3.0-or-later.
+  With them: CPython 3.12.8 and 2.7.18 (PSF License - LICENSE-Python.txt, LICENSE-Python2.txt); pygame_sdl2
+  (zlib licence, with parts from Pygame under LGPL-2.1 - LICENSE-pygame_sdl2.txt, LICENSE-pygame_sdl2-LGPL.txt);
+  FFmpeg 4.3.1 (LGPL-2.1-or-later, its LGPL parts only, with Ren'Py's two patches - LICENSE-FFmpeg.txt); Assimp
+  5.4.3 (BSD-3-Clause - LICENSE-Assimp.txt); ps5-opengl 1.0.2, with Mesa (MIT - LICENSE-ps5-opengl.txt,
+  NOTICES-ps5-opengl.md); the Python packages in each engine's lib/site-packages, each with its licence in its
+  dist-info (or egg-info) folder - among them chardet (LGPL-2.1-or-later), shipped with its source.
+  From PacBrew, inside the cores: SDL2 and SDL2_image (zlib licence - LICENSE-SDL2.txt), FreeType (FreeType
+  licence), HarfBuzz (MIT), GNU FriBidi (LGPL-2.1-or-later), libpng (libpng licence), libjpeg-turbo (IJG and
+  BSD-3-Clause - LICENSE-libjpeg-turbo.md), libwebp (BSD-3-Clause), zlib, bzip2 (bzip2 licence), xz (0BSD and
+  public domain - LICENSE-xz.txt), OpenSSL (Apache-2.0 - LICENSE-Apache-2.0.txt) and GNU libiconv
+  (LGPL-2.1-or-later). LICENSE-RenPy.rst holds the texts of the IJG, bzip2 and libwebp licences.
+  Their source: the release's tag, whose tools/build-renpy.sh and tools/build-renpy7.sh name each tarball by
+  SHA-256 with the patches applied to it (tools/patches). The LGPL parts (FFmpeg, FriBidi, libiconv,
+  pygame_sdl2's) are linked statically into this GPL-3.0 program, whose whole source is published, so they can be
+  replaced and the program relinked.
 
 RADV, Mesa's Vulkan driver for AMD GPUs (PS5 port by Mihawk-99) - MIT License - https://gitlab.freedesktop.org/mesa/mesa
 Frame interpolation (PS5SX2 by Swordpdf, AMD FidelityFX SDK) - GPL-3.0-or-later / MIT

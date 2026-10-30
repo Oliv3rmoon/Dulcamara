@@ -202,7 +202,8 @@ unpack_wheels() {
 }
 
 # The Python that runs the build (and, on the host, the engine's), with Cython and setuptools beside it.
-python_key="python-1 $python_version $(digest "$root/tools/renpy/Setup.local" "$root/tools/renpy/wheels.txt")"
+python_key="python-2 $python_version $(digest "$root/tools/renpy/Setup.local" "$root/tools/renpy/wheels.txt") $(
+    recipe build_python unpack_wheels)"
 py="$out/python/bin/python3.12"
 if ! fresh python "$python_key"; then
     build_python
@@ -212,7 +213,8 @@ if ! fresh python "$python_key"; then
     stamp python "$python_key"
 fi
 # The host core's libraries (the PS5 build makes its own).
-libs_key="libs-1 $ffmpeg_version $assimp_version $fribidi_version $sdl2_image_version $(
+libs_key="libs-2 $ffmpeg_version $assimp_version $fribidi_version $sdl2_image_version $(
+    recipe build_fribidi build_sdl2_image build_ffmpeg build_assimp) $(
     digest "$root"/tools/patches/ffmpeg-4.3.1-*.diff)"
 if [[ $target == host ]] && ! fresh libs "$libs_key"; then
     build_fribidi
@@ -324,12 +326,13 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as z, tempfile.Temporary
 PY
 }
 
-generate_key="generate-1 $(git -C "$renpy" rev-parse HEAD) $python_key"
+generate_key="generate-2 $(git -C "$renpy" rev-parse HEAD) $python_key $(recipe build_generate)"
 if ! fresh generate "$generate_key"; then
     build_generate
     stamp generate "$generate_key"
 fi
-engine_key="engine-2 $renpy_version $generate_key $(digest "$root"/src/core/renpy/{boot,errors}.py "$root/tools/renpy/wheels.txt")"
+engine_key="engine-3 $renpy_version $generate_key $(recipe build_engine) $(
+    digest "$root"/src/core/renpy/{boot,errors}.py "$root/tools/renpy/wheels.txt")"
 if ! fresh engine "$engine_key"; then
     build_engine
     stamp engine "$engine_key"
@@ -338,7 +341,8 @@ if [[ $target == engine ]]; then
     echo "==> [renpy] the engine in $out/assets/renpy8, and Ren'Py's modules as C"
     exit 0
 fi
-modules_key="modules-4 $generate_key $libs_key $(digest "$root/src/core/renpy/sdl_renames.h")"
+modules_key="modules-5 $generate_key $libs_key $(recipe build_modules sdl_cflags) $(
+    digest "$root/src/core/renpy/sdl_renames.h")"
 if ! fresh modules "$modules_key"; then
     build_modules
     stamp modules "$modules_key"
@@ -360,7 +364,7 @@ else
 fi
 echo "==> [renpy] the core's checks"
 "$cc" "${own_flags[@]}" -fsanitize=address,undefined -fno-sanitize-recover=all \
-    "$root/tests/core/renpy_unit.c" "$root"/src/core/renpy/{handoff,frames,audio,gl}.c "$gl_backend" \
+    "$root/tests/core/renpy_unit.c" "$root"/src/core/renpy/{handoff,frames,audio,gl,log}.c "$gl_backend" \
     "${gl_libs[@]}" -lm -o "$check/renpy-unit" >"$log/core.log" 2>&1 || fail core
 
 echo "==> [renpy] the core and its headless frontend"
