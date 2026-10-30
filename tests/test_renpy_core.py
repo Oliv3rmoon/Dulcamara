@@ -66,7 +66,8 @@ def make_game(directory, width=1280, height=720, sound_rate=48000, broken=False)
                                    f"define config.screen_height = {height}\n"
                                    f"define config.sound_sample_rate = {sound_rate}\n", encoding="utf-8")
     if broken:
-        (game / "broken.rpy").write_text("label broken:\n    $ this is not python\n", encoding="utf-8")
+        # a line that is no Ren'Py statement: the script cannot be parsed
+        (game / "broken.rpy").write_text("this is not a statement\n", encoding="utf-8")
     return directory
 
 
@@ -98,7 +99,9 @@ class RenpyCoreTest(unittest.TestCase):
         return output
 
     def test_the_core_checks(self):
-        result = subprocess.run([str(UNIT)], capture_output=True, text=True, timeout=120, check=False)
+        # under the sanitizers; leaks are not checked: the OpenGL driver's own allocations would be reported
+        result = subprocess.run([str(UNIT)], capture_output=True, text=True, timeout=120, check=False,
+                                env={**os.environ, "ASAN_OPTIONS": "detect_leaks=0"})
         print("\ncore checks:")
         print(result.stdout.strip())
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr[-3000:])
@@ -112,8 +115,10 @@ class RenpyCoreTest(unittest.TestCase):
             self.assertIn("picture: 1280x720", output)
             self.assertTrue(list((data / "saves/renpy/dulcamara-test-game").glob("1-1-*.save")),
                             "the save is in <data>/saves/renpy/<config.save_directory>")
+            # Ren'Py saves at the last checkpoint (the menu) and replays the choice after it loads
             output = self.run_core("load", game, data, env={"DULCAMARA_TEST_LOAD": "1"})
-            self.assertIn("DULCAMARA-TEST: loaded choice=right", output)
+            self.assertIn("DULCAMARA-TEST: loaded", output)
+            self.assertIn("DULCAMARA-TEST: choice=right", output.split("DULCAMARA-TEST: loaded", 1)[1])
 
     def test_a_folder_named_in_japanese_with_spaces(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -121,12 +126,15 @@ class RenpyCoreTest(unittest.TestCase):
             self.play_and_check(make_game(work / "テスト ゲーム (体験版)"), work / "データ")
 
     def test_a_second_game_in_the_same_process(self):
-        # The app closes one game and starts the next without restarting: Python must start over cleanly.
+        # Ren'Py's compiled modules keep their state in C statics, so Python cannot start over for a second game in
+        # the same process: the core refuses it with a reason, and the app starts itself again for it.
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             first, second = make_game(work / "First"), make_game(work / "Second", 1920, 1080)
             output = self.run_core("play", first, work / "data", "--then", second)
-            self.assertIn("second game: started, picture 1920x1080, stopped", output)
+            self.assertIn("ended by the game", output)
+            self.assertIn("Ren'Py runs one game each time Dulcamara starts", output)
+            self.assertIn("second game: refused", output)
 
     def test_a_game_larger_than_the_picture(self):
         with tempfile.TemporaryDirectory() as directory:

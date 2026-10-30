@@ -1,6 +1,6 @@
 # Dulcamara - the test game: a picture, a sound, a line of dialogue, a menu and a save. It writes what it does to
 # the log ("DULCAMARA-TEST: ..."), and the headless frontend acts on that. With DULCAMARA_TEST_LOAD=1 it loads its
-# save instead of starting over.
+# save instead of starting over: Ren'Py then replays the menu choice the save holds.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 init python:
@@ -10,7 +10,7 @@ init python:
         print("DULCAMARA-TEST: " + message)
 
     def dulcamara_after_load():
-        dulcamara_test("loaded choice=" + str(store.choice))
+        dulcamara_test("loaded")
 
     config.after_load_callbacks.append(dulcamara_after_load)
 

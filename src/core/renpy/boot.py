@@ -4,9 +4,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Ren'Py keeps the core's time: time.time and the other clocks read the clock the frontend moves, and time.sleep
 on Ren'Py's thread waits by it, giving control back meanwhile. Its output goes to Dulcamara's log, its errors are
-logged in full before it shows them, and its saves go where the core says."""
+logged in full before it shows them (dulcamara_errors), and its saves go where the core says."""
 
-import importlib.abc
 import io
 import os
 import runpy
@@ -15,6 +14,7 @@ import threading
 import time
 
 import _dulcamara
+import dulcamara_errors
 
 engine, game, saves = sys.argv[1:4]
 
@@ -63,63 +63,7 @@ time.perf_counter = _dulcamara.monotonic
 time.sleep = sleep
 
 
-def log_error(text):
-    _dulcamara.log(2, "Ren'Py reported an error:")
-    for line in text.splitlines():
-        _dulcamara.log(2, line)
-
-
-def wrap_error_reports(module):
-    """renpy.error.report_exception writes traceback.txt; renpy.display.error.report_parse_errors shows the script's
-    errors. Each is logged in full, then Ren'Py goes on to show it as it would."""
-    if module.__name__ == "renpy.error":
-        report_exception = module.report_exception
-
-        def logged_report_exception(e, *args, **kwargs):
-            te = report_exception(e, *args, **kwargs)
-            try:
-                with open(te.traceback_fn, encoding="utf-8", errors="replace") as f:
-                    log_error(f.read())
-            except Exception:
-                log_error(repr(e))
-            return te
-
-        module.report_exception = logged_report_exception
-    elif module.__name__ == "renpy.display.error":
-        report_parse_errors = module.report_parse_errors
-
-        def logged_report_parse_errors(errors, error_fn, *args, **kwargs):
-            log_error("\n".join(errors))
-            return report_parse_errors(errors, error_fn, *args, **kwargs)
-
-        module.report_parse_errors = logged_report_parse_errors
-
-
-class ErrorReports(importlib.abc.MetaPathFinder):
-    """Wraps the error reports as their modules load: Ren'Py imports them itself, and again when it reloads."""
-
-    names = ("renpy.error", "renpy.display.error")
-
-    def find_spec(self, name, path, target=None):
-        if name not in self.names:
-            return None
-        for finder in sys.meta_path:
-            if finder is self or not hasattr(finder, "find_spec"):
-                continue
-            spec = finder.find_spec(name, path, target)
-            if spec is not None and spec.loader is not None:
-                exec_module = spec.loader.exec_module
-
-                def exec_and_wrap(module, exec_module=exec_module):
-                    exec_module(module)
-                    wrap_error_reports(module)
-
-                spec.loader.exec_module = exec_and_wrap
-                return spec
-        return None
-
-
-sys.meta_path.insert(0, ErrorReports())
+dulcamara_errors.install()
 os.environ["RENPY_PATH_TO_SAVES"] = saves
 # MultiPersistent data goes to ~/.renpy (or ~/Library/RenPy on macOS): with HOME the saves folder, it stays with
 # the saves, and the host check never writes into the user's own home.
@@ -133,7 +77,7 @@ except SystemExit as e:
 except BaseException:
     import traceback
 
-    log_error(traceback.format_exc())
+    dulcamara_errors.log_error(traceback.format_exc())
     status = 1
 finally:
     sys.stdout.flush()

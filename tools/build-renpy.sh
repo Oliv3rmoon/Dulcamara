@@ -54,6 +54,8 @@ jobs=${BUILD_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 
 cc=${CC:-cc}
 cxx=${CXX:-c++}
 
+renpy_version=8.5.3.26051504 # third_party/renpy's tag
+renpy_version_name="We Can Go to the Moon"
 python_version=3.12.8
 python_hash=c909157bb25ec114e5869124cc2a9c4a4d4c1e957ca4ff553f1edc692101154e
 ffmpeg_version=4.3.1
@@ -266,9 +268,10 @@ build_modules() {
         fail modules
     generated="$src/tmp/gen3-static"
     [[ -d $generated ]] || { echo "Ren'Py's setup.py did not write $generated" >&2; exit 1; }
+    # this build's own headers first: the build machine may have other versions (Homebrew's FFmpeg)
     local cflags=(-O2 -g -fPIC -w -fno-strict-aliasing -include "$root/src/core/renpy/sdl_renames.h"
-        -I"$src/src" -I"$generated" $("$out/python/bin/python3.12-config" --includes) $(sdl_cflags)
-        -I"$prefix/include")
+        -I"$src/src" -I"$generated" -I"$prefix/include" $("$out/python/bin/python3.12-config" --includes)
+        $(sdl_cflags))
     local modules=() sources=() line parts s
     while read -r line; do
         line=${line%%#*}
@@ -318,7 +321,11 @@ build_engine() {
     find "$engine/renpy" \( -name '*.pyx' -o -name '*.pxd' -o -name '*.pxi' -o -name '*.c' -o -name '*.c.dynamic' \
         -o -name '*.cc' -o -name '*.h' \) -delete
     cp "$src/renpy.py" "$engine/renpy.py"
+    # what Ren'Py's own distribution writes: without it Ren'Py looks for its version in a git checkout
+    printf "branch = 'fix'\nnightly = False\nofficial = False\nversion = '%s'\nversion_name = '%s'\n" \
+        "$renpy_version" "$renpy_version_name" >"$engine/renpy/vc_version.py"
     cp "$root/src/core/renpy/boot.py" "$engine/dulcamara_boot.py"
+    cp "$root/src/core/renpy/errors.py" "$engine/dulcamara_errors.py"
     unpack_wheels engine "$engine/lib/site-packages"
     "$py" -m compileall -q -j 1 --invalidation-mode unchecked-hash "$engine/renpy" "$engine/lib/site-packages" \
         >"$log/engine.log" 2>&1 || fail engine
@@ -339,12 +346,12 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as z, tempfile.Temporary
 PY
 }
 
-modules_key="modules-1 $(git -C "$renpy" rev-parse HEAD) $deps_key $(digest "$root/src/core/renpy/sdl_renames.h")"
+modules_key="modules-2 $(git -C "$renpy" rev-parse HEAD) $deps_key $(digest "$root/src/core/renpy/sdl_renames.h")"
 if ! fresh modules "$modules_key"; then
     build_modules
     stamp modules "$modules_key"
 fi
-engine_key="engine-1 $modules_key $(digest "$root/src/core/renpy/boot.py" "$root/tools/renpy/wheels.txt")"
+engine_key="engine-1 $renpy_version $modules_key $(digest "$root"/src/core/renpy/{boot,errors}.py "$root/tools/renpy/wheels.txt")"
 if ! fresh engine "$engine_key"; then
     build_engine
     stamp engine "$engine_key"
@@ -368,3 +375,29 @@ echo "==> [renpy] the core's checks"
 "$cc" "${own_flags[@]}" -fsanitize=address,undefined -fno-sanitize-recover=all \
     "$root/tests/core/renpy_unit.c" "$root"/src/core/renpy/{handoff,frames,audio,gl}.c "$gl_backend" \
     "${gl_libs[@]}" -lm -o "$check/renpy-unit" >"$log/core.log" 2>&1 || fail core
+
+echo "==> [renpy] the core and its headless frontend"
+objects=()
+for f in core python hooks input log handoff frames audio gl; do
+    "$cc" "${own_flags[@]}" -I"$libretro" $("$out/python/bin/python3.12-config" --includes) $(sdl_cflags) \
+        -c "$root/src/core/renpy/$f.c" -o "$check/$f.o" >>"$log/core.log" 2>&1 || fail core
+    objects+=("$check/$f.o")
+done
+"$cc" "${own_flags[@]}" -c "$gl_backend" -o "$check/gl_backend.o" >>"$log/core.log" 2>&1 || fail core
+"$cc" -O1 -g -w $("$out/python/bin/python3.12-config" --includes) -c "$out/gen/inittab.c" -o "$check/inittab.o" \
+    >>"$log/core.log" 2>&1 || fail core
+"$cc" "${own_flags[@]}" -I"$libretro" -c "$root/tests/core/renpy_headless.c" -o "$check/renpy_headless.o" \
+    >>"$log/core.log" 2>&1 || fail core
+# What Python's built-in modules link (python3.12-config leaves them out): its LOCALMODLIBS, but for the two
+# archives of its own build, which python/lib/modules holds. Before the other libraries, so that their folders
+# (Homebrew's lib, which may hold another OpenSSL) come after the ones Python was built with.
+python_modlibs=$("$py" -c "import sysconfig; print(' '.join(w for w in sysconfig.get_config_var('LOCALMODLIBS').split() if not w.endswith('.a')))")
+# Ren'Py's modules, then what they use: FFmpeg, Assimp, SDL2_image and SDL2, the text libraries, Python.
+"$cxx" -o "$check/renpy-headless" "$check/renpy_headless.o" "${objects[@]}" "$check/gl_backend.o" \
+    "$check/inittab.o" "$out/librenpy-modules.a" \
+    -L"$prefix/lib" -lavformat -lavcodec -lswscale -lswresample -lavutil -lassimp \
+    $("$out/python/bin/python3.12-config" --embed --ldflags) "$out"/python/lib/modules/*.a $python_modlibs \
+    $(pkg-config --libs SDL2_image sdl2 freetype2 harfbuzz fribidi libpng libjpeg libwebp zlib) \
+    "${gl_libs[@]}" -pthread -lm \
+    >>"$log/core.log" 2>&1 || fail core
+echo "==> [renpy] $check/renpy-headless"
