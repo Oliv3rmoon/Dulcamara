@@ -147,6 +147,14 @@ class RenpyCoreTest(unittest.TestCase):
             work = Path(directory)
             self.play_and_check(make_game(work / "Slow sound", sound_rate=44100), work / "data")
 
+    def test_fast_forward_skips_the_dialogue(self):
+        # While the frontend fast-forwards, the core holds Ren'Py's skip (its Ctrl key).
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("skip", make_game(work / "Skip"), work / "data", env={"DULCAMARA_TEST_SKIP": "1"})
+            self.assertIn("fast-forward: the dialogue went by without Cross", output)
+            self.assertIn("DULCAMARA-TEST: choice=", output)
+
     def test_a_game_with_an_error(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)

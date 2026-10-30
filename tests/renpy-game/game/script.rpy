@@ -16,6 +16,9 @@ init python:
 
 default choice = None
 
+# DULCAMARA_TEST_SKIP=1: unread dialogue may be skipped too, so that fast-forward's skip shows on a first run.
+default preferences.skip_unseen = os.environ.get("DULCAMARA_TEST_SKIP") == "1"
+
 # No main menu: the game starts at once.
 label main_menu:
     return

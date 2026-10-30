@@ -14,6 +14,9 @@ void input_attach(void); /* once SDL's joysticks are up (Ren'Py's thread) */
 bool input_is_ours(int device_index);
 /* The frontend: the RetroPad's buttons (bit = RETRO_DEVICE_ID_JOYPAD_*) and left stick. */
 void input_set(uint16_t retropad, int16_t left_x, int16_t left_y);
+/* The frontend: fast-forward on or off. While on, Ren'Py's skip key (Left Ctrl) is held, so dialogue that was read
+ * goes by, as players of visual novels expect fast-forward to do. */
+void input_set_skip(bool on);
 void input_detach(void);
 
 #endif

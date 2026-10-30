@@ -9,6 +9,8 @@
  *   play   Cross through the dialogue, Down and Cross to choose Right; the game saves and quits.
  *   load   the game loads that save (DULCAMARA_TEST_LOAD=1); Cross, and it quits.
  *   start  the game starts and shows a picture; it is then closed while it waits.
+ *   skip   with fast-forward on from the start, the dialogue goes by without Cross (DULCAMARA_TEST_SKIP=1); then
+ *          fast-forward is off, and Down and Cross choose in the menu as in "play".
  *   error  the game has a script error: Ren'Py's error is logged and shown; it is then closed.
  *   --then a second game in the same process afterwards, as "start".
  */
@@ -26,7 +28,7 @@
 static const char *assets_dir, *data_dir;
 static struct retro_audio_callback audio_cb;
 static struct retro_frame_time_callback frame_time_cb;
-static bool audio_cb_set, frame_time_set, shutdown_asked, xrgb;
+static bool audio_cb_set, frame_time_set, shutdown_asked, xrgb, fast_forward;
 static unsigned picture_w, picture_h, geometry_w, geometry_h;
 static uint64_t picture_hash, with_picture, dupes, distinct, sound_frames, sound_loud, refreshes;
 static uint16_t buttons;
@@ -89,6 +91,9 @@ static bool environment(unsigned cmd, void *data)
         return true;
     case RETRO_ENVIRONMENT_SHUTDOWN:
         shutdown_asked = true;
+        return true;
+    case RETRO_ENVIRONMENT_GET_FASTFORWARDING:
+        *(bool *)data = fast_forward;
         return true;
     case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS:
     case RETRO_ENVIRONMENT_GET_CAN_DUPE:
@@ -280,6 +285,18 @@ int main(int argc, char **argv)
         frames(30);
         press(RETRO_DEVICE_ID_JOYPAD_B);
         ended = until_shutdown();
+    }
+    else if (ok && !strcmp(mode, "skip"))
+    {
+        fast_forward = true;
+        ok = until_logged("DULCAMARA-TEST: started") && until_picture() && until_logged("DULCAMARA-TEST: advanced");
+        printf("fast-forward: the dialogue %s without Cross\n", ok ? "went by" : "did not go by");
+        fast_forward = false;
+        frames(30);
+        press(RETRO_DEVICE_ID_JOYPAD_DOWN);
+        frames(30);
+        press(RETRO_DEVICE_ID_JOYPAD_B);
+        ok = ok && until_logged("DULCAMARA-TEST: choice=");
     }
     else if (ok && !strcmp(mode, "load"))
     {

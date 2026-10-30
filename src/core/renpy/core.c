@@ -253,6 +253,8 @@ void retro_run(void)
                                                        RETRO_DEVICE_ID_ANALOG_Y)
                                       : 0;
     input_set(pad_buttons(), lx, ly);
+    bool fast = false;
+    input_set_skip(environ_cb(RETRO_ENVIRONMENT_GET_FASTFORWARDING, &fast) && fast);
     handoff_frame(frame_usec, frame_usec * 3 / 4);
     log_flush(emit);
 

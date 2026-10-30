@@ -12,6 +12,8 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static SDL_Joystick *pad;
 static SDL_JoystickID pad_id = -1;
 static uint16_t held;
+static bool skip_wanted, skip_held;
+static int skip_frames; /* frames since Ctrl was last pressed */
 static int16_t stick_x, stick_y;
 
 /* The RetroPad's buttons as SDL's, by where they sit: the RetroPad's B is the bottom face button, SDL's A. L2 and R2
@@ -100,6 +102,34 @@ void input_set(uint16_t retropad, int16_t left_x, int16_t left_y)
     pthread_mutex_unlock(&lock);
 }
 
+/* Left Ctrl down or up, into SDL's event queue (which takes events from any thread): Ren'Py's "skip" keymap. Only
+ * once SDL's events are up; until then the wish is kept. While held it is pressed again every half second, as a key
+ * held on a keyboard is: Ren'Py stops skipping at a menu, or when the game says so, and starts again on a press. */
+static void push_skip(void)
+{
+    const bool again = skip_held && skip_wanted && ++skip_frames >= 30;
+    if ((skip_held == skip_wanted && !again) || !SDL_WasInit(SDL_INIT_EVENTS))
+        return;
+    skip_frames = 0;
+    SDL_Event e;
+    SDL_zero(e);
+    e.type = skip_wanted ? SDL_KEYDOWN : SDL_KEYUP;
+    e.key.state = skip_wanted ? SDL_PRESSED : SDL_RELEASED;
+    e.key.keysym.scancode = SDL_SCANCODE_LCTRL;
+    e.key.keysym.sym = SDLK_LCTRL;
+    e.key.keysym.mod = skip_wanted ? KMOD_LCTRL : KMOD_NONE;
+    if (SDL_PushEvent(&e) == 1)
+        skip_held = skip_wanted;
+}
+
+void input_set_skip(bool on)
+{
+    pthread_mutex_lock(&lock);
+    skip_wanted = on;
+    push_skip();
+    pthread_mutex_unlock(&lock);
+}
+
 void input_detach(void)
 {
     pthread_mutex_lock(&lock);
@@ -113,6 +143,7 @@ void input_detach(void)
     pad = NULL;
     pad_id = -1;
     held = 0;
+    skip_wanted = skip_held = false;
     stick_x = stick_y = 0;
     pthread_mutex_unlock(&lock);
 }
