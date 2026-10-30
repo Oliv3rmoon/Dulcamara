@@ -20,7 +20,9 @@ and says what it ships. **Spec:** `docs/superpowers/specs/2026-10-29-renpy-core-
   `sceSystemServiceLoadExec`), which opens it at start.
 - [x] **M3.4 Saves and skip.** Saves in `<data>/saves/renpy/<config.save_directory>`; R2 (fast-forward) holds
   Ren'Py's skip, pressed again every 30 frames. Checks: `tests/test_renpy_core.py` (save and load, skip).
-- [x] **M3.5 Settings, notices, packaging.** Settings > About and Controls name Ren'Py; `THIRD_PARTY_NOTICES.md`,
+- [x] **M3.5 Settings, notices, packaging.** A Settings > Ren'Py page: "Fast-forward skips unread text too"
+  (`renpy_skip_unseen`, the core's libretro option, which holds Ren'Py's skip_unseen preference on), and where
+  Ren'Py's own preferences, the touchpad, the saves and the two Ren'Py versions are. Settings > About and Controls name Ren'Py; `THIRD_PARTY_NOTICES.md`,
   `docs/THIRD-PARTY.txt` and the licences in the package; `tools/build.sh` packs `assets/renpy8`; CI checks the
   ZIP's engine and licences and that no game files are packed.
 - [x] **M3.6 CI.** The PS5 job builds the core, links the app with it and runs the host checks. Evidence: CI run
