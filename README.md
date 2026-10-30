@@ -21,10 +21,18 @@ plays them on [EasyRPG Player](https://easyrpg.org), the free reimplementation o
 into the app as a libretro core, and it is built on [Mandrake (formerly Nightshade Station)](https://github.com/Oliv3rmoon/Mandrake),
 so it shares its frontend: the Vulkan screen with its CRT shaders, the black-and-red look of
 [Nightshade](https://github.com/Oliv3rmoon/Nightshade) and the updates from its own releases. It is the
-first step of a Nightshade answer to JoiPlay; more engines can join EasyRPG in the same app. The current
+first step of a Nightshade answer to JoiPlay: Ren'Py 8 visual novels run in the same app, on Ren'Py itself
+built in as a second core, with the same shaders and fast-forward. The current
 version is **0.1.0**; what changed is in the [changelog](docs/CHANGELOG.md).
 
 ## What you get
+
+- **Ren'Py 8 visual novels.** Ren'Py 8.5 is built into the app (with Python 3.12 and FFmpeg for its music, voice
+  and movies); a game brings only its `game/` folder, as with JoiPlay. Cross moves the story on and chooses,
+  Circle opens the game's menu, L1 and R1 roll back and forward, R2 fast-forwards and skips text already read,
+  and the touchpad is the mouse. Saves go to `/data/dulcamara/saves/renpy`. Ren'Py 7 games are listed but need a
+  Ren'Py 7 core that is still to come; Ren'Py runs one game each time the app starts, so opening a second one
+  starts the app again.
 
 - **RPG Maker 2000 and 2003 games.** Everything EasyRPG Player runs, from its pinned source: the original
   engines' events, battles, pictures and sound (MIDI through EasyRPG's own synthesiser, WAV, Ogg Vorbis
@@ -72,8 +80,10 @@ Like Mandrake, it needs `/data` unlocked to look into its games folder: LegacyJB
 │   ├── <Game>/                      one folder per game: RPG_RT.ldb, RPG_RT.lmt, RPG_RT.ini, Title/, ...
 │   ├── <Series>/<Game>/             or one folder down
 │   ├── <Game>.zip                   or a .zip of the game (the game at its root or in a folder inside it)
-│   └── <Game>.easyrpg               or an .easyrpg (a .zip by another name)
+│   ├── <Game>.easyrpg               or an .easyrpg (a .zip by another name)
+│   └── <Ren'Py game>/               a Ren'Py game's folder, with game/ (and renpy/, lib/... which are not used)
 ├── rtp/2000/ and rtp/2003/          the RPG Maker run-time packages (RTP), for games that need them
+├── saves/renpy/                    Ren'Py games' saves, one folder each (their config.save_directory)
 ├── settings.ini, played.txt
 └── logs/dulcamara.log       send this with bug reports
 ```
