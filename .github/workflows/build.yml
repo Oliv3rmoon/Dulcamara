@@ -93,7 +93,9 @@ jobs:
       # The core for the PS5 is rebuilt only when its sources, its patch or its build script change: its build
       # stamp (build/easyrpg-ps5/.stamp) says which it was built from.
       - name: Note the core's sources
-        run: git submodule status --recursive > build-core-sources.txt
+        run: |
+          git submodule status > build-core-sources.txt
+          git -C third_party/easyrpg-player submodule status --recursive >> build-core-sources.txt
       - name: Restore the PS5 core
         uses: actions/cache@v4
         with:
