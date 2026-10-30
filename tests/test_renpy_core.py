@@ -147,6 +147,13 @@ class RenpyCoreTest(unittest.TestCase):
             work = Path(directory)
             self.play_and_check(make_game(work / "Slow sound", sound_rate=44100), work / "data")
 
+    def test_a_press_of_the_pointer_clicks(self):
+        # The touchpad is Ren'Py's mouse: the frontend reports a tap as a press of the pointer.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("click", make_game(work / "Click"), work / "data")
+            self.assertIn("pointer: the dialogue moved on after a press", output)
+
     def test_fast_forward_skips_the_dialogue(self):
         # While the frontend fast-forwards, the core holds Ren'Py's skip (its Ctrl key).
         with tempfile.TemporaryDirectory() as directory:

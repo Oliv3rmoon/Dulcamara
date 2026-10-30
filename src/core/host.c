@@ -46,6 +46,14 @@ static bool frame_fresh;
 
 static uint16_t pad_bits; /* RetroPad buttons held, bit = RETRO_DEVICE_ID_JOYPAD_* */
 static int16_t pad_lx, pad_ly;
+
+/* The touchpad as the pointer, for the cores that take one (CoreInfo.pointer): where the finger is, and a tap (down
+ * and up within a quarter of a second, without travelling) as a press of a few frames. Pressing the touchpad down is
+ * still Dulcamara's menu. */
+static int16_t pointer_x, pointer_y;
+static bool pointer_pressed, finger_was_down;
+static uint64_t finger_down_us;
+static int finger_down_x, finger_down_y, tap_frames;
 static int volume = 10;
 
 /* ---------------------------------------------------------------- options */
@@ -285,6 +293,13 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
         if (id == RETRO_DEVICE_ID_JOYPAD_MASK)
             return (int16_t)pad_bits;
         return id < 16 ? (pad_bits >> id) & 1 : 0;
+    case RETRO_DEVICE_POINTER:
+        if (index != 0)
+            return 0;
+        return id == RETRO_DEVICE_ID_POINTER_X   ? pointer_x
+               : id == RETRO_DEVICE_ID_POINTER_Y ? pointer_y
+               : id == RETRO_DEVICE_ID_POINTER_PRESSED ? (int16_t)pointer_pressed
+                                                       : 0;
     case RETRO_DEVICE_ANALOG:
         /* the left stick only: EasyRPG reads the right one as the number keys and the triggers as its own
          * fast-forward and debug keys, which Dulcamara keeps for itself */
@@ -326,6 +341,10 @@ bool host_load(const Game *g, const char *system, char *error, size_t error_size
     frame_fresh = false;
     pad_bits = 0;
     pad_lx = pad_ly = 0;
+    pointer_x = pointer_y = 0;
+    pointer_pressed = finger_was_down = false;
+    tap_frames = 0;
+    plat_pad_touch(core->pointer);
 
     struct retro_system_info info;
     memset(&info, 0, sizeof(info));
@@ -377,6 +396,7 @@ void host_unload(void)
     core->unload_game();
     core->deinit();
     np_log("host: %s stopped", core->name);
+    plat_pad_touch(false);
     plat_audio_clear();
     loaded = false;
     audio_cb_set = audio_enabled = false;
@@ -392,6 +412,28 @@ bool host_loaded(void)
 const char *host_core_name(void)
 {
     return core ? core->name : "";
+}
+
+static void set_pointer(const PadState *pad)
+{
+    if (pad->touching)
+    {
+        pointer_x = (int16_t)((int)pad->touch_x * 65534 / 1919 - 32767);
+        pointer_y = (int16_t)((int)pad->touch_y * 65534 / 1079 - 32767);
+        if (!finger_was_down)
+        {
+            finger_down_us = plat_ticks_us();
+            finger_down_x = pad->touch_x;
+            finger_down_y = pad->touch_y;
+        }
+    }
+    else if (finger_was_down && plat_ticks_us() - finger_down_us < 250000 && abs(finger_down_x - (int)pad->touch_x) < 60 &&
+             abs(finger_down_y - (int)pad->touch_y) < 60)
+        tap_frames = 3;
+    finger_was_down = pad->touching;
+    pointer_pressed = tap_frames > 0;
+    if (tap_frames)
+        --tap_frames;
 }
 
 void host_set_input(const PadState *pad, const Settings *s)
@@ -418,6 +460,8 @@ void host_set_input(const PadState *pad, const Settings *s)
         pad_ly = s->stick_dpad ? pad->ly : 0;
     }
     pad_bits = bits;
+    if (core && core->pointer && pad)
+        set_pointer(pad);
 }
 
 void host_run(int times, double seconds)

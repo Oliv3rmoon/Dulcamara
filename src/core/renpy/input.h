@@ -17,6 +17,13 @@ void input_set(uint16_t retropad, int16_t left_x, int16_t left_y);
 /* The frontend: fast-forward on or off. While on, Ren'Py's skip key (Left Ctrl) is held, so dialogue that was read
  * goes by, as players of visual novels expect fast-forward to do. */
 void input_set_skip(bool on);
+/* The frontend: the pointer (the touchpad), x and y from -32767 to 32767 across the picture, and whether it is pressed
+ * (a tap). It is Ren'Py's mouse: moved when x or y change, its left button down while pressed. */
+void input_set_pointer(int16_t x, int16_t y, bool pressed);
+/* Ren'Py's thread, as it looks for events: the pointer's latest moves, given to SDL for `window` (w x h). SDL's mouse
+ * is not to be moved from another thread. */
+struct SDL_Window;
+void input_pump(struct SDL_Window *window, int w, int h);
 void input_detach(void);
 
 #endif

@@ -255,6 +255,10 @@ void retro_run(void)
     input_set(pad_buttons(), lx, ly);
     bool fast = false;
     input_set_skip(environ_cb(RETRO_ENVIRONMENT_GET_FASTFORWARDING, &fast) && fast);
+    if (input_state_cb)
+        input_set_pointer(input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X),
+                          input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y),
+                          input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_PRESSED) != 0);
     handoff_frame(frame_usec, frame_usec * 3 / 4);
     log_flush(emit);
 

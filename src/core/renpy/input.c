@@ -14,6 +14,8 @@ static SDL_JoystickID pad_id = -1;
 static uint16_t held;
 static bool skip_wanted, skip_held;
 static int skip_frames; /* frames since Ctrl was last pressed */
+static int16_t pointer_x, pointer_y;
+static bool pointer_moved, pointer_pressed, button_down;
 static int16_t stick_x, stick_y;
 
 /* The RetroPad's buttons as SDL's, by where they sit: the RetroPad's B is the bottom face button, SDL's A. L2 and R2
@@ -130,6 +132,44 @@ void input_set_skip(bool on)
     pthread_mutex_unlock(&lock);
 }
 
+void input_set_pointer(int16_t x, int16_t y, bool pressed)
+{
+    pthread_mutex_lock(&lock);
+    if (x != pointer_x || y != pointer_y)
+        pointer_moved = true;
+    pointer_x = x;
+    pointer_y = y;
+    pointer_pressed = pressed;
+    pthread_mutex_unlock(&lock);
+}
+
+void input_pump(SDL_Window *window, int w, int h)
+{
+    pthread_mutex_lock(&lock);
+    const bool moved = pointer_moved, pressed = pointer_pressed;
+    const int x = (int)(((long)pointer_x + 32767) * (w - 1) / 65534), y = (int)(((long)pointer_y + 32767) * (h - 1) / 65534);
+    pointer_moved = false;
+    pthread_mutex_unlock(&lock);
+    if (!window || w <= 0 || h <= 0)
+        return;
+    if (moved || (pressed && !button_down))
+        SDL_WarpMouseInWindow(window, x, y); /* SDL's own mouse: its state and its motion event */
+    if (pressed != button_down)
+    {
+        SDL_Event e;
+        SDL_zero(e);
+        e.type = pressed ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+        e.button.windowID = SDL_GetWindowID(window);
+        e.button.button = SDL_BUTTON_LEFT;
+        e.button.state = pressed ? SDL_PRESSED : SDL_RELEASED;
+        e.button.clicks = 1;
+        e.button.x = x;
+        e.button.y = y;
+        if (SDL_PushEvent(&e) == 1)
+            button_down = pressed;
+    }
+}
+
 void input_detach(void)
 {
     pthread_mutex_lock(&lock);
@@ -144,6 +184,8 @@ void input_detach(void)
     pad_id = -1;
     held = 0;
     skip_wanted = skip_held = false;
+    pointer_x = pointer_y = 0;
+    pointer_moved = pointer_pressed = button_down = false;
     stick_x = stick_y = 0;
     pthread_mutex_unlock(&lock);
 }

@@ -81,9 +81,9 @@ static const int8_t RENPY_BUTTONS[MAP_BUTTONS] = {
 
 const CoreInfo CORES[CORE_COUNT] = {
     [CORE_EASYRPG] = {"easyrpg", "EasyRPG Player", "RPG Maker 2000 / 2003", "GPL-3.0-or-later",
-                      FUNCTIONS_WITH(EASYRPG_PREFIX), EASYRPG_BUTTONS, true},
+                      FUNCTIONS_WITH(EASYRPG_PREFIX), EASYRPG_BUTTONS, true, false},
     [CORE_RENPY] = {"renpy", "Ren'Py", "Ren'Py 8", "MIT (Ren'Py), PSF (Python), LGPL-2.1 (FFmpeg)", RENPY_FUNCTIONS,
-                    RENPY_BUTTONS, true},
+                    RENPY_BUTTONS, true, true},
 };
 
 const CoreInfo *core_by_id(const char *id)

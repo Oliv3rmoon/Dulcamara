@@ -9,6 +9,7 @@
  *   play   Cross through the dialogue, Down and Cross to choose Right; the game saves and quits.
  *   load   the game loads that save (DULCAMARA_TEST_LOAD=1); Cross, and it quits.
  *   start  the game starts and shows a picture; it is then closed while it waits.
+ *   click  a press of the pointer (the touchpad) in the middle of the picture moves the dialogue on, as a click.
  *   skip   with fast-forward on from the start, the dialogue goes by without Cross (DULCAMARA_TEST_SKIP=1); then
  *          fast-forward is off, and Down and Cross choose in the menu as in "play".
  *   error  the game has a script error: Ren'Py's error is logged and shown; it is then closed.
@@ -32,6 +33,7 @@ static bool audio_cb_set, frame_time_set, shutdown_asked, xrgb, fast_forward;
 static unsigned picture_w, picture_h, geometry_w, geometry_h;
 static uint64_t picture_hash, with_picture, dupes, distinct, sound_frames, sound_loud, refreshes;
 static uint16_t buttons;
+static bool pointer_pressed; /* the pointer (the touchpad) pressed, at the middle of the picture */
 static char log_text[1 << 18];
 static size_t log_used;
 static int ran;
@@ -153,6 +155,8 @@ static void input_poll(void)
 static int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
 {
     (void)index;
+    if (port == 0 && device == RETRO_DEVICE_POINTER)
+        return id == RETRO_DEVICE_ID_POINTER_PRESSED ? pointer_pressed : 0; /* x and y 0: the middle */
     if (port != 0 || device != RETRO_DEVICE_JOYPAD)
         return 0;
     if (id == RETRO_DEVICE_ID_JOYPAD_MASK)
@@ -285,6 +289,16 @@ int main(int argc, char **argv)
         frames(30);
         press(RETRO_DEVICE_ID_JOYPAD_B);
         ended = until_shutdown();
+    }
+    else if (ok && !strcmp(mode, "click"))
+    {
+        ok = until_logged("DULCAMARA-TEST: started") && until_picture();
+        frames(60);
+        pointer_pressed = true;
+        frames(6);
+        pointer_pressed = false;
+        ok = ok && until_logged("DULCAMARA-TEST: advanced");
+        printf("pointer: the dialogue %s after a press\n", ok ? "moved on" : "did not move on");
     }
     else if (ok && !strcmp(mode, "skip"))
     {
