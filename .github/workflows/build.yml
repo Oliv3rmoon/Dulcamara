@@ -186,8 +186,11 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # libretro.h is in EasyRPG Player's own libretro-common submodule
       - name: Fetch Ren'Py and libretro.h
-        run: git submodule update --init --depth=1 third_party/renpy third_party/easyrpg-player
+        run: |
+          git submodule update --init --depth=1 third_party/renpy
+          git submodule update --init --recursive --depth=1 third_party/easyrpg-player
 
       - name: Install toolchain
         run: |

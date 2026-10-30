@@ -115,9 +115,10 @@ source "$root/tools/ninja-build.sh"
 ninja_begin "$build/app.ninja"
 target_compiler=$(command -v "${PS5_CLANG:-clang-18}")
 
+# src/core/renpy is Ren'Py's core: tools/build-renpy.sh builds it into its own archive, with its own libraries.
 mapfile -d '' -t source_paths < <(
     find "$root/$app_source_dir" -type f \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' \) \
-        -print0 | sort -z
+        -not -path "$root/$app_source_dir/core/renpy/*" -print0 | sort -z
 )
 sources=()
 for source in "${source_paths[@]}"; do
