@@ -238,32 +238,36 @@ static int renpy_version(const char *dir)
     return renpy_lib_version(dir);
 }
 
-/* The name of the game's launcher beside game/ (<name>.exe or <name>.sh, not the 32-bit <name>-32.exe): the
- * first, by name. */
+/* The name of the game's launcher beside game/ (<name>.exe or <name>.sh, not the 32-bit <name>-32.exe): the first,
+ * by name, of those with Ren'Py's <name>.py beside them (so not an installer's unins000.exe), else of all. */
 static bool renpy_launcher_name(const char *dir, char *out, size_t size)
 {
     DIR *d = opendir(dir);
     if (!d)
         return false;
-    char best[256] = "";
+    char best[256] = "", best_with_py[256] = "";
     for (struct dirent *e; (e = readdir(d));)
     {
         const char *ext = path_ext(e->d_name);
         if (e->d_name[0] == '.' || (str_icmp(ext, "exe") && str_icmp(ext, "sh")))
             continue;
         size_t n = (size_t)(strrchr(e->d_name, '.') - e->d_name);
-        if (n == 0 || n >= sizeof(best) || (n > 3 && !strncmp(e->d_name + n - 3, "-32", 3)))
+        if (n == 0 || n + 4 >= sizeof(best) || (n > 3 && !strncmp(e->d_name + n - 3, "-32", 3)))
             continue;
-        char stem[256];
+        char stem[256], script[260], path[NP_PATH_MAX];
         memcpy(stem, e->d_name, n);
         stem[n] = '\0';
         if (!best[0] || str_icmp(stem, best) < 0)
             str_copy(best, sizeof(best), stem);
+        snprintf(script, sizeof(script), "%s.py", stem);
+        if (find_in_dir(dir, script, path, sizeof(path)) && (!best_with_py[0] || str_icmp(stem, best_with_py) < 0))
+            str_copy(best_with_py, sizeof(best_with_py), stem);
     }
     closedir(d);
-    if (best[0])
-        str_copy(out, size, best);
-    return best[0] != '\0';
+    const char *name = best_with_py[0] ? best_with_py : best;
+    if (name[0])
+        str_copy(out, size, name);
+    return name[0] != '\0';
 }
 
 static bool library_read_renpy(const char *dir, Game *g)

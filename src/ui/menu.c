@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "../app.h"
+#include "../core/cores.h"
 #include "../core/host.h"
 #include "../covers.h"
 #include "../i18n.h"
@@ -31,6 +32,11 @@ static int selected;
 static float slide;  /* 0..1, the panel coming in */
 static float bar_y;  /* the highlight, animated */
 static bool confirm_reset;
+
+static bool playing_renpy(void)
+{
+    return app.game >= 0 && core_is_renpy(app.library.games[app.game].core);
+}
 
 void menu_open(void)
 {
@@ -81,7 +87,13 @@ void menu_screen(uint32_t pressed)
             resume();
             break;
         case ITEM_RESET:
-            if (!confirm_reset)
+            if (playing_renpy())
+            {
+                /* Ren'Py's core does not reset: its own menu goes back to the main menu */
+                app_toast("In Ren'Py, the game's menu (Circle) goes back to its main menu.");
+                resume();
+            }
+            else if (!confirm_reset)
             {
                 confirm_reset = true;
                 sfx_play(SFX_CLICK);
@@ -148,8 +160,9 @@ void menu_screen(uint32_t pressed)
             break;
         case ITEM_RESET:
             str_copy(label, sizeof(label),
-                     confirm_reset && selected == ITEM_RESET ? tr("Press again: unsaved progress is lost")
-                                                             : tr("Back to the title screen"));
+                     playing_renpy()                         ? tr("Back to the title screen: the game's menu")
+                     : confirm_reset && selected == ITEM_RESET ? tr("Press again: unsaved progress is lost")
+                                                               : tr("Back to the title screen"));
             break;
         case ITEM_SETTINGS: str_copy(label, sizeof(label), tr("Settings")); break;
         case ITEM_QUIT: str_copy(label, sizeof(label), tr("Quit to the library")); break;

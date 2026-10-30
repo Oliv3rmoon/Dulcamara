@@ -380,6 +380,8 @@ static void check_renpy_games(void)
     make_dir(sub, sizeof(sub), dir, "renpy");
     write_text(sub, "vc_version.py", "vc_version = 2266\nversion = u'7.4.11.2266'\n");
     write_text(dir, "OldStory.sh", "#!/bin/sh\n");
+    write_text(dir, "OldStory.py", "import os\n");
+    write_text(dir, "Installer.exe", "MZ");
 
     make_dir(dir, sizeof(dir), root, "Older");
     make_dir(sub, sizeof(sub), dir, "game");
@@ -421,7 +423,8 @@ static void check_renpy_games(void)
     Game *o = (Game *)find(&lib, "old-story-1.0-pc");
     CHECK(o && o->core == CORE_RENPY7 && o->engine == 7, "old-story is Ren'Py 7, on its core: core %d, version %d",
           o ? o->core : -1, o ? o->engine : -1);
-    CHECK(o && !strcmp(o->title, "OldStory"), "its title: %s", o ? o->title : "-");
+    CHECK(o && !strcmp(o->title, "OldStory"), "its title, from the launcher with its .py (not Installer.exe): %s",
+          o ? o->title : "-");
     CHECK(o && library_title_image(o, cover, sizeof(cover)) && strstr(cover, "/game/gui/window_icon.png"),
           "without main_menu.png its cover is window_icon.png: %s", cover);
     Game *old = (Game *)find(&lib, "Older");
