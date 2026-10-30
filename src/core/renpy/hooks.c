@@ -201,7 +201,9 @@ static void controllers_up(Uint32 flags)
 
 int dr_Init(Uint32 flags)
 {
+    log_step("SDL starting (0x%x)", (unsigned)flags);
     const int r = SDL_Init(flags);
+    log_step("SDL started (%d)", r);
     if (r == 0)
         controllers_up(flags);
     return r;
@@ -209,7 +211,9 @@ int dr_Init(Uint32 flags)
 
 int dr_InitSubSystem(Uint32 flags)
 {
+    log_step("SDL's part starting (0x%x)", (unsigned)flags);
     const int r = SDL_InitSubSystem(flags);
+    log_step("SDL's part started (%d)", r);
     if (r == 0)
         controllers_up(flags);
     return r;
@@ -397,6 +401,7 @@ void dr_GL_ResetAttributes(void)
 SDL_GLContext dr_GL_CreateContext(SDL_Window *window)
 {
     char error[256];
+    log_step("OpenGL starting, %dx%d", window_w, window_h);
     if (!gl_create(window_w, window_h, gl_attributes[SDL_GL_DEPTH_SIZE], error, sizeof(error)))
     {
         log_queue(2, "renpy: no OpenGL: %s", error);
@@ -404,6 +409,7 @@ SDL_GLContext dr_GL_CreateContext(SDL_Window *window)
         return NULL;
     }
     log_queue(1, "renpy: %s", gl_renderer());
+    log_step("OpenGL started: %s", gl_renderer());
     gl_window = window;
     return &context_token;
 }

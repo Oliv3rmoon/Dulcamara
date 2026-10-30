@@ -10,5 +10,10 @@
 void log_queue(int level, const char *fmt, ...);
 /* The frontend: every held line, oldest first. */
 void log_flush(void (*emit)(int level, const char *line));
+/* A step of starting Ren'Py ("step: Python starting"), written to the frontend's log at once from whichever thread
+ * (log_set_direct's emitter), not held: a crash before the next frame would lose a held line, and the log is to say
+ * how far a start got. */
+void log_set_direct(void (*emit)(int level, const char *line));
+void log_step(const char *fmt, ...);
 
 #endif

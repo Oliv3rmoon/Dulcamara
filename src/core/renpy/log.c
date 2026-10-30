@@ -38,6 +38,31 @@ void log_queue(int level, const char *fmt, ...)
     pthread_mutex_unlock(&lock);
 }
 
+static void (*direct)(int level, const char *line);
+static pthread_mutex_t direct_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void log_set_direct(void (*emit)(int level, const char *line))
+{
+    direct = emit;
+}
+
+void log_step(const char *fmt, ...)
+{
+    char line[LINE_SIZE] = "step: ";
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(line + 6, sizeof(line) - 6, fmt, args);
+    va_end(args);
+    if (!direct)
+    {
+        log_queue(1, "%s", line);
+        return;
+    }
+    pthread_mutex_lock(&direct_lock);
+    direct(1, line);
+    pthread_mutex_unlock(&direct_lock);
+}
+
 void log_flush(void (*emit)(int level, const char *line))
 {
     char line[LINE_SIZE];

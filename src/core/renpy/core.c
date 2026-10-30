@@ -128,6 +128,7 @@ void retro_init(void)
 {
     struct retro_log_callback l;
     log_cb = environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &l) ? l.log : NULL;
+    log_set_direct(emit);
 }
 
 void retro_deinit(void)
@@ -188,6 +189,7 @@ bool retro_load_game(const struct retro_game_info *info)
     snprintf(marker, sizeof(marker), "%s/renpy/__init__.py", engine);
     snprintf(game_folder, sizeof(game_folder), "%s/game", info->path);
     snprintf(saves, sizeof(saves), "%s/saves/renpy", save ? save : info->path);
+    log_step("loading %s, engine %s", info->path, engine);
     struct stat st;
     if (stat(marker, &st) != 0)
     {
@@ -217,16 +219,19 @@ bool retro_load_game(const struct retro_game_info *info)
     shutdown_sent = false;
 
     char error[256];
+    log_step("the frontend's picture, clock and sound are set");
     /* read by the engine's dulcamara_errors, which holds Ren'Py's preference to it */
     struct retro_variable skip_unseen = {"renpy_skip_unseen", NULL};
     const bool skip_all = environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &skip_unseen) && skip_unseen.value &&
                           !strcmp(skip_unseen.value, "on");
     setenv("DULCAMARA_SKIP_UNSEEN", skip_all ? "1" : "0", 1);
+    log_step("starting Ren'Py's thread");
     if (!python_start(engine, info->path, saves, error, sizeof(error)))
     {
         emit(2, error);
         return false;
     }
+    log_step("Ren'Py's thread started; the game is loaded");
     log_queue(1, "renpy: %s, engine %s, saves %s", info->path, engine, saves);
     loaded = true;
     return true;
