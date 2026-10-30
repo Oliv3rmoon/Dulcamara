@@ -236,9 +236,13 @@ mkdir -p "$work"
     --no-whole-archive --start-group "${libraries[@]}" --end-group >"$log/isolate.log" 2>&1 || fail isolate
 "$nm" --defined-only --extern-only "$work/renpy.o" | awk '{print $NF}' | grep -E '^retro_' | sort -u >"$work/api.txt"
 [[ -s $work/api.txt ]] || { echo "no retro_* symbols in the Ren'Py core" >&2; exit 1; }
-sed 's/.*/& renpy_&/' "$work/api.txt" >"$work/rename.txt"
+# Common symbols (OpenSSL's OPENSSL_ia32cap_P) stay global too, renamed as the API is: a relocatable link leaves them
+# unallocated, and one made local would be absolute. The app's link gives them their space.
+"$nm" --extern-only "$work/renpy.o" | awk '$2 == "C" { print $NF }' | sort -u >"$work/common.txt"
+cat "$work/api.txt" "$work/common.txt" >"$work/keep.txt"
+sed 's/.*/& renpy_&/' "$work/keep.txt" >"$work/rename.txt"
 # (without debug information: CPython's build keeps it, and it would be most of the archive)
-"$objcopy" --strip-debug --keep-global-symbols="$work/api.txt" "$work/renpy.o" "$work/renpy-local.o"
+"$objcopy" --strip-debug --keep-global-symbols="$work/keep.txt" "$work/renpy.o" "$work/renpy-local.o"
 "$objcopy" --redefine-syms="$work/rename.txt" "$work/renpy-local.o" "$work/renpy-ps5.o"
 "$nm" --undefined-only "$work/renpy-ps5.o" | awk '{print $NF}' | sort -u >"$work/undefined.txt"
 rm -f "$out/librenpy.a"
@@ -246,10 +250,12 @@ rm -f "$out/librenpy.a"
 
 # What is still undefined must come from the console (its libc and modules) or the app: anything else is reported.
 : >"$work/console.txt"
-for stub in "$sdk/target/lib"/*.so "$out/ps5-opengl/sdk/lib"/*.so; do
+for stub in "$sdk/target/lib"/*.so; do
     [[ ${stub##*/} == libScePosixForWebKit.so ]] && continue
     "$nm" --defined-only -D "$stub" 2>/dev/null | awk 'NF >= 2 { print $NF }' >>"$work/console.txt"
 done
+# the AGC calls: the app links them through its own stubs (tooling/ps5-stubs), not ps5-opengl's
+grep -ohE '\bsceAgc[A-Za-z0-9_]+[[:space:]]*\(' "$root"/tooling/ps5-stubs/*.c | tr -d ' (' >>"$work/console.txt"
 "$nm" --defined-only "$sdk/target/lib/libc.a" "$sdk/target/lib/libc++.a" "$sdk/target/lib/libc++abi.a" 2>/dev/null |
     awk 'NF { print $NF }' >>"$work/console.txt"
 LC_ALL=C sort -u -o "$work/console.txt" "$work/console.txt"

@@ -103,3 +103,17 @@ uint32_t *sceAgcDcbDrawIndex(void *command, uint32_t count, void *indices, uint6
     (void)command; (void)count; (void)indices; (void)modifier;
     return 0;
 }
+
+/* Two more that ps5-opengl's Mesa driver calls (inside Ren'Py's cores, tools/build-renpy.sh): its cache flushes and
+ * compute dispatches. Signatures are ps5-opengl 1.0.2's native-app/agc_link_stub.c. Host-link only. */
+uint32_t *sceAgcDcbAcquireMem(void *command, uint8_t engine, uint32_t coherence, uint32_t gcr, uint64_t address,
+                              uint64_t size, uint32_t poll)
+{
+    (void)command; (void)engine; (void)coherence; (void)gcr; (void)address; (void)size; (void)poll;
+    return 0;
+}
+uint32_t *sceAgcCbDispatch(void *command, uint32_t x, uint32_t y, uint32_t z, uint32_t modifier)
+{
+    (void)command; (void)x; (void)y; (void)z; (void)modifier;
+    return 0;
+}
