@@ -1,0 +1,16 @@
+# Dulcamara's interface preview of nightly's invitation: tools/build-desktop.sh preview, then run
+# build/desktop-preview/dulcamara with NP_SCRIPT=tools/desktop/community.txt, NP_SHOTS=<a folder>,
+# NP_ASSETS=<repo>/assets and NP_ROOT=<a new, empty data folder> (so the library is empty and has not shown it yet).
+wait 60
+shot 01-empty-library
+press start
+wait 20
+press l1
+wait 30
+shot 02-about
+press cross
+wait 20
+shot 03-about-community
+press circle
+wait 10
+quit

@@ -62,6 +62,7 @@ Fonts in assets/fonts - SIL Open Font License 1.1 (notices beside them): Inter, 
   IBM Plex Mono; Tabler Icons - MIT License
 dlmalloc (Doug Lea) - public domain (CC0)
 miniz - MIT License - https://github.com/richgel999/miniz
+QR Code generator (Project Nayuki) - MIT License - https://github.com/nayuki/QR-Code-generator
 stb_image, stb_truetype (Sean Barrett) - public domain / MIT
 Lapy helper - MIT License - Lapy-MIT.txt
 The selection music (sce_sys/snd0.at9, "Night Drive") - BlackBearReloaded, GPL-3.0-or-later

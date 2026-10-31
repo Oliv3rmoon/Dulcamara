@@ -237,6 +237,7 @@ The frontend is Mandrake's (formerly Nightshade Station), which is [darkxex's Sw
 | [Inter](https://github.com/rsms/inter) | interface font (`assets/fonts`) | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |
 | [SDL2](https://www.libsdl.org/) (PacBrew port) | events, controllers, audio, software renderer | zlib |
 | [dlmalloc](https://gee.cs.oswego.edu/dl/html/malloc.html) 2.8.6 by Doug Lea | allocator for the direct-memory heap (`third_party/dlmalloc`) | Public domain (CC0) |
+| [QR Code generator](https://www.nayuki.io/page/qr-code-generator-library) by Project Nayuki | the QR code of nightly's invitation on Settings > About (`third_party/qrcodegen`, Mandrake's copy, unmodified; compiled in by `src/vendor.c`) | MIT (`third_party/qrcodegen/LICENSE.txt`) |
 | [Noto Sans JP](https://github.com/notofonts/noto-cjk) (subset made for Mandrake) | Japanese text (`assets/fonts/NotoSansJP-subset.ttf`) | SIL Open Font License 1.1 (`assets/fonts/OFL-NotoSansJP.txt`) |
 | [Tabler Icons](https://tabler.io/icons) 3.31.0 (subset by `tools/make_icon_font.py`) | interface icons (`assets/fonts/tabler-icons-subset.ttf`) | MIT (`assets/fonts/LICENSE-tabler-icons.txt`) |
 | [lcd3x](https://github.com/libretro/slang-shaders) by Gigaherz | the LCD3x shader, ported to GLSL in `src/platform/vk/shaders/lcd3x.frag` | Public domain |

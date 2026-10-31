@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "../app.h"
+#include "../community.h"
 #include "../config.h"
 #include "../core/cores.h"
 #include "../core/host.h"
@@ -12,12 +13,14 @@
 #include "../update.h"
 #include "draw.h"
 #include "icons.h"
+#include "qr.h"
 #include "sfx.h"
 #include "text.h"
 #include "theme.h"
 
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum Kind
@@ -35,6 +38,7 @@ enum Action
     A_RESCAN,
     A_CHECK_UPDATE,
     A_CLOSE_APP,
+    A_COMMUNITY, /* nightly's card: its QR code (community.h) */
 };
 
 typedef struct
@@ -161,6 +165,9 @@ static const Row SYSTEM[] = {
 };
 
 static const Row ABOUT[] = {
+    {"Join the community", "nightly, the Discord of Dulcamara and the other Nightshade apps: help, bug reports, new "
+                           "versions. Cross shows its QR code for your phone.",
+     K_ACTION, 0, NULL, 0, NULL, A_COMMUNITY, -1},
     {NP_TITLE " " NP_VERSION ", a Nightshade app by Oliv3rmoon. Free software: GPL-3.0-or-later.", NULL, K_INFO, 0, NULL, 0, NULL,
      A_NONE, -1},
     {"Games run on EasyRPG Player (GPL-3.0-or-later) and liblcf (MIT), by the EasyRPG team.", NULL, K_INFO, 0, NULL,
@@ -200,12 +207,14 @@ static const Tab TABS[] = {
 
 static int tab, row, top;
 static float bar_y = -1.0f;
+static bool community_open; /* nightly's card is up, over the page */
 
 void settings_opened(void)
 {
     row = 0;
     top = 0;
     bar_y = -1.0f;
+    community_open = false;
 }
 
 /* ---------------------------------------------------------------- values */
@@ -281,6 +290,7 @@ static void run_action(int action)
         app_save_settings();
         app.quit_requested = true;
         break;
+    case A_COMMUNITY: community_open = true; break;
     default: break;
     }
 }
@@ -302,6 +312,68 @@ static const char *update_text(void)
     }
 }
 
+/* ---------------------------------------------------------------- nightly's card */
+
+/* Any text as a QR code on a white card (Mandrake's draw_url_qr), made on the console (qr.h): dark modules in the
+ * near-black of the theme, a 2-module white margin, scaled up by whole pixels so that a phone reads it, and centred in
+ * the size x size square at x, y. */
+static void draw_url_qr(const char *text, float x, float y, float size)
+{
+    static char made_for[128];
+    static PlatTexture *tex;
+    static int modules;
+    if (strcmp(made_for, text) != 0)
+    {
+        str_copy(made_for, sizeof(made_for), text);
+        plat_texture_free(tex);
+        tex = NULL;
+        static uint8_t qr[qrcodegen_BUFFER_LEN_MAX], temp[qrcodegen_BUFFER_LEN_MAX];
+        if (qr_encode(text, qr, temp))
+        {
+            const int n = qrcodegen_getSize(qr), side = n + 4;
+            uint8_t *px = malloc((size_t)side * side * 4);
+            if (px)
+            {
+                for (int j = 0; j < side; ++j)
+                    for (int i = 0; i < side; ++i)
+                    {
+                        const bool dark = qrcodegen_getModule(qr, i - 2, j - 2);
+                        uint8_t *p = &px[(j * side + i) * 4];
+                        p[0] = dark ? 15 : 255, p[1] = dark ? 19 : 255, p[2] = dark ? 48 : 255, p[3] = 255;
+                    }
+                tex = plat_texture_create(px, side, side, false);
+                modules = side;
+                free(px);
+            }
+        }
+    }
+    if (!tex)
+        return;
+    const int scale = (int)(size / modules);
+    const float side = (float)(scale * modules), pad = 14;
+    x += (size - side) * 0.5f;
+    y += (size - side) * 0.5f;
+    draw_rrect(x - pad, y - pad, side + 2 * pad, side + 2 * pad, TH_RADIUS_SMALL, 0xffffffffu);
+    plat_draw_texture(tex, x, y, side, side, 0xffffffffu, false);
+}
+
+/* About > Join the community, Cross: the invitation's QR code for a phone, with the server's name and its short link.
+ * Cross or Circle puts it away. */
+static void draw_community(void)
+{
+    const float w = 660, h = 630, x = (plat_width() - w) * 0.5f, y = (plat_height() - h) * 0.5f - 24;
+    draw_rect(0, 0, (float)plat_width(), (float)plat_height(), 0xa0000000u);
+    draw_rrect(x, y, w, h, TH_RADIUS, TH_CARD);
+    draw_rect(x, y, w, 4, TH_FOCUS);
+    text_draw(x + w * 0.5f, y + 40, 36, FONT_BOLD, TH_TEXT, ALIGN_CENTER, tr("Join the community"));
+    const float qs = 360, qy = y + 122;
+    draw_url_qr(COMMUNITY_URL, x + (w - qs) * 0.5f, qy, qs);
+    char line[160];
+    snprintf(line, sizeof(line), tr("Scan to join %s on Discord"), COMMUNITY_NAME);
+    text_draw_fit(x + w * 0.5f, qy + qs + 34, 28, FONT_BOLD, TH_TEXT, ALIGN_CENTER, w - 80, line);
+    text_draw(x + w * 0.5f, qy + qs + 82, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_CENTER, COMMUNITY_LINK);
+}
+
 /* ---------------------------------------------------------------- the screen */
 
 static void leave(void)
@@ -321,6 +393,16 @@ static void leave(void)
 void settings_screen(uint32_t pressed)
 {
     const Tab *t = &TABS[tab];
+    if (community_open)
+    {
+        /* nightly's card takes the buttons: Cross or Circle puts it away, and the page stays */
+        if (pressed & (BIT(BTN_CROSS) | BIT(BTN_CIRCLE)))
+        {
+            community_open = false;
+            sfx_play(SFX_BACK);
+        }
+        pressed = 0;
+    }
     if (pressed & BIT(BTN_CIRCLE))
     {
         leave();
@@ -410,9 +492,9 @@ void settings_screen(uint32_t pressed)
     }
     draw_pad_glyph(GLYPH_R1, tx + 30, ty + 28, 26);
 
-    /* the rows */
-    const float list_y = 236, row_h = 78;
-    const int visible = 8;
+    /* the rows: eight a page; About, which has nothing to scroll to, all of its own on one */
+    const int visible = t->rows == ABOUT ? t->count : 8;
+    const float list_y = 236, row_h = 8 * 78.0f / visible;
     top = list_top_row(top, row, visible, t->count);
     draw_rrect(x - 20, list_y - 16, w + 40, visible * row_h + 32, TH_RADIUS, TH_CARD_A(0xe6));
     const float target = list_y + (row - top) * row_h;
@@ -462,7 +544,11 @@ void settings_screen(uint32_t pressed)
         }
         else if (it->kind == K_ACTION)
         {
-            const char *value = it->action == A_CHECK_UPDATE ? update_text() : "";
+            char community[64];
+            snprintf(community, sizeof(community), "%s  \xC2\xB7  %s", COMMUNITY_NAME, COMMUNITY_LINK);
+            const char *value = it->action == A_CHECK_UPDATE ? update_text()
+                                : it->action == A_COMMUNITY  ? community
+                                                             : "";
             if (value[0])
                 text_draw_fit(right, ry + 23, 24, FONT_REGULAR, TH_TEXT_DIM, ALIGN_RIGHT, w * 0.45f, value);
             else
@@ -475,4 +561,6 @@ void settings_screen(uint32_t pressed)
     static const int glyphs[] = {GLYPH_CROSS, GLYPH_CIRCLE};
     static const char *const labels[] = {"Change", "Back"};
     app_draw_hints(glyphs, labels, 2, app.game >= 0 ? host_core_name() : NP_TITLE " " NP_VERSION);
+    if (community_open)
+        draw_community();
 }

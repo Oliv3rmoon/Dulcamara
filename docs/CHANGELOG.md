@@ -2,7 +2,8 @@
 
 ## 0.2.3
 
-A test build for Ren'Py on the console: 0.2.2 still crashed as Python started, one logged step later (its main part).
+A test build for Ren'Py on the console (0.2.2 still crashed as Python started, one logged step later, in its
+main part), and the community in the app: nightly, the Discord of Dulcamara and the other Nightshade apps.
 
 - **The crash reports were read wrongly, and 0.2.2's cause was not the cause.** The console's kernel puts a crashed
   thread's registers 64 bytes into the context a handler is given, not 16 as the SDK's header says (a PS5 port of
@@ -20,6 +21,22 @@ A test build for Ren'Py on the console: 0.2.2 still crashed as Python started, o
 - **Crash reports** read the registers where the console puts them (checked against the fault address, and saying
   which layout they used), name the system module holding an address that is not in the app's list, and find return
   addresses in any executable memory.
+- **Settings > About > Join the community.** About's first row has the server's name and short link (nightly ·
+  discord.gg/pSqgRU3YP9). Cross shows a card with a QR code that opens `https://discord.gg/pSqgRU3YP9` on a phone;
+  Cross or Circle puts it away. About's rows now all fit on its page, a little closer together.
+- **Once, on the empty library.** The first time the library is empty, its card ends with "Join nightly, Dulcamara's
+  community on Discord: discord.gg/pSqgRU3YP9" and where the QR code is. It stays while the app is open and never
+  comes back: the settings file keeps `community_seen = 1` as soon as it is shown. A library with games never shows
+  it; About always has the invitation.
+- **The QR code is made on the console**, by Project Nayuki's QR Code generator (MIT): Mandrake's copy, unmodified,
+  in `third_party/qrcodegen`.
+- **Checked on the build machine.** `tests/test_community.py` (CI runs it before the long builds) makes the QR code
+  with the app's own encoder (`src/ui/qr.h`) and reads it back with a reader of its own: it must open exactly
+  `https://discord.gg/pSqgRU3YP9`. The reader also reads a QR code segno made. The About row, its card, the
+  one-time line and its flag are checked in the sources, and the interface fonts have every character of the new
+  texts. `tools/desktop/community.txt` is an interface preview script for the three screens.
+
+The interface is still in English only.
 
 ## 0.2.2
 

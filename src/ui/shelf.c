@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "../app.h"
+#include "../community.h"
 #include "../core/cores.h"
 #include "../covers.h"
 #include "../i18n.h"
@@ -178,9 +179,27 @@ static void draw_header(void)
                   tr("Update installed: restart Dulcamara to use it"));
 }
 
+/* nightly, the community on Discord, at the foot of the empty library: the first time the empty library is shown, as
+ * long as the app stays open, and never again (Settings.community_seen, saved as soon as it is shown) */
+static bool invite;
+
+static void invite_once(void)
+{
+    static bool decided;
+    if (decided)
+        return;
+    decided = true;
+    invite = !app.settings.community_seen;
+    if (invite)
+    {
+        app.settings.community_seen = true;
+        app_save_settings();
+    }
+}
+
 static void draw_empty(void)
 {
-    const float w = 1160, h = 470, x = (plat_width() - w) * 0.5f, y = 250;
+    const float w = 1160, h = invite ? 570 : 470, x = (plat_width() - w) * 0.5f, y = 250;
     draw_rrect(x, y, w, h, TH_RADIUS, TH_CARD_A(0xe8));
     draw_rect(x, y, w, 4, TH_FOCUS);
     icon_draw(ICON_FOLDER, x + 56, y + 56, 64, TH_FOCUS);
@@ -197,6 +216,17 @@ static void draw_empty(void)
     for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); ++i, ly += 44)
         text_draw(x + 56, ly, 28, i == 1 || i == 4 ? FONT_BOLD : FONT_REGULAR, i == 1 || i == 4 ? TH_TEXT : TH_TEXT_DIM,
                   ALIGN_LEFT, tr(lines[i]));
+    if (invite)
+    {
+        /* Join nightly, Dulcamara's community on Discord: discord.gg/...   Its QR code is in Settings > About. */
+        char line[200];
+        snprintf(line, sizeof(line), tr("Join %s, Dulcamara's community on Discord: %s"), COMMUNITY_NAME,
+                 COMMUNITY_LINK);
+        draw_rect(x + 56, y + 440, w - 112, 2, TH_DIVIDER);
+        text_draw_fit(x + 56, y + 462, 28, FONT_REGULAR, TH_TEXT, ALIGN_LEFT, w - 112, line);
+        text_draw_fit(x + 56, y + 506, 24, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT, w - 112,
+                      tr("Its QR code is in Settings > About."));
+    }
 }
 
 void shelf_screen(uint32_t pressed)
@@ -276,7 +306,10 @@ void shelf_screen(uint32_t pressed)
     shelf_backdrop();
     draw_header();
     if (n == 0)
+    {
+        invite_once();
         draw_empty();
+    }
     else
     {
         /* far cards first, the chosen one last, over its neighbours */
