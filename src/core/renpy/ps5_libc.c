@@ -32,6 +32,9 @@
 #include <unistd.h>
 #include <wchar.h>
 
+#include "ps5_time.h"
+#include "ps5_utf8.h"
+
 /* ---------------------------------------------------------------- the environment: the core's own */
 
 /* A title's environment is not one to rely on: libkernel's environ (which Python copies into os.environ as it starts,
@@ -155,37 +158,28 @@ const _RuneLocale *__getCurrentRuneLocale(void)
     return _CurrentRuneLocale ? _CurrentRuneLocale : &_DefaultRuneLocale;
 }
 
-/* ---------------------------------------------------------------- time */
-
-/* UTC by arithmetic alone (the days to a civil date, as Howard Hinnant's days_from_civil inverts them) */
-struct tm *gmtime_r(const time_t *t, struct tm *out)
+/* Python decodes the console's own strings through mbstowcs, even in its UTF-8 mode: a time's zone, the message of
+ * each OSError (strerror's). Only libSceLibcInternal has mbstowcs, as it had getcwd, which crashed, and EasyRPG
+ * Player's core never calls it, so the core decodes them as UTF-8 itself (ps5_utf8.h); for text that is not, Python
+ * falls back to mbrtowc, which EasyRPG Player's core calls on the console. */
+size_t mbstowcs(wchar_t *restrict out, const char *restrict text, size_t n)
 {
-    long long days = (long long)*t / 86400, seconds = (long long)*t % 86400;
-    if (seconds < 0)
-        seconds += 86400, --days;
-    memset(out, 0, sizeof(*out));
-    out->tm_hour = (int)(seconds / 3600);
-    out->tm_min = (int)(seconds / 60 % 60);
-    out->tm_sec = (int)(seconds % 60);
-    out->tm_wday = (int)((days % 7 + 11) % 7); /* 1970-01-01 was a Thursday */
-    const long long z = days + 719468, era = (z >= 0 ? z : z - 146096) / 146097;
-    const long long doe = z - era * 146097;
-    const long long yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    const long long doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    const long long mp = (5 * doy + 2) / 153;
-    const int day = (int)(doy - (153 * mp + 2) / 5 + 1), month = (int)(mp < 10 ? mp + 3 : mp - 9);
-    const long long year = yoe + era * 400 + (month <= 2);
-    static const int BEFORE[12] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
-    const bool leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-    out->tm_year = (int)(year - 1900);
-    out->tm_mon = month - 1;
-    out->tm_mday = day;
-    out->tm_yday = BEFORE[month - 1] + day - 1 + (leap && month > 2);
-    return out;
+    return utf8_mbstowcs(out, text, n);
 }
 
-/* localtime needs the console's time zone: its one shared struct is copied out under a lock (the app's own calls
- * are the frontend's, between frames) */
+/* ---------------------------------------------------------------- time */
+
+/* Both give a zone name (ps5_time.h): Dulcamara 0.2.3 crashed as Ren'Py opened its log, whose first line is
+ * time.gmtime()'s, because this gmtime_r left tm_zone NULL and Python called strlen on it. */
+
+/* UTC by arithmetic alone */
+struct tm *gmtime_r(const time_t *t, struct tm *out)
+{
+    return utc_time_of(*t, out);
+}
+
+/* localtime needs the console's time zone: its fields are read out of its one shared struct under a lock (the app's
+ * own calls are the frontend's, between frames), and the offset and the zone are worked out from them */
 static pthread_mutex_t time_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct tm *localtime_r(const time_t *t, struct tm *out)
@@ -193,7 +187,7 @@ struct tm *localtime_r(const time_t *t, struct tm *out)
     pthread_mutex_lock(&time_lock);
     const struct tm *shared = localtime(t);
     if (shared)
-        *out = *shared;
+        local_time_of(*t, shared, out);
     pthread_mutex_unlock(&time_lock);
     return shared ? out : NULL;
 }

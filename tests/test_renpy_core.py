@@ -234,5 +234,26 @@ class RenpyCoreTest(unittest.TestCase):
             self.assertIn("broken.rpy", output)
 
 
+class PS5LibcTest(unittest.TestCase):
+    """The cores' gmtime_r, localtime_r and mbstowcs on the PS5 (src/core/renpy/ps5_time.h, ps5_utf8.h): the host
+    build uses the build machine's own, so tests/ps5_libc_check.c checks the console's against them. Dulcamara 0.2.3
+    crashed on a PS5 as Ren'Py opened its log: its gmtime_r left tm_zone NULL, which time.gmtime() hands to strlen."""
+
+    def test_times_with_their_zones_and_utf8_text(self):
+        cc = os.environ.get("CC", "clang")
+        if not shutil.which(cc):
+            self.skipTest(f"needs {cc}")
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "ps5-libc-check"
+            subprocess.run([cc, "-std=c11", "-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+                            "-fno-omit-frame-pointer", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-pthread",
+                            "-I" + str(ROOT / "src"), str(ROOT / "tests/ps5_libc_check.c"), "-o", str(executable)],
+                           check=True)
+            result = subprocess.run([str(executable)], capture_output=True, text=True, timeout=120, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout[-3000:] + result.stderr[-3000:])
+        self.assertTrue(result.stdout.startswith("ok "), result.stdout)
+        print(f"the cores' gmtime_r, localtime_r and mbstowcs: {result.stdout.split()[-1]} checks passed")
+
+
 if __name__ == "__main__":
     unittest.main()
