@@ -259,7 +259,9 @@ rm -f "$out/librenpy.a"
 # What is still undefined must come from the console (its libc and modules) or the app: anything else is reported.
 : >"$work/console.txt"
 for stub in "$sdk/target/lib"/*.so; do
-    [[ ${stub##*/} == libScePosixForWebKit.so ]] && continue
+    # WebKit's module and libkernel_sys's stub give a title nothing at run time (the latter's functions not also in
+    # libkernel's: readlink crashed Ren'Py on the console)
+    [[ ${stub##*/} == libScePosixForWebKit.so || ${stub##*/} == libkernel_sys.so ]] && continue
     "$nm" --defined-only -D "$stub" 2>/dev/null | awk 'NF >= 2 { print $NF }' >>"$work/console.txt"
 done
 # the AGC calls: the app links them through its own stubs (tooling/ps5-stubs), not ps5-opengl's

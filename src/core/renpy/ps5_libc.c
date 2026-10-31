@@ -22,9 +22,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/times.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -400,6 +402,133 @@ char *ttyname(int fd)
     (void)fd;
     errno = ENOTTY; /* there are no terminals */
     return NULL;
+}
+
+/* ---------------------------------------------------------------- libkernel_sys's */
+
+/* Functions whose only stub is libkernel_sys's: a title's link takes them, but its import does not reach them at run
+ * time (tooling/radv/radv-link.sh says so of readlink, link and symlink; the SDK this app pins has no platform
+ * functions for them). Dulcamara 0.2.0 and 0.2.1 crashed on the console as Python started, where its path
+ * calculation calls readlink (getpath's realpath, in Py_InitializeFromConfig; Python 2.7's getpath too), with the
+ * stack pointer set to a string's address: the import ran something else with readlink's arguments. Here a title
+ * has no links to read, make or follow, and no owners, groups, sessions or children to change. */
+ssize_t readlink(const char *path, char *buffer, size_t size)
+{
+    (void)path, (void)buffer, (void)size;
+    errno = EINVAL; /* not a link */
+    return -1;
+}
+
+int link(const char *from, const char *to)
+{
+    (void)from, (void)to;
+    return unsupported();
+}
+
+int linkat(int from_dir, const char *from, int to_dir, const char *to, int flags)
+{
+    (void)from_dir, (void)from, (void)to_dir, (void)to, (void)flags;
+    return unsupported();
+}
+
+int symlink(const char *target, const char *path)
+{
+    (void)target, (void)path;
+    return unsupported();
+}
+
+int symlinkat(const char *target, int dir, const char *path)
+{
+    (void)target, (void)dir, (void)path;
+    return unsupported();
+}
+
+int chown(const char *path, uid_t owner, gid_t group)
+{
+    (void)path, (void)owner, (void)group;
+    return unsupported();
+}
+
+int fchown(int fd, uid_t owner, gid_t group)
+{
+    (void)fd, (void)owner, (void)group;
+    return unsupported();
+}
+
+int lchown(const char *path, uid_t owner, gid_t group)
+{
+    (void)path, (void)owner, (void)group;
+    return unsupported();
+}
+
+int fchownat(int dir, const char *path, uid_t owner, gid_t group, int flags)
+{
+    (void)dir, (void)path, (void)owner, (void)group, (void)flags;
+    return unsupported();
+}
+
+int lchmod(const char *path, mode_t mode)
+{
+    (void)path, (void)mode;
+    return unsupported();
+}
+
+int lchflags(const char *path, unsigned long flags)
+{
+    (void)path, (void)flags;
+    return unsupported();
+}
+
+int chroot(const char *path)
+{
+    (void)path;
+    return unsupported();
+}
+
+int fchdir(int fd)
+{
+    (void)fd;
+    return unsupported();
+}
+
+long pathconf(const char *path, int name)
+{
+    (void)path, (void)name;
+    errno = EINVAL;
+    return -1;
+}
+
+long fpathconf(int fd, int name)
+{
+    (void)fd, (void)name;
+    errno = EINVAL;
+    return -1;
+}
+
+mode_t umask(mode_t mask)
+{
+    (void)mask;
+    return 022; /* the mask there was, and is */
+}
+
+int setpgid(pid_t pid, pid_t group)
+{
+    (void)pid, (void)group;
+    errno = EPERM;
+    return -1;
+}
+
+pid_t setsid(void)
+{
+    errno = EPERM;
+    return -1;
+}
+
+pid_t wait4(pid_t pid, int *status, int options, struct rusage *usage)
+{
+    (void)pid, (void)status, (void)options, (void)usage;
+    errno = ECHILD; /* no children: fork makes none here */
+    return -1;
 }
 
 /* ---------------------------------------------------------------- processes and users (there are none to change) */
