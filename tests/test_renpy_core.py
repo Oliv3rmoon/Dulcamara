@@ -226,6 +226,21 @@ class RenpyCoreTest(unittest.TestCase):
                                    env={"RENPY_HEADLESS_SKIP_UNSEEN": "on"})
             self.assertIn("fast-forward: the dialogue went by without Cross", output)
 
+    def test_a_games_own_key_on_l2(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            game, data = make_game(work / "Test Game"), work / "data"
+            output = self.run_core("keys", game, data, env={"renpy_key_l2": "return"})
+            self.assertIn("keys: the dialogue moved on after L2 (Return)", output)
+
+    def test_the_cursor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            game, data = make_game(work / "Test Game"), work / "data"
+            output = self.run_core("cursor", game, data)
+            self.assertIn("cursor: drawn on the picture", output)
+            self.assertIn("cursor: the dialogue moved on after a click with Cross", output)
+
     def test_a_game_with_an_error(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)

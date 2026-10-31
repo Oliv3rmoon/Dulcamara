@@ -88,13 +88,22 @@ static bool make_folders(const char *path)
     return mkdir(p, 0777) == 0 || errno == EEXIST;
 }
 
+static void read_keys(void); /* below, with the controller */
+
 void retro_set_environment(retro_environment_t cb)
 {
     environ_cb = cb;
-    /* the core's one option (Dulcamara's Settings > Ren'Py) */
+    /* the core's options: Dulcamara's Settings > Ren'Py, and a game's keys (each RetroPad button's action, input.h) */
     static const struct retro_variable variables[] = {
         {"renpy_skip_unseen", "Fast-forward skips unread text too; off|on"},
-        {NULL, NULL},
+        {"renpy_key_b", "Cross; default"},       {"renpy_key_y", "Square; default"},
+        {"renpy_key_select", "Create; default"}, {"renpy_key_start", "Options; default"},
+        {"renpy_key_up", "Up; default"},         {"renpy_key_down", "Down; default"},
+        {"renpy_key_left", "Left; default"},     {"renpy_key_right", "Right; default"},
+        {"renpy_key_a", "Circle; default"},      {"renpy_key_x", "Triangle; default"},
+        {"renpy_key_l", "L1; default"},          {"renpy_key_r", "R1; default"},
+        {"renpy_key_l2", "L2; default"},         {"renpy_key_l3", "L3; default"},
+        {"renpy_key_r3", "R3; default"},         {NULL, NULL},
     };
     cb(RETRO_ENVIRONMENT_SET_VARIABLES, (void *)variables);
 }
@@ -225,6 +234,7 @@ bool retro_load_game(const struct retro_game_info *info)
     const bool skip_all = environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &skip_unseen) && skip_unseen.value &&
                           !strcmp(skip_unseen.value, "on");
     setenv("DULCAMARA_SKIP_UNSEEN", skip_all ? "1" : "0", 1);
+    read_keys();
     log_step("starting Ren'Py's thread");
     if (!python_start(engine, info->path, saves, error, sizeof(error)))
     {
@@ -252,6 +262,26 @@ void retro_unload_game(void)
     loaded = false;
 }
 
+/* each RetroPad button's renpy_key_* option (R2 is the frontend's fast-forward), given to input.c */
+static void read_keys(void)
+{
+    static const char *const NAMES[16] = {"b", "y",  "select", "start", "up", "down", "left", "right",
+                                          "a", "x",  "l",      "r",     "l2", NULL,   "l3",   "r3"};
+    for (unsigned b = 0; b < 16; ++b)
+    {
+        if (!NAMES[b])
+            continue;
+        char key[32];
+        snprintf(key, sizeof(key), "renpy_key_%s", NAMES[b]);
+        struct retro_variable v = {key, NULL};
+        const char *value = environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &v) ? v.value : NULL;
+        if (!input_bind(b, value))
+            log_queue(2, "renpy: %s = %s is not a key the core knows; the button keeps its own", key, value);
+        else if (value && *value && strcmp(value, "default"))
+            log_queue(1, "renpy: %s = %s", key, value);
+    }
+}
+
 static uint16_t pad_buttons(void)
 {
     if (!input_state_cb)
@@ -265,10 +295,48 @@ static uint16_t pad_buttons(void)
     return bits;
 }
 
+/* The picture for the frontend: Ren'Py's newest, with the cursor on it while it is shown (a copy, redrawn as the
+ * cursor moves: Ren'Py does not draw again for a pointer that moves over nothing); NULL for the same as before. */
+static const uint32_t *picture_with_cursor(const uint32_t *picture, int w, int h, bool fresh)
+{
+    static uint32_t *copy;
+    static size_t capacity;
+    static bool drawn;
+    static int drawn_x, drawn_y;
+    int x = 0, y = 0;
+    const bool shown = picture && input_cursor(w, h, &x, &y);
+    if (!shown)
+    {
+        const bool restore = drawn && picture;
+        drawn = false;
+        return fresh || restore ? picture : NULL;
+    }
+    if (!fresh && drawn && x == drawn_x && y == drawn_y)
+        return NULL;
+    const size_t n = (size_t)w * (size_t)h;
+    if (n > capacity)
+    {
+        uint32_t *grown = realloc(copy, n * sizeof(uint32_t));
+        if (!grown)
+            return fresh ? picture : NULL;
+        copy = grown;
+        capacity = n;
+    }
+    memcpy(copy, picture, n * sizeof(uint32_t));
+    frames_draw_cursor(copy, w, h, x, y);
+    drawn = true;
+    drawn_x = x;
+    drawn_y = y;
+    return copy;
+}
+
 void retro_run(void)
 {
     if (input_poll_cb)
         input_poll_cb();
+    bool keys_changed = false;
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &keys_changed) && keys_changed)
+        read_keys();
     const int16_t lx = input_state_cb ? input_state_cb(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT,
                                                        RETRO_DEVICE_ID_ANALOG_X)
                                       : 0;
@@ -314,7 +382,7 @@ void retro_run(void)
         environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry);
     }
     if (video_cb)
-        video_cb(picture && fresh ? picture : NULL, w ? (unsigned)w : 1280, h ? (unsigned)h : 720,
+        video_cb(picture_with_cursor(picture, w, h, fresh), w ? (unsigned)w : 1280, h ? (unsigned)h : 720,
                  (size_t)(w ? w : 1280) * sizeof(uint32_t));
     if (!sound_by_callback)
         sound();

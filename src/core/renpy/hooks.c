@@ -255,8 +255,8 @@ int dr_WaitEvent(SDL_Event *event)
 
 static void controllers_up(Uint32 flags)
 {
-    if (flags & (SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER))
-        input_attach();
+    (void)flags;
+    input_attach(); /* the controller's keys and clicks go into SDL's events once they are up */
 }
 
 int dr_Init(Uint32 flags)

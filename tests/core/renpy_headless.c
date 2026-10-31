@@ -13,6 +13,8 @@
  *   click  a press of the pointer (the touchpad) in the middle of the picture moves the dialogue on, as a click.
  *   skip   with fast-forward on from the start, the dialogue goes by without Cross (DULCAMARA_TEST_SKIP=1); then
  *          fast-forward is off, and Down and Cross choose in the menu as in "play".
+ *   keys   a game's own key on a button (renpy_key_l2=return, from the environment): L2 moves the dialogue on.
+ *   cursor L3 turns the cursor on: it is drawn on the picture, the left stick moves it, and Cross clicks there.
  *   error  the game has a script error: Ren'Py's error is logged and shown; it is then closed.
  *   --then a second game in the same process afterwards, as "start".
  */
@@ -108,9 +110,17 @@ static bool environment(unsigned cmd, void *data)
         return true;
     case RETRO_ENVIRONMENT_GET_VARIABLE:
     {
-        /* the core's option, as Dulcamara's Settings set it: RENPY_HEADLESS_SKIP_UNSEEN=on */
+        /* the core's options, as Dulcamara sets them: RENPY_HEADLESS_SKIP_UNSEEN=on, and a game's keys by their own
+         * names (renpy_key_l2=return) */
         struct retro_variable *variable = data;
-        if (!variable || !variable->key || strcmp(variable->key, "renpy_skip_unseen"))
+        if (!variable || !variable->key)
+            return false;
+        if (!strncmp(variable->key, "renpy_key_", 10))
+        {
+            variable->value = getenv(variable->key);
+            return variable->value != NULL;
+        }
+        if (strcmp(variable->key, "renpy_skip_unseen"))
             return false;
         variable->value = getenv("RENPY_HEADLESS_SKIP_UNSEEN") ? getenv("RENPY_HEADLESS_SKIP_UNSEEN") : "off";
         return true;
@@ -120,9 +130,21 @@ static bool environment(unsigned cmd, void *data)
     }
 }
 
+static const uint32_t *last_picture; /* the last picture given, valid until the next frame */
+static unsigned last_w, last_h;
+static size_t last_pitch;
+static int16_t stick_x, stick_y; /* the left stick */
+
 static void video_refresh(const void *data, unsigned width, unsigned height, size_t pitch)
 {
     ++refreshes;
+    if (data)
+    {
+        last_picture = data;
+        last_w = width;
+        last_h = height;
+        last_pitch = pitch;
+    }
     if (!data)
     {
         ++dupes;
@@ -167,9 +189,10 @@ static void input_poll(void)
 
 static int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
 {
-    (void)index;
     if (port == 0 && device == RETRO_DEVICE_POINTER)
         return id == RETRO_DEVICE_ID_POINTER_PRESSED ? pointer_pressed : 0; /* x and y 0: the middle */
+    if (port == 0 && device == RETRO_DEVICE_ANALOG && index == RETRO_DEVICE_INDEX_ANALOG_LEFT)
+        return id == RETRO_DEVICE_ID_ANALOG_X ? stick_x : stick_y;
     if (port != 0 || device != RETRO_DEVICE_JOYPAD)
         return 0;
     if (id == RETRO_DEVICE_ID_JOYPAD_MASK)
@@ -329,6 +352,36 @@ int main(int argc, char **argv)
         frames(30);
         press(RETRO_DEVICE_ID_JOYPAD_B);
         ok = ok && until_logged("DULCAMARA-TEST: choice=");
+    }
+    else if (ok && !strcmp(mode, "keys"))
+    {
+        ok = until_logged("DULCAMARA-TEST: started") && until_picture();
+        frames(60);
+        press(RETRO_DEVICE_ID_JOYPAD_L2);
+        ok = ok && until_logged("DULCAMARA-TEST: advanced");
+        printf("keys: the dialogue %s after L2 (Return)\n", ok ? "moved on" : "did not move on");
+    }
+    else if (ok && !strcmp(mode, "cursor"))
+    {
+        ok = until_logged("DULCAMARA-TEST: started") && until_picture();
+        frames(60);
+        press(RETRO_DEVICE_ID_JOYPAD_L3);
+        frames(10);
+        ok = ok && until_logged("the cursor is on");
+        /* the arrow's tip in the middle of the picture: its outline black, white just inside it */
+        const unsigned x = (last_w - 1) / 2 + ((last_w - 1) % 2), y = (last_h - 1) / 2 + ((last_h - 1) % 2);
+        const uint32_t *row = last_picture ? (const uint32_t *)((const uint8_t *)last_picture + y * last_pitch) : NULL;
+        const uint32_t *below = last_picture ? (const uint32_t *)((const uint8_t *)last_picture + (y + 2) * last_pitch)
+                                             : NULL;
+        const bool drawn = row && below && (row[x] & 0xFFFFFFu) == 0 && (below[x + 1] & 0xFFFFFFu) == 0xFFFFFFu;
+        printf("cursor: %s on the picture\n", drawn ? "drawn" : "not drawn");
+        stick_x = 32767;
+        frames(20);
+        stick_x = 0;
+        frames(10);
+        press(RETRO_DEVICE_ID_JOYPAD_B);
+        ok = ok && drawn && until_logged("DULCAMARA-TEST: advanced");
+        printf("cursor: the dialogue %s after a click with Cross\n", ok ? "moved on" : "did not move on");
     }
     else if (ok && !strcmp(mode, "load"))
     {

@@ -74,12 +74,14 @@ static const int8_t EASYRPG_BUTTONS[MAP_BUTTONS] = {
 
 /* Ren'Py's buttons are SDL's controller buttons, by where they sit (src/core/renpy/input.c): Cross is the bottom one,
  * which Ren'Py takes as "confirm", Circle opens the game menu, L1 and R1 roll back and forward, Start is the menu
- * too; Square and Triangle are Ren'Py's own (hide the window, skip). Ren'Py 7 takes them as Ren'Py 8 does. */
+ * too; Square and Triangle are Ren'Py's own (hide the window, skip), L3 turns the cursor on and off, and L2 and R3
+ * are free for a game's own keys (src/core/renpy/keys.c). R2 is the app's fast-forward. Ren'Py 7 takes them as Ren'Py
+ * 8 does. */
 static const int8_t RENPY_BUTTONS[MAP_BUTTONS] = {
     [BTN_CROSS] = PAD_B,   [BTN_SQUARE] = PAD_Y,   [BTN_SELECT] = PAD_SELECT, [BTN_START] = PAD_START,
     [BTN_UP] = PAD_UP,     [BTN_DOWN] = PAD_DOWN,  [BTN_LEFT] = PAD_LEFT,     [BTN_RIGHT] = PAD_RIGHT,
     [BTN_CIRCLE] = PAD_A,  [BTN_TRIANGLE] = PAD_X, [BTN_L1] = PAD_L,          [BTN_R1] = PAD_R,
-    [BTN_L2] = PAD_NONE,   [BTN_R2] = PAD_NONE,    [BTN_L3] = PAD_L3,         [BTN_R3] = PAD_R3,
+    [BTN_L2] = PAD_L2,     [BTN_R2] = PAD_NONE,    [BTN_L3] = PAD_L3,         [BTN_R3] = PAD_R3,
 };
 
 const CoreInfo CORES[CORE_COUNT] = {

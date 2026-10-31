@@ -32,8 +32,9 @@ static char assets_dir[NP_PATH_MAX];
 static char game_path[NP_PATH_MAX];
 static Option options[MAX_OPTIONS];
 static int option_count;
-static Option settings_options[4]; /* host_set_option's */
+static Option settings_options[40]; /* host_set_option's: a core's settings, and a Ren'Py game's keys */
 static int settings_option_count;
+static bool options_changed; /* since the core last asked (RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE) */
 
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
 static struct retro_system_av_info av;
@@ -188,7 +189,8 @@ static bool environment(unsigned cmd, void *data)
         return o != NULL;
     }
     case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
-        *(bool *)data = false;
+        *(bool *)data = options_changed; /* a Ren'Py game's keys, changed in its menu */
+        options_changed = false;
         return true;
     case RETRO_ENVIRONMENT_SET_GEOMETRY:
     {
@@ -458,7 +460,9 @@ void host_set_input(const PadState *pad, const Settings *s)
             if ((pad->buttons & BIT(b)) && to >= 0 && to < 16)
                 bits |= (uint16_t)(1u << to);
         }
-        if (s->stick_dpad)
+        /* a core with a pointer (Ren'Py's) reads the stick itself: its arrows, or its cursor */
+        const bool own_stick = core && core->pointer;
+        if (s->stick_dpad && !own_stick)
         {
             const int16_t dead = 16000;
             if (pad->lx < -dead)
@@ -470,8 +474,8 @@ void host_set_input(const PadState *pad, const Settings *s)
             if (pad->ly > dead)
                 bits |= 1u << RETRO_DEVICE_ID_JOYPAD_DOWN;
         }
-        pad_lx = s->stick_dpad ? pad->lx : 0;
-        pad_ly = s->stick_dpad ? pad->ly : 0;
+        pad_lx = s->stick_dpad || own_stick ? pad->lx : 0;
+        pad_ly = s->stick_dpad || own_stick ? pad->ly : 0;
     }
     pad_bits = bits;
     if (core && core->pointer && pad)
@@ -519,6 +523,8 @@ void host_set_option(const char *key, const char *value)
             return;
         str_copy(settings_options[settings_option_count++].key, sizeof(settings_options[0].key), key);
     }
+    if (strcmp(settings_options[i].value, value))
+        options_changed = true;
     str_copy(settings_options[i].value, sizeof(settings_options[i].value), value);
 }
 

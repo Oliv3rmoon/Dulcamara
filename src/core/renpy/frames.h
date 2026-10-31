@@ -22,6 +22,8 @@ const uint32_t *frames_take(int *w, int *h, bool *fresh);
 
 /* OpenGL's rows run bottom to top: copies src's rows into dst, top to bottom. */
 void frames_copy_flipped(uint32_t *dst, const uint32_t *src, int w, int h);
+/* An arrow cursor drawn into a w x h picture with its tip at x, y, bigger on bigger pictures. */
+void frames_draw_cursor(uint32_t *pixels, int w, int h, int x, int y);
 /* w x h made to fit max_w x max_h, keeping its shape; sizes that fit already are kept. */
 void frames_fit(int w, int h, int max_w, int max_h, int *out_w, int *out_h);
 
