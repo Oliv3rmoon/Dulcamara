@@ -13,6 +13,12 @@
  * code around the faulting instruction where it can be read, says whether the
  * main thread or another crashed, and reads the stack only where the crashing
  * thread's is mapped (a bad stack pointer crashed the handler itself).
+ *
+ * The console's kernel puts FreeBSD's amd64 mcontext_t at offset 64 of the ucontext a handler is given, not at the
+ * SDK header's 16 (as a PS5 port of Wine measured on firmware 12.02): Dulcamara 0.2.0 to 0.2.2 read every register
+ * 48 bytes early, their "rsp" the fault address and their "rip" r14. The report takes the layout whose fault address
+ * or instruction pointer is the signal's own, and names an address outside the listed modules by asking the kernel
+ * which module holds it (the list has the title's modules, not the system's).
  */
 #if defined(__PROSPERO__)
 #include "ps5_crash.h"
@@ -22,6 +28,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -33,6 +40,7 @@ extern int main(void);
 int32_t sceKernelGetModuleList(int32_t *handles, size_t size, size_t *available);
 int32_t sceKernelGetModuleInfo(int32_t handle, void *info);
 int32_t sceKernelQueryMemoryProtection(void *address, void **start, void **end, uint32_t *protection);
+int32_t sceKernelGetModuleInfoForUnwind(void *address, int32_t flags, void *info);
 
 /* the kernel's module record (0x160 bytes, as the open PS4 and PS5 SDKs declare it) */
 typedef struct
@@ -52,6 +60,20 @@ typedef struct
 } ModuleInfo;
 
 _Static_assert(sizeof(ModuleInfo) == 0x160, "the kernel's module record is 0x160 bytes");
+
+/* the kernel's answer to which module holds an address (0x130 bytes, as the open PS4 SDK declares it) */
+typedef struct
+{
+    uint64_t size;
+    char name[256];
+    uint64_t eh_frame_header, eh_frame, eh_frame_size;
+    uint64_t start, length; /* the first segment's */
+} UnwindInfo;
+
+_Static_assert(sizeof(UnwindInfo) == 0x130, "the kernel's unwind record is 0x130 bytes");
+
+/* where the console puts the registers in a handler's ucontext: offset 64, then the header's, to be checked */
+static const size_t CONTEXT_OFFSETS[] = {64, offsetof(ucontext_t, uc_mcontext)};
 
 typedef struct
 {
@@ -85,27 +107,67 @@ static const Region *region_of(uintptr_t addr)
     return NULL;
 }
 
+/* a system module holding addr, as the kernel names it: its name, and its first segment's start */
+static bool system_module_of(uintptr_t addr, UnwindInfo *info)
+{
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    if (sceKernelGetModuleInfoForUnwind((void *)addr, 1, info) != 0 || !info->name[0])
+        return false;
+    info->name[sizeof(info->name) - 1] = '\0';
+    return true;
+}
+
 static void report_address(const char *label, uintptr_t addr)
 {
-    char line[200];
+    char line[300];
     const intptr_t offset = (intptr_t)addr - (intptr_t)(uintptr_t)&main;
     const Region *r = region_of(addr);
+    UnwindInfo info;
     if (r)
         snprintf(line, sizeof(line), "  %s 0x%llx (main%+lld; %s+0x%llx)\n", label, (unsigned long long)addr,
                  (long long)offset, r->name, (unsigned long long)(addr - r->start));
+    else if (system_module_of(addr, &info))
+        snprintf(line, sizeof(line), "  %s 0x%llx (main%+lld; %s, whose first segment is at 0x%llx)\n", label,
+                 (unsigned long long)addr, (long long)offset, info.name, (unsigned long long)info.start);
     else
         snprintf(line, sizeof(line), "  %s 0x%llx (main%+lld)\n", label, (unsigned long long)addr,
                  (long long)offset);
     put(line);
 }
 
-/* code the stack may return into: the title's, or a system module's */
+/* the registers in the handler's context, at the layout whose fault address (a page fault's) or instruction pointer
+ * (another fault's) is the signal's; offset 64 when neither says, as measured */
+static const mcontext_t *registers_of(const void *context, uintptr_t fault, size_t *offset, bool *checked)
+{
+    for (size_t i = 0; i < sizeof(CONTEXT_OFFSETS) / sizeof(CONTEXT_OFFSETS[0]); ++i)
+    {
+        const mcontext_t *m = (const mcontext_t *)((const char *)context + CONTEXT_OFFSETS[i]);
+        if (fault && ((uintptr_t)m->mc_addr == fault || (uintptr_t)m->mc_rip == fault))
+        {
+            *offset = CONTEXT_OFFSETS[i];
+            *checked = true;
+            return m;
+        }
+    }
+    *offset = CONTEXT_OFFSETS[0];
+    *checked = false;
+    return (const mcontext_t *)((const char *)context + CONTEXT_OFFSETS[0]);
+}
+
+/* code the stack may return into: the title's, a listed module's, or any the kernel maps executable */
 static bool code_address(uintptr_t v)
 {
     if (title_end ? v >= title_start && v < title_end
                   : v > (uintptr_t)&main - 0x4000000 && v < (uintptr_t)&main + 0x4000000)
         return true;
-    return region_of(v) != NULL;
+    if (region_of(v))
+        return true;
+    void *start = NULL, *end = NULL;
+    uint32_t protection = 0;
+    return v >= 0x10000 && v < 0x800000000000ULL &&
+           sceKernelQueryMemoryProtection((void *)v, &start, &end, &protection) == 0 && (protection & 4) &&
+           v >= (uintptr_t)start && v < (uintptr_t)end;
 }
 
 static void on_crash(int sig, siginfo_t *info, void *context)
@@ -115,14 +177,19 @@ static void on_crash(int sig, siginfo_t *info, void *context)
     snprintf(line, sizeof(line), "CRASH: signal %d at address %p during '%s'; main at %p\n", sig, (void *)fault,
              last_step, (void *)(uintptr_t)&main);
     put(line);
-    ucontext_t *uc = (ucontext_t *)context;
-    if (uc)
+    if (context)
     {
-        const uintptr_t rip = (uintptr_t)uc->uc_mcontext.mc_rip;
-        const uintptr_t rsp = (uintptr_t)uc->uc_mcontext.mc_rsp;
+        size_t offset = 0;
+        bool checked = false;
+        const mcontext_t *m = registers_of(context, fault, &offset, &checked);
+        const uintptr_t rip = (uintptr_t)m->mc_rip;
+        const uintptr_t rsp = (uintptr_t)m->mc_rsp;
+        snprintf(line, sizeof(line), "  registers at context offset %zu (%s); trap %d, error %llx\n", offset,
+                 checked ? "their fault address is the signal's" : "not confirmed by the fault address",
+                 (int)m->mc_trapno, (unsigned long long)m->mc_err);
+        put(line);
         report_address("rip", rip);
         report_address("fault", fault);
-        const mcontext_t *m = &uc->uc_mcontext;
         snprintf(line, sizeof(line), "  rax %llx rbx %llx rcx %llx rdx %llx rsi %llx rdi %llx rbp %llx\n",
                  (unsigned long long)m->mc_rax, (unsigned long long)m->mc_rbx, (unsigned long long)m->mc_rcx,
                  (unsigned long long)m->mc_rdx, (unsigned long long)m->mc_rsi, (unsigned long long)m->mc_rdi,
@@ -159,10 +226,10 @@ static void on_crash(int sig, siginfo_t *info, void *context)
                  (unsigned long long)(mapped ? (uintptr_t)stack_end : 0));
         put(line);
         /* return addresses near the top of the stack (works without frame pointers), as far as it is mapped */
-        const size_t words = mapped ? ((uintptr_t)stack_end - rsp) / sizeof(uintptr_t) : 0;
+        const size_t words = mapped && !(rsp & 7) ? ((uintptr_t)stack_end - rsp) / sizeof(uintptr_t) : 0;
         const uintptr_t *stack = (const uintptr_t *)rsp;
         int found = 0;
-        for (size_t i = 0; i < words && i < 1024 && found < 16; ++i)
+        for (size_t i = 0; i < words && i < 1024 && found < 24; ++i)
             if (code_address(stack[i]))
             {
                 report_address("stack", stack[i]);
