@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <time.h>
 
 #define LINES 512
 #define LINE_SIZE 1024
@@ -46,13 +47,28 @@ void log_set_direct(void (*emit)(int level, const char *line))
     direct = emit;
 }
 
+/* the first step's time: each step says how long after it it came, so a log shows where a wait went */
+static struct timespec first_step;
+static pthread_once_t first_step_once = PTHREAD_ONCE_INIT;
+
+static void note_first_step(void)
+{
+    clock_gettime(CLOCK_MONOTONIC, &first_step);
+}
+
 void log_step(const char *fmt, ...)
 {
+    pthread_once(&first_step_once, note_first_step);
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    const double seconds = (double)(now.tv_sec - first_step.tv_sec) + (now.tv_nsec - first_step.tv_nsec) / 1e9;
     char line[LINE_SIZE] = "step: ";
     va_list args;
     va_start(args, fmt);
-    vsnprintf(line + 6, sizeof(line) - 6, fmt, args);
+    const int length = vsnprintf(line + 6, sizeof(line) - 6, fmt, args);
     va_end(args);
+    if (length >= 0 && (size_t)length + 6 < sizeof(line))
+        snprintf(line + 6 + length, sizeof(line) - 6 - (size_t)length, " (%.2f s)", seconds);
     if (!direct)
     {
         log_queue(1, "%s", line);

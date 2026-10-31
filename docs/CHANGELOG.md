@@ -16,6 +16,9 @@ Ren'Py opened its log.
 - **Python's `mbstowcs` is UTF-8.** Python decodes that zone name and every `OSError`'s message through `mbstowcs`,
   even in its UTF-8 mode, and the only `mbstowcs` a title has is `libSceLibcInternal`'s, as with `getcwd`, which
   crashed in 0.2.2; EasyRPG Player's core never calls it. The cores now decode such text as UTF-8 themselves.
+- **The log says when each step came:** every "renpy: step:" line ends with the seconds since the game started
+  loading, so a log shows where a long black screen goes (0.2.3's grew longer on each launch, and its log could not
+  say why).
 - **Checked on the build machine:** `tests/ps5_libc_check.c` (run by `tests/test_renpy_core.py`) checks the cores'
   `gmtime_r` against the build machine's from 1900 to 2100 and its `localtime_r` in ten time zones from 2000 to 2031,
   given only the nine fields, and their `mbstowcs` against a UTF-8 locale's. 0.2.3's code fails it.
