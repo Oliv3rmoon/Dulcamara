@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.3
+
+The community in the app: nightly, the Discord of Dulcamara and the other Nightshade apps.
+
+- **Settings > About > Join the community.** About's first row has the server's name and short link (nightly ·
+  discord.gg/pSqgRU3YP9). Cross shows a card with a QR code that opens `https://discord.gg/pSqgRU3YP9` on a phone;
+  Cross or Circle puts it away. About's rows now all fit on its page, a little closer together.
+- **Once, on the empty library.** The first time the library is empty, its card ends with "Join nightly, Dulcamara's
+  community on Discord: discord.gg/pSqgRU3YP9" and where the QR code is. It stays while the app is open and never
+  comes back: the settings file keeps `community_seen = 1` as soon as it is shown. A library with games never shows
+  it; About always has the invitation.
+- **The QR code is made on the console**, by Project Nayuki's QR Code generator (MIT): Mandrake's copy, unmodified,
+  in `third_party/qrcodegen`.
+- **Checked on the build machine.** `tests/test_community.py` (CI runs it before the long builds) makes the QR code
+  with the app's own encoder (`src/ui/qr.h`) and reads it back with a reader of its own: it must open exactly
+  `https://discord.gg/pSqgRU3YP9`. The reader also reads a QR code segno made. The About row, its card, the
+  one-time line and its flag are checked in the sources, and the interface fonts have every character of the new
+  texts. `tools/desktop/community.txt` is an interface preview script for the three screens.
+
+Everything else is 0.2.2, Ren'Py's cores included. The interface is still in English only.
+
 ## 0.2.2
 
 A test build for Ren'Py on the console: 0.2.1 still crashed as Python started, at the same place.
