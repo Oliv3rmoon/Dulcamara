@@ -91,6 +91,12 @@ static PyObject *py_log(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *py_stopping(PyObject *self, PyObject *unused)
+{
+    (void)self, (void)unused;
+    return PyBool_FromLong(handoff_stopping());
+}
+
 static PyObject *py_step(PyObject *self, PyObject *args)
 {
     (void)self;
@@ -105,6 +111,7 @@ static PyMethodDef methods[] = {
     {"time", py_time, METH_NOARGS, "time.time() by the core's clock."},
     {"monotonic", py_monotonic, METH_NOARGS, "time.monotonic() by the core's clock."},
     {"sleep", py_sleep, METH_O, "time.sleep() on Ren'Py's thread, by the core's clock."},
+    {"stopping", py_stopping, METH_NOARGS, "Whether the frontend is closing the game: Ren'Py is to quit."},
     {"step", py_step, METH_VARARGS, "step(text): a step of starting Ren'Py, written to Dulcamara's log at once."},
     {"log", py_log, METH_VARARGS, "log(level, text): a line of Dulcamara's log."},
     {NULL, NULL, 0, NULL},
@@ -233,7 +240,9 @@ static void *renpy_main(void *unused)
             pthread_cond_wait(&state_changed, &state_lock);
         pthread_mutex_unlock(&state_lock);
         Py_END_ALLOW_THREADS
-        PyThreadState_SetAsyncExc(renpy_ident, NULL); /* a stop that came as the boot script ended */
+        /* a quit asked for as the boot script ended: raised and dropped here, not as Python finalises */
+        if (Py_MakePendingCalls() < 0)
+            PyErr_Clear();
         /* The inittab is reset as Python finalises: the next game's start_interpreter extends it again. */
         if (Py_FinalizeEx() < 0)
             log_queue(2, "renpy: Python reported an error as it ended");
@@ -296,10 +305,20 @@ bool python_start(const char *engine_dir, const char *game_dir, const char *save
     return true;
 }
 
-/* Logs where Ren'Py's thread is in its Python (on the stopping thread, which holds the GIL): for a stop that has not
- * come, the log then says what held it. */
-static void log_where_renpy_is(void)
+/* Logs where Ren'Py's thread is in its Python: for a stop that has not come, the log then says what held it. On a
+ * thread of its own (stopper_inside keeps Python up meanwhile), which may wait for the GIL as long as Ren'Py holds
+ * it: the frontend's thread never waits on Ren'Py. */
+static void *log_where_renpy_is(void *unused)
 {
+    (void)unused;
+    pthread_mutex_lock(&state_lock);
+    const bool can = interpreter_up;
+    if (can)
+        stopper_inside = true;
+    pthread_mutex_unlock(&state_lock);
+    if (!can)
+        return NULL;
+    PyGILState_STATE gil = PyGILState_Ensure();
     char code[640];
     snprintf(code, sizeof(code),
              "import sys, traceback, _dulcamara\n"
@@ -318,50 +337,61 @@ static void log_where_renpy_is(void)
     if (PyErr_Occurred())
         PyErr_Clear();
     Py_XDECREF(globals);
-}
-
-/* Raises renpy.game.QuitException in Ren'Py's thread (SystemExit before Ren'Py is imported): Ren'Py then quits
- * the way its own Quit does, closing its sound and display. */
-static void ask_renpy_to_quit(bool where)
-{
-    pthread_mutex_lock(&state_lock);
-    const bool can = interpreter_up;
-    if (can)
-        stopper_inside = true;
-    pthread_mutex_unlock(&state_lock);
-    if (!can)
-        return;
-    PyGILState_STATE gil = PyGILState_Ensure();
-    PyObject *name = PyUnicode_FromString("renpy.game");
-    PyObject *renpy_game = name ? PyImport_GetModule(name) : NULL; /* only if Ren'Py has imported it */
-    Py_XDECREF(name);
-    PyObject *quit = renpy_game ? PyObject_GetAttrString(renpy_game, "QuitException") : NULL;
-    if (!quit)
-    {
-        PyErr_Clear();
-        quit = Py_NewRef(PyExc_SystemExit);
-    }
-    if (where)
-        log_where_renpy_is();
-    PyThreadState_SetAsyncExc(renpy_ident, quit);
-    Py_DECREF(quit);
-    Py_XDECREF(renpy_game);
     PyGILState_Release(gil);
     pthread_mutex_lock(&state_lock);
     stopper_inside = false;
     pthread_cond_broadcast(&state_changed);
     pthread_mutex_unlock(&state_lock);
+    return NULL;
+}
+
+/* Run by Python on Ren'Py's thread, between two bytecodes (Py_AddPendingCall): renpy.game.QuitException raised
+ * there (SystemExit before Ren'Py is imported), as Ren'Py's own Quit raises it. */
+static int quit_on_renpy_thread(void *unused)
+{
+    (void)unused;
+    PyObject *name = PyUnicode_FromString("renpy.game");
+    PyObject *renpy_game = name ? PyImport_GetModule(name) : NULL; /* only if Ren'Py has imported it */
+    Py_XDECREF(name);
+    PyObject *quit = renpy_game ? PyObject_GetAttrString(renpy_game, "QuitException") : NULL;
+    Py_XDECREF(renpy_game);
+    if (!quit)
+    {
+        PyErr_Clear();
+        quit = Py_NewRef(PyExc_SystemExit);
+    }
+    PyErr_SetNone(quit);
+    Py_DECREF(quit);
+    return -1;
+}
+
+/* Asks Python to raise the quit on Ren'Py's thread; without the GIL (Py_AddPendingCall needs none). With where, also
+ * logs where Ren'Py is, from a thread of its own. */
+static void ask_renpy_to_quit(bool where)
+{
+    pthread_mutex_lock(&state_lock);
+    if (interpreter_up)
+        Py_AddPendingCall(quit_on_renpy_thread, NULL);
+    pthread_mutex_unlock(&state_lock);
+    pthread_t logger;
+    if (where && pthread_create(&logger, NULL, log_where_renpy_is, NULL) == 0)
+        pthread_detach(logger);
 }
 
 void python_stop(void)
 {
     if (!thread_live)
         return;
+    /* Ren'Py quits at its next look for events (its waits now answer SDL_QUIT, and dulcamara_errors makes its
+     * quit_event quit at once): between two of its statements, not inside one, as an exception raised in its thread
+     * from here would be (inside Python 2's threading.RLock, it left the lock taken and Ren'Py 7 waiting on it for
+     * good). Only a Ren'Py that does not look for events within a second is asked by that exception, and again after
+     * three, with where it is, in case a handler of Ren'Py's caught the first. */
     handoff_stop();
-    ask_renpy_to_quit(false);
     for (int i = 0; i < 1000 && !handoff_engine_ended(); ++i)
     {
-        /* three seconds on: where Ren'Py is, and the quit once more, in case a handler of Ren'Py's caught the first */
+        if (i == 100)
+            ask_renpy_to_quit(false);
         if (i == 300)
             ask_renpy_to_quit(true);
         usleep(10000);

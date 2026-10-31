@@ -46,6 +46,13 @@ def skip_unseen_set(preferences, value):
     preferences.__dict__["skip_unseen"] = value
 
 
+def quit_event(interface):
+    # the frontend closing the game: quit, without the "are you sure" Ren'Py asks a player
+    if _dulcamara.stopping():
+        sys.modules["renpy.exports"].quit(save=True)
+    return originals["quit_event"](interface)
+
+
 def wrap(module):
     if module.__name__ == "renpy.error" and "report_exception" not in originals:
         originals["report_exception"] = module.report_exception
@@ -53,6 +60,9 @@ def wrap(module):
     elif module.__name__ == "renpy.display.error" and "report_parse_errors" not in originals:
         originals["report_parse_errors"] = module.report_parse_errors
         module.report_parse_errors = report_parse_errors
+    elif module.__name__ == "renpy.display.core" and "quit_event" not in originals:
+        originals["quit_event"] = module.Interface.quit_event
+        module.Interface.quit_event = quit_event
     elif module.__name__ == "renpy.preferences" and os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
         module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
 
@@ -60,7 +70,7 @@ def wrap(module):
 class Finder(object):
     """Python 2's import hook: the two modules are imported as they would be, then wrapped."""
 
-    names = ("renpy.error", "renpy.display.error", "renpy.preferences")
+    names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences")
     busy = False
 
     def find_module(self, name, path=None):
@@ -75,7 +85,8 @@ class Finder(object):
         finally:
             Finder.busy = False
         module = sys.modules[name]
-        originals.pop({"renpy.error": "report_exception", "renpy.display.error": "report_parse_errors"}.get(name), None)
+        originals.pop({"renpy.error": "report_exception", "renpy.display.error": "report_parse_errors",
+                       "renpy.display.core": "quit_event"}.get(name), None)
         wrap(module)
         return module
 

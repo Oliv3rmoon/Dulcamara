@@ -41,9 +41,11 @@ static SDL_Window *gl_window;
 static int context_token; /* SDL_GLContext is a pointer: the core's one context is this address */
 static int window_w = 1280, window_h = 720;
 static Uint32 picture_window; /* the window the picture is drawn for (its id: SDL may have destroyed it since) */
+static bool quit_given; /* the poll's SDL_QUIT for a stop, given once */
 
 void hooks_reset(void)
 {
+    quit_given = false;
     pthread_mutex_lock(&timer_lock);
     memset(timers, 0, sizeof(timers));
     next_timer = 1;
@@ -156,7 +158,21 @@ static void before_events(void)
 int dr_PollEvent(SDL_Event *event)
 {
     if (handoff_on_engine_thread())
+    {
         before_events();
+        if (handoff_stopping() && !quit_given)
+        {
+            /* the game is being closed: Ren'Py quits (python.c). Once: pygame's get and clear poll until no event
+             * is left (its waits answer SDL_QUIT each time) */
+            quit_given = true;
+            if (event)
+            {
+                memset(event, 0, sizeof(*event));
+                event->type = SDL_QUIT;
+            }
+            return 1;
+        }
+    }
     return SDL_PollEvent(event);
 }
 
