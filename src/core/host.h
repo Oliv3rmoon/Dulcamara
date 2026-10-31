@@ -15,6 +15,7 @@ bool host_load(const Game *g, const char *system_dir, char *error, size_t error_
 void host_unload(void);
 bool host_loaded(void);
 const char *host_core_name(void); /* "EasyRPG Player" while a game runs */
+bool host_core_skips(void);       /* fast-forward is the running core's own skip (CoreInfo.own_skip) */
 
 /* Player 1's controller for the next frames, its buttons mapped to the game's by the settings. */
 void host_set_input(const PadState *pad, const Settings *settings);

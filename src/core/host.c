@@ -420,6 +420,11 @@ const char *host_core_name(void)
     return core ? core->name : "";
 }
 
+bool host_core_skips(void)
+{
+    return core && core->own_skip;
+}
+
 static void set_pointer(const PadState *pad)
 {
     if (pad->touching)

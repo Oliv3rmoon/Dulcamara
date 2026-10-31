@@ -84,12 +84,12 @@ static const int8_t RENPY_BUTTONS[MAP_BUTTONS] = {
 
 const CoreInfo CORES[CORE_COUNT] = {
     [CORE_EASYRPG] = {"easyrpg", "EasyRPG Player", "RPG Maker 2000 / 2003", "GPL-3.0-or-later",
-                      FUNCTIONS_WITH(EASYRPG_PREFIX), EASYRPG_BUTTONS, true, false},
+                      FUNCTIONS_WITH(EASYRPG_PREFIX), EASYRPG_BUTTONS, true, false, false},
     [CORE_RENPY] = {"renpy", "Ren'Py", "Ren'Py 8", "MIT (Ren'Py), PSF (Python), LGPL-2.1 (FFmpeg)", RENPY_FUNCTIONS,
-                    RENPY_BUTTONS, true, true},
+                    RENPY_BUTTONS, true, true, true},
     [CORE_RENPY7] = {"renpy7", "Ren'Py 7", "Ren'Py 7 / 6",
                      "MIT (Ren'Py), PSF (Python), zlib (pygame_sdl2), LGPL-2.1 (FFmpeg)", RENPY7_FUNCTIONS,
-                     RENPY_BUTTONS, true, true},
+                     RENPY_BUTTONS, true, true, true},
 };
 
 _Static_assert(CORE_COUNT == NP_CORES, "NP_CORES (nightshade.h) is the number of cores");

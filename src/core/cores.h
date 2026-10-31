@@ -61,6 +61,7 @@ typedef struct
     const int8_t *buttons; /* the default button map (Settings.button_map): each controller button's RetroPad id */
     bool frame_time;       /* the core paces itself by RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK */
     bool pointer;          /* the touchpad is its pointer (RETRO_DEVICE_POINTER): Ren'Py's mouse */
+    bool own_skip;         /* fast-forward is the core's own (Ren'Py's skip): the core runs once a frame meanwhile */
 } CoreInfo;
 
 extern const CoreInfo CORES[CORE_COUNT];

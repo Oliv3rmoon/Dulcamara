@@ -413,7 +413,10 @@ static void game_screen(PadState *pads, uint32_t pressed)
     game_pad.buttons &= ~(BIT(BTN_MENU) | BIT(BTN_R2));
     host_set_input(&game_pad, &app.settings);
 
-    const int runs = app.fast_forward ? FF_SPEEDS[app.settings.ff_speed % 5] : 1;
+    /* Ren'Py's cores skip at Ren'Py's own pace: 0.2.5 ran one up to 8 times a frame, each a picture drawn on the GPU
+     * and read back, and turning fast-forward on and off that way crashed it and then the console */
+    const bool skips = host_core_skips();
+    const int runs = app.fast_forward && !skips ? FF_SPEEDS[app.settings.ff_speed % 5] : 1;
     /* The game's time: what passed since the last frame. On a 59.94 Hz screen that is a hair more than EasyRPG's
      * 60 Hz step, which every 16 seconds would give one frame two steps and a stutter: within 2 % of a step, the
      * step itself (the game runs 0.1 % slow; its sound plays at its own pace either way). */
@@ -446,7 +449,10 @@ static void game_screen(PadState *pads, uint32_t pressed)
     if (app.fast_forward)
     {
         char speed[16];
-        snprintf(speed, sizeof(speed), "x%d", runs);
+        if (skips)
+            snprintf(speed, sizeof(speed), "%s", tr("Skip"));
+        else
+            snprintf(speed, sizeof(speed), "x%d", runs);
         const float w = 150;
         draw_rrect(plat_width() - w - 30, 30, w, 60, 30, 0xb0000000u);
         icon_draw(ICON_PLAYER_TRACK_NEXT, plat_width() - w - 12, 38, 44, TH_FOCUS);
