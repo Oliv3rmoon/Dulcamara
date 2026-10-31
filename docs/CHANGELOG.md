@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.4
+
+A test build for Ren'Py on the console: 0.2.3 got Ren'Py started (Python, its boot script, SDL) and crashed as
+Ren'Py opened its log.
+
+- **The cause, from 0.2.3's crash report:** the crash was in the console's `strlen`, given no string, from Python's
+  `time.gmtime()`, which Ren'Py calls for its log's first line (the time it opened, in UTC). Python is built for a
+  `struct tm` that names its time zone (`tm_zone`) and reads that name without checking it; the core's own `gmtime_r`
+  left it empty. The stack read back through the 0.2.3 build itself: `strlen` from `PyUnicode_DecodeLocale` from
+  `tmtotuple` from `time_gmtime`.
+- **Both Ren'Py cores' times give a zone.** UTC's is "UTC". Local time takes only the C standard's nine fields from
+  the console's `localtime` (its `struct tm` may not have the offset or the zone where Python looks), works out the
+  offset from them, and names the zone as the time zone database names one without an abbreviation ("+0530", "-08").
+- **Python's `mbstowcs` is UTF-8.** Python decodes that zone name and every `OSError`'s message through `mbstowcs`,
+  even in its UTF-8 mode, and the only `mbstowcs` a title has is `libSceLibcInternal`'s, as with `getcwd`, which
+  crashed in 0.2.2; EasyRPG Player's core never calls it. The cores now decode such text as UTF-8 themselves.
+- **Checked on the build machine:** `tests/ps5_libc_check.c` (run by `tests/test_renpy_core.py`) checks the cores'
+  `gmtime_r` against the build machine's from 1900 to 2100 and its `localtime_r` in ten time zones from 2000 to 2031,
+  given only the nine fields, and their `mbstowcs` against a UTF-8 locale's. 0.2.3's code fails it.
+
 ## 0.2.3
 
 A test build for Ren'Py on the console (0.2.2 still crashed as Python started, one logged step later, in its
