@@ -118,7 +118,7 @@ core_flags=($ps5_flags -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -DDR_ENG
     $(pc_cflags))
 objects=()
 : >"$log/core.log"
-for f in core python2 hooks input log handoff frames audio gl gl_egl ps5_libc; do
+for f in core python2 hooks input log handoff frames audio gl gl_egl ps5_libc ps5_gl_output ps5_console; do
     "$cc" "${core_flags[@]}" -c "$root/src/core/renpy/$f.c" -o "$core/$f.o" >>"$log/core.log" 2>&1 ||
         { cat "$log/core.log" >&2; exit 1; }
     objects+=("$core/$f.o")
@@ -137,8 +137,18 @@ done
 work="$out/isolate"
 rm -rf "$work"
 mkdir -p "$work"
-# chdir goes through the core's own (ps5_libc.c), which keeps the working folder that its getcwd answers with
-"$lld" -r -o "$work/renpy7.o" --wrap=chdir -u ps5_agc_gate2_run "${objects[@]}" --whole-archive "$out/librenpy7-modules.a" \
+# chdir goes through the core's own (ps5_libc.c), which keeps the working folder that its getcwd answers with;
+# ps5-opengl's TV output is the core's stand-in (ps5_gl_output.c), so the app keeps the screen; what the core's
+# libraries print goes to dulcamara.log too (ps5_console.c)
+wraps=()
+for f in Open Close SetFlipRate RegisterBuffers2 UnregisterBuffers SubmitFlip IsFlipPending WaitVblank GetFlipStatus \
+    AddFlipEvent DeleteFlipEvent IsOutputSupported ConfigureOutput GetOutputStatus GetResolutionStatus; do
+    wraps+=("--wrap=sceVideoOut$f")
+done
+for f in printf puts fprintf fputs fwrite; do
+    wraps+=("--wrap=$f")
+done
+"$lld" -r -o "$work/renpy7.o" --wrap=chdir "${wraps[@]}" -u ps5_agc_gate2_run "${objects[@]}" --whole-archive "$out/librenpy7-modules.a" \
     --no-whole-archive --start-group "${libraries[@]}" --end-group >"$log/isolate.log" 2>&1 || fail isolate
 "$nm" --defined-only --extern-only "$work/renpy7.o" | awk '{print $NF}' | grep -E '^retro_' | sort -u >"$work/api.txt"
 [[ -s $work/api.txt ]] || { echo "no retro_* symbols in the Ren'Py 7 core" >&2; exit 1; }

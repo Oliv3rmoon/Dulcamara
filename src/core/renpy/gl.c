@@ -61,6 +61,7 @@ static struct
     void (*PixelStorei)(GLenum, GLint);
     void (*Viewport)(GLint, GLint, GLsizei, GLsizei);
     const GLubyte *(*GetString)(GLenum);
+    GLenum (*GetError)(void);
 } gl;
 
 static bool made;
@@ -78,6 +79,7 @@ static const char *load(void)
     LOAD(FramebufferRenderbuffer) LOAD(GenRenderbuffers) LOAD(DeleteRenderbuffers) LOAD(BindRenderbuffer)
     LOAD(RenderbufferStorage) LOAD(GenBuffers) LOAD(DeleteBuffers) LOAD(BindBuffer) LOAD(BufferData)
     LOAD(UnmapBuffer) LOAD(ReadPixels) LOAD(GetIntegerv) LOAD(PixelStorei) LOAD(Viewport) LOAD(GetString)
+    LOAD(GetError)
 #undef LOAD
     /* glMapBuffer in desktop GL (2.1 has no glMapBufferRange), glMapBufferRange where that is all there is */
     *(void **)&gl.MapBuffer = backend_proc("glMapBuffer");
@@ -157,6 +159,42 @@ void gl_resize(int w, int h)
     storage();
 }
 
+/* How much of a picture is not black (one pixel in seven looked at), in the log for the first one read back, the
+ * first one that is not black, the 60th, the 300th and every 600th: with Ren'Py running and the screen black, it
+ * says whether the pictures it draws are black (its first ones are, as it starts). */
+static void note_picture(const uint32_t *pixels, int w, int h)
+{
+    static int count;
+    static bool lit_seen;
+    ++count;
+    const size_t n = (size_t)w * (size_t)h;
+    size_t looked = 0, lit = 0;
+    for (size_t i = 0; i < n; i += 7, ++looked)
+        lit += (pixels[i] & 0xFFFFFFu) != 0;
+    const bool first_lit = lit && !lit_seen;
+    lit_seen = lit_seen || lit;
+    if (count == 1 || first_lit || count == 60 || count == 300 || count % 600 == 0)
+        log_queue(1, "renpy: picture %d, %dx%d: %.1f%% of it not black%s", count, w, h,
+                  looked ? 100.0 * (double)lit / (double)looked : 0.0,
+                  first_lit ? " (the first that is not)" : lit_seen ? "" : " (none has been yet)");
+}
+
+/* OpenGL's errors (Ren'Py's or the read-back's) as the first pictures are read back: it reports them no other way */
+static void note_errors(void)
+{
+    static int checks;
+    if (checks >= 3)
+        return;
+    ++checks;
+    for (int i = 0; i < 8; ++i)
+    {
+        const GLenum error = gl.GetError();
+        if (!error)
+            return;
+        log_queue(2, "renpy: OpenGL reported error 0x%04x as picture %d was read back", error, checks);
+    }
+}
+
 /* Copies out the frame pixel-pack buffer `slot` holds, if any, and publishes it. */
 static void publish(int slot)
 {
@@ -174,9 +212,16 @@ static void publish(int slot)
         if (out)
         {
             frames_copy_flipped(out, (const uint32_t *)pixels, w, h);
+            note_picture(out, w, h);
             frames_publish();
         }
         gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
+    }
+    else
+    {
+        static int unmapped;
+        if (unmapped++ < 3)
+            log_queue(2, "renpy: a picture could not be read back (its buffer would not map)");
     }
 }
 
@@ -242,6 +287,7 @@ void gl_present(void)
     gl.BindBuffer(GL_PIXEL_PACK_BUFFER, pbo[slot]);
     gl.BufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)width * height * 4, NULL, GL_STREAM_READ);
     gl.ReadPixels(0, 0, width, height, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, NULL);
+    note_errors();
     reading[slot][0] = width;
     reading[slot][1] = height;
     next_pbo = slot ^ 1;
