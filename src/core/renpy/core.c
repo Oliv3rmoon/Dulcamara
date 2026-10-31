@@ -275,9 +275,27 @@ void retro_run(void)
     const int16_t ly = input_state_cb ? input_state_cb(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT,
                                                        RETRO_DEVICE_ID_ANALOG_Y)
                                       : 0;
-    input_set(pad_buttons(), lx, ly);
+    const uint16_t buttons = pad_buttons();
+    static uint16_t last_buttons;
+    static int button_changes;
+    if (buttons != last_buttons && button_changes < 12)
+    {
+        ++button_changes;
+        log_queue(1, "renpy: the frontend's buttons: 0x%04x", buttons);
+    }
+    last_buttons = buttons;
+    input_set(buttons, lx, ly);
     bool fast = false;
-    input_set_skip(environ_cb(RETRO_ENVIRONMENT_GET_FASTFORWARDING, &fast) && fast);
+    const bool skip = environ_cb(RETRO_ENVIRONMENT_GET_FASTFORWARDING, &fast) && fast;
+    static bool last_skip;
+    static int skip_changes;
+    if (skip != last_skip && skip_changes < 40)
+    {
+        ++skip_changes;
+        log_queue(1, "renpy: fast-forward %s (Ren'Py's skip)", skip ? "on" : "off");
+    }
+    last_skip = skip;
+    input_set_skip(skip);
     if (input_state_cb)
         input_set_pointer(input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X),
                           input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y),

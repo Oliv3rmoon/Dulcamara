@@ -4,6 +4,8 @@
  */
 #include "input.h"
 
+#include "log.h"
+
 #include <SDL.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -82,7 +84,16 @@ void input_attach(void)
         pad = index >= 0 ? SDL_JoystickOpen(index) : NULL;
         pad_id = pad ? SDL_JoystickInstanceID(pad) : -1;
         if (pad)
+        {
+            char guid[64];
+            SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(pad), guid, sizeof(guid));
+            log_queue(1, "renpy: Ren'Py's controller: SDL's joystick %d of %d (instance %d, %s, GUID %s)", index,
+                      SDL_NumJoysticks(), (int)pad_id, SDL_IsGameController(index) ? "a game controller" : "no mapping",
+                      guid);
             apply();
+        }
+        else
+            log_queue(2, "renpy: no controller for Ren'Py (SDL: %s)", SDL_GetError());
     }
     pthread_mutex_unlock(&lock);
 }

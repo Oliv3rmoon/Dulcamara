@@ -297,6 +297,9 @@ bool python_start(const char *engine_dir, const char *game_dir, const char *save
     wall_start = wall_now();
     SDL_SetHint("SDL_VIDEODRIVER", "dummy");
     SDL_SetHint("SDL_AUDIODRIVER", "dummy");
+    /* SDL drops a controller's presses while it has windows and none of them has the keyboard's focus; Ren'Py's are
+     * hidden ones, on SDL's dummy driver */
+    SDL_SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
     setenv("SDL_VIDEODRIVER", "dummy", 1);
     setenv("SDL_AUDIODRIVER", "dummy", 1);
 

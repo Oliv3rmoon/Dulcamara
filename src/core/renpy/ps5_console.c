@@ -3,7 +3,8 @@
  * its draws, Python's and FFmpeg's errors) goes to dulcamara.log as well as to the console's stdout and stderr,
  * which no tester sees. Each core's relocatable link sends printf, puts, fprintf, fputs and fwrite here (--wrap,
  * tools/renpy/ps5.sh and tools/renpy7/ps5.sh); writes to any other file go straight on. The first 300 lines are
- * logged, so a library that prints each frame cannot fill the log.
+ * logged, so a library that prints each frame cannot fill the log, and each is written at once: ps5-opengl prints
+ * why just before it ends the app (_Exit) when the GPU stops answering, and a line held for the next frame is lost.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #if defined(__PROSPERO__)
@@ -35,9 +36,9 @@ static void log_text(const char *text, size_t length)
         {
             const int n = atomic_fetch_add(&logged, 1);
             if (n < LOGGED_LINES)
-                log_queue(1, "renpy: console: %.*s", (int)(line < 900 ? line : 900), text);
+                log_now(1, "renpy: console: %.*s", (int)(line < 900 ? line : 900), text);
             else if (n == LOGGED_LINES)
-                log_queue(1, "renpy: console: (more is not logged)");
+                log_now(1, "renpy: console: (more is not logged)");
         }
         const size_t taken = end ? line + 1 : line;
         text += taken;

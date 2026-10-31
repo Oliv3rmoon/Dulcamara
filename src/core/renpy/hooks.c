@@ -148,6 +148,45 @@ SDL_bool dr_RemoveTimer(SDL_TimerID id)
     return removed;
 }
 
+/* The first input events Ren'Py gets, in the log: a console where its controller does nothing says how far a press
+ * got (the frontend's buttons are logged by core.c, the controller's making by input.c). */
+static void note_event(int got, const SDL_Event *event)
+{
+    static int noted;
+    if (!got || !event || noted >= 16)
+        return;
+    const char *what = NULL;
+    int detail = 0;
+    switch (event->type)
+    {
+    case SDL_CONTROLLERDEVICEADDED:
+        what = "a controller added";
+        detail = event->cdevice.which;
+        break;
+    case SDL_CONTROLLERBUTTONDOWN:
+        what = "a controller's button pressed";
+        detail = event->cbutton.button;
+        break;
+    case SDL_JOYBUTTONDOWN:
+        what = "a joystick's button pressed";
+        detail = event->jbutton.button;
+        break;
+    case SDL_KEYDOWN:
+        what = "a key pressed";
+        detail = event->key.keysym.scancode;
+        break;
+    case SDL_MOUSEBUTTONDOWN:
+        what = "a mouse button pressed";
+        detail = event->button.button;
+        break;
+    default:
+        return;
+    }
+    ++noted;
+    log_queue(1, "renpy: Ren'Py gets %s (%d)%s", what, detail,
+              SDL_GetKeyboardFocus() ? "" : "; no window has the keyboard's focus");
+}
+
 /* What Ren'Py's thread does each time it looks for events: the timers that are due, the pointer's moves. */
 static void before_events(void)
 {
@@ -173,7 +212,9 @@ int dr_PollEvent(SDL_Event *event)
             return 1;
         }
     }
-    return SDL_PollEvent(event);
+    const int got = SDL_PollEvent(event);
+    note_event(got, event);
+    return got;
 }
 
 int dr_WaitEventTimeout(SDL_Event *event, int timeout)
@@ -185,7 +226,10 @@ int dr_WaitEventTimeout(SDL_Event *event, int timeout)
     {
         before_events();
         if (SDL_PollEvent(event))
+        {
+            note_event(1, event);
             return 1;
+        }
         if (handoff_now_usec() >= until)
             return 0;
         gl_flush_pending();
@@ -257,7 +301,10 @@ SDL_GameController *dr_GameControllerOpen(int index)
         SDL_SetError("Dulcamara: Ren'Py uses its own controller");
         return NULL;
     }
-    return SDL_GameControllerOpen(index);
+    SDL_GameController *controller = SDL_GameControllerOpen(index);
+    log_queue(controller ? 1 : 2, "renpy: Ren'Py opens its controller as a game controller: %s",
+              controller ? "done" : SDL_GetError());
+    return controller;
 }
 
 /* ---------------------------------------------------------------- the window and the display */

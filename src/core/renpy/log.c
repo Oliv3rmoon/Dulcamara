@@ -79,6 +79,23 @@ void log_step(const char *fmt, ...)
     pthread_mutex_unlock(&direct_lock);
 }
 
+void log_now(int level, const char *fmt, ...)
+{
+    char line[LINE_SIZE];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(line, sizeof(line), fmt, args);
+    va_end(args);
+    if (!direct)
+    {
+        log_queue(level, "%s", line);
+        return;
+    }
+    pthread_mutex_lock(&direct_lock);
+    direct(level, line);
+    pthread_mutex_unlock(&direct_lock);
+}
+
 void log_flush(void (*emit)(int level, const char *line))
 {
     char line[LINE_SIZE];
