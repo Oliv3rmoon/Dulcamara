@@ -9,12 +9,15 @@
  *
  * Dulcamara: each address is also named by the module it falls in (the title's
  * eboot.bin or a system module, as the kernel listed them when the handler was
- * installed), the report says whether the main thread or another crashed, and
- * the stack is read only as far as the crashing thread's is mapped (a thread
- * that had just started crashed the handler itself, reading past its top).
+ * installed, which the log lists too), the report gives the registers and the
+ * code around the faulting instruction where it can be read, says whether the
+ * main thread or another crashed, and reads the stack only where the crashing
+ * thread's is mapped (a bad stack pointer crashed the handler itself).
  */
 #if defined(__PROSPERO__)
 #include "ps5_crash.h"
+
+#include "../nightshade.h"
 
 #include <fcntl.h>
 #include <signal.h>
@@ -119,6 +122,32 @@ static void on_crash(int sig, siginfo_t *info, void *context)
         const uintptr_t rsp = (uintptr_t)uc->uc_mcontext.mc_rsp;
         report_address("rip", rip);
         report_address("fault", fault);
+        const mcontext_t *m = &uc->uc_mcontext;
+        snprintf(line, sizeof(line), "  rax %llx rbx %llx rcx %llx rdx %llx rsi %llx rdi %llx rbp %llx\n",
+                 (unsigned long long)m->mc_rax, (unsigned long long)m->mc_rbx, (unsigned long long)m->mc_rcx,
+                 (unsigned long long)m->mc_rdx, (unsigned long long)m->mc_rsi, (unsigned long long)m->mc_rdi,
+                 (unsigned long long)m->mc_rbp);
+        put(line);
+        snprintf(line, sizeof(line), "  r8 %llx r9 %llx r10 %llx r11 %llx r12 %llx r13 %llx r14 %llx r15 %llx\n",
+                 (unsigned long long)m->mc_r8, (unsigned long long)m->mc_r9, (unsigned long long)m->mc_r10,
+                 (unsigned long long)m->mc_r11, (unsigned long long)m->mc_r12, (unsigned long long)m->mc_r13,
+                 (unsigned long long)m->mc_r14, (unsigned long long)m->mc_r15);
+        put(line);
+        /* the code around the faulting instruction, where it can be read (a system module's may not be) */
+        void *code_start = NULL, *code_end = NULL;
+        uint32_t code_protection = 0;
+        if (sceKernelQueryMemoryProtection((void *)rip, &code_start, &code_end, &code_protection) == 0 &&
+            (code_protection & 1) && rip >= (uintptr_t)code_start + 16 && rip + 16 <= (uintptr_t)code_end)
+        {
+            const uint8_t *code = (const uint8_t *)(rip - 16);
+            int at = snprintf(line, sizeof(line), "  code at rip-16:");
+            for (int i = 0; i < 32 && at < (int)sizeof(line) - 4; ++i)
+                at += snprintf(line + at, sizeof(line) - (size_t)at, " %02x", code[i]);
+            snprintf(line + at, sizeof(line) - (size_t)at, "\n");
+            put(line);
+        }
+        else
+            put("  (the code at rip cannot be read)\n");
         const bool main_thread = rsp >= main_stack_start && rsp < main_stack_end;
         void *stack_start = NULL, *stack_end = NULL;
         uint32_t protection = 0;
@@ -130,7 +159,7 @@ static void on_crash(int sig, siginfo_t *info, void *context)
                  (unsigned long long)(mapped ? (uintptr_t)stack_end : 0));
         put(line);
         /* return addresses near the top of the stack (works without frame pointers), as far as it is mapped */
-        const size_t words = mapped ? ((uintptr_t)stack_end - rsp) / sizeof(uintptr_t) : 64;
+        const size_t words = mapped ? ((uintptr_t)stack_end - rsp) / sizeof(uintptr_t) : 0;
         const uintptr_t *stack = (const uintptr_t *)rsp;
         int found = 0;
         for (size_t i = 0; i < words && i < 1024 && found < 16; ++i)
@@ -197,13 +226,12 @@ void ps5_crash_install(const char *log_path)
 {
     log_fd = open(log_path, O_WRONLY | O_APPEND | O_CREAT, 0666);
     list_modules();
-    if (log_fd >= 0)
-    {
-        char line[120];
-        snprintf(line, sizeof(line), "crash report: %d module regions listed, the title %s\n", region_count,
-                 title_end ? "among them" : "not among them");
-        put(line);
-    }
+    /* through the log itself (a write of this fd's at the file's start would be written over) */
+    np_log("crash report: %d module regions listed, the title %s", region_count,
+           title_end ? "among them" : "not among them");
+    for (int i = 0; i < region_count; ++i)
+        np_log("module: %s 0x%llx-0x%llx", regions[i].name, (unsigned long long)regions[i].start,
+               (unsigned long long)regions[i].end);
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_sigaction = on_crash;

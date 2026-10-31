@@ -46,6 +46,13 @@ def skip_unseen_set(preferences, value):
     preferences.__dict__["skip_unseen"] = value
 
 
+def quit_event(interface):
+    # the frontend closing the game: quit, without the "are you sure" Ren'Py asks a player
+    if _dulcamara.stopping():
+        sys.modules["renpy.exports"].quit(save=True)
+    return originals["quit_event"](interface)
+
+
 def wrap(module):
     if module.__name__ == "renpy.error":
         originals["report_exception"] = module.report_exception
@@ -53,6 +60,9 @@ def wrap(module):
     elif module.__name__ == "renpy.display.error":
         originals["report_parse_errors"] = module.report_parse_errors
         module.report_parse_errors = report_parse_errors
+    elif module.__name__ == "renpy.display.core" and "quit_event" not in originals:
+        originals["quit_event"] = module.Interface.quit_event
+        module.Interface.quit_event = quit_event
     elif module.__name__ == "renpy.preferences" and os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
         module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
 
@@ -75,7 +85,7 @@ class Finder(importlib.abc.MetaPathFinder):
     """Finds the two modules as the other finders do, with Loader around their loader. Ren'Py imports them itself,
     and again when it reloads."""
 
-    names = ("renpy.error", "renpy.display.error", "renpy.preferences")
+    names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences")
 
     def find_spec(self, name, path, target=None):
         if name not in self.names:

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.2
+
+A test build for Ren'Py on the console: 0.2.1 still crashed as Python started, at the same place.
+
+- **The cause, found from 0.2.1's log:** Python's start calls `readlink` (to find its own path), and the core's
+  `readlink` came from `libkernel_sys`, whose functions a title's import does not reach: the call ran something else
+  with readlink's arguments, which set the stack pointer to a string's address (the crash's address, the same in
+  both builds). Both Ren'Py cores now stand in for every function they could only get from `libkernel_sys`
+  (`readlink`, `link`, `symlink`, `chown`, `umask` and the rest: a title has no links, owners or sessions to
+  change), and the build fails if a core needs one it does not stand in for.
+- **Closing a Ren'Py game no longer hangs Ren'Py 7.** The core asked Ren'Py to quit with an exception raised in its
+  thread wherever it was; inside Python 2's `threading.RLock` that left a lock taken and Ren'Py 7 waiting on it for
+  good (CI's tests caught it, and the log's stack showed where). Ren'Py now quits at its next look for events, as
+  its own Quit does, without asking "are you sure"; the exception is only a fallback after a second, raised through
+  Python's pending calls so the app never waits on Ren'Py for it.
+- **Python starts in two logged parts** (its core, then its main part), so a log narrows a stop further.
+- **Crash reports** give the registers and the code at the faulting instruction where it can be read, list where
+  the app and the system modules are in the log, and no longer read a stack that is not mapped.
+
 ## 0.2.1
 
 A test build for Ren'Py on the console: 0.2.0 crashed on a PS5 as a Ren'Py 8 game started.
