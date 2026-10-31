@@ -19,12 +19,12 @@
 Dulcamara, named after *Solanum dulcamara*, the bittersweet nightshade, is a PS5 homebrew app by **[Oliv3rmoon](https://github.com/Oliv3rmoon)** for story games and RPGs: a library that finds your RPG Maker 2000 and 2003 games and plays them, with the Nightshade look, CRT shaders and a Vulkan screen. The latest release is **0.1.0**; what changed is in the [changelog](docs/CHANGELOG.md).
 
 > [!NOTE]
-> **0.2.4 is a test release.** It adds Ren'Py visual novels; 0.2.4 fixes the crashes 0.2.0 to 0.2.3 had as a Ren'Py game started on a console. It is checked on the build machine and in CI by tests that play a test game, and it is marked pre-release on the [Releases](https://github.com/Oliv3rmoon/Dulcamara/releases) page, so the updater skips it: [download 0.2.4](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/0.2.4) to try it, and tell me what breaks.
+> **0.2.5 is a test release.** It adds Ren'Py visual novels; 0.2.5 is aimed at the black picture 0.2.4 showed on a console (its sound played). It is checked on the build machine and in CI by tests that play a test game, and it is marked pre-release on the [Releases](https://github.com/Oliv3rmoon/Dulcamara/releases) page, so the updater skips it: [download 0.2.5](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/0.2.5) to try it, and tell me what breaks.
 
 ## Why Dulcamara
 
 - **RPG Maker 2000 and 2003 games.** The original engines' events, battles, pictures and sound (MIDI, WAV, Ogg Vorbis and MP3), the Maniac Patch and the extensions the engine supports, and Japanese, Korean, Chinese, Cyrillic and Western games with their text in their own encoding.
-- **Ren'Py visual novels** *(test release 0.2.4)*. Version 8.5 is built in (with Python 3.12 and FFmpeg for music, voice and movies), and 7.8 (with Python 2.7) for games made with 7 or 6; the library picks the one a game was made with. Cross moves the story on, Circle opens the game's menu, L1 and R1 roll back and forward, R2 fast-forwards and skips text already read, and the touchpad is the mouse. Only one game runs each time the app starts, so opening a second one starts the app again.
+- **Ren'Py visual novels** *(test release 0.2.5)*. Version 8.5 is built in (with Python 3.12 and FFmpeg for music, voice and movies), and 7.8 (with Python 2.7) for games made with 7 or 6; the library picks the one a game was made with. Cross moves the story on, Circle opens the game's menu, L1 and R1 roll back and forward, R2 fast-forwards and skips text already read, and the touchpad is the mouse. Only one game runs each time the app starts, so opening a second one starts the app again.
 - **A library that finds your games.** Copy a game's folder (or a `.zip` / `.easyrpg` of it) and it shows up with its title and its own title screen as the cover. Sort by title or by the last played; Square looks for new games without restarting.
 - **Made for the controller.** Cross confirms, Circle cancels, Triangle opens the game's menu, and every button can be mapped again in Settings. The touchpad opens Dulcamara's menu at any time. Hold R2 (or press it once) to fast-forward from x2 to x8, for grinding and long cutscenes.
 - **CRT and LCD shaders.** CRT Royale, CRT Lottes, CRT Pi, Newpixie, Hyllian NTSC, Mattias, NTSC signals, LCD3x, zfast LCD and Game Boy LCD, or sharp square pixels, whole-number scaling and the game's own shape.
@@ -33,7 +33,7 @@ Dulcamara, named after *Solanum dulcamara*, the bittersweet nightshade, is a PS5
 
 ## Install
 
-1. Download `PPSA99010.zip` from the [latest release](https://github.com/Oliv3rmoon/Dulcamara/releases/latest) and unzip it. For Ren'Py visual novels, take it from the [0.2.4 test release](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/0.2.4) instead.
+1. Download `PPSA99010.zip` from the [latest release](https://github.com/Oliv3rmoon/Dulcamara/releases/latest) and unzip it. For Ren'Py visual novels, take it from the [0.2.5 test release](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/0.2.5) instead.
 2. Copy its `PPSA99010` folder to `/data/homebrew/` on the PS5 over FTP, as you install the other Nightshade apps, and set its permissions to `777` (in FileZilla: right-click the folder, *File permissions*, `777`, recurse into subdirectories). Without them the PS5 says *"Can't start the game or app"*. Nightshade's **Settings > Apps** can install it for you instead.
 3. Restart ShadowMountPlus (or the console). **Dulcamara** appears on the home screen.
 4. Start it once: it makes its folders in `/data/dulcamara/` and shows an empty library that says where games go. Copy your games to `/data/dulcamara/games/`, one folder (or `.zip`) each.

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.5
+
+A test build for Ren'Py on the console: 0.2.4 ran a Ren'Py game without crashing, with its music, but its picture
+stayed black. Its log shows Ren'Py drawing, and its pictures reaching the screen.
+
+- **ps5-opengl no longer asks for the TV.** Before its first draw, even one into a framebuffer of its own (as
+  Ren'Py's are), ps5-opengl opens the console's video output and registers buffers of its own on it, and it drops
+  every draw until that works. The app already has the output, for its Vulkan screen. The core only reads Ren'Py's
+  pictures back, and never shows a GL window surface, which is the only way ps5-opengl puts anything on the TV.
+  Both Ren'Py cores now give ps5-opengl a stand-in output (`ps5_gl_output.c`): a port that is never the TV's,
+  buffers that are noted and never shown, and flips done as soon as they are asked for.
+- **The log says more about the picture.** For the first pictures read back, and every 600th after them, it says
+  how much of each is not black, and any OpenGL error. ps5-opengl's own reports, and anything else the core's
+  libraries print (Python's and FFmpeg's errors), go to `dulcamara.log` too, up to 300 lines.
+- The 13 seconds of black before Ren'Py's window opened, in 0.2.4's log, are most likely Ren'Py loading the game
+  behind its presplash (the 480x300 window the log names first), which the core does not show yet.
+
 ## 0.2.4
 
 A test build for Ren'Py on the console: 0.2.3 got Ren'Py started (Python, its boot script, SDL) and crashed as
