@@ -98,6 +98,8 @@ void config_load(Settings *s, const char *path)
             s->game_volume = clamp(v, 0, 10);
         else if (!strcmp(key, "update_check"))
             s->update_check = v != 0;
+        else if (!strcmp(key, "community_seen"))
+            s->community_seen = v != 0;
         else if (!strcmp(key, "sort_mode"))
             s->sort_mode = clamp(v, 0, 1);
         else if (!strcmp(key, "last_game"))
@@ -137,6 +139,7 @@ bool config_save(const Settings *s, const char *path)
         }
     fprintf(f, "ui_sound = %d\nui_volume = %d\ngame_volume = %d\nupdate_check = %d\nsort_mode = %d\nlast_game = %d\n",
             s->ui_sound, s->ui_volume, s->game_volume, s->update_check, s->sort_mode, s->last_game);
+    fprintf(f, "community_seen = %d\n", s->community_seen);
     const bool ok = fclose(f) == 0;
     if (ok)
     {

@@ -79,6 +79,13 @@ jobs:
             libsdl2-dev libsdl2-image-dev libfribidi-dev libjpeg-dev libwebp-dev libegl-dev libegl-mesa0 libgl1-mesa-dri \
             libffi-dev
 
+      # nightly's invitation on Settings > About: its QR code, made by the app's own encoder, read back to exactly
+      # https://discord.gg/pSqgRU3YP9, and its texts (tests/test_community.py). Seconds, before the long builds.
+      - name: Community invite host check
+        env:
+          CC: clang-18
+        run: python3 -m unittest tests.test_community -v
+
       - name: Restore downloaded SDK, libraries and test games
         uses: actions/cache@v4
         with:
