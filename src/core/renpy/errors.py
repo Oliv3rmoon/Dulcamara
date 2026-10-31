@@ -53,10 +53,37 @@ def quit_event(interface):
     return originals["quit_event"](interface)
 
 
+log_lines = [0]
+
+
+def log_write(log, s, *args):
+    # Ren'Py's own log.txt (its start's stages and how long each took, its warnings) to Dulcamara's log too, its
+    # first 200 lines
+    originals["log_write"](log, s, *args)
+    if getattr(log, "name", None) != "log" or getattr(log, "raw_write", False) or log_lines[0] >= 200:
+        return
+    try:
+        text = s % args if args else s
+    except Exception:
+        text = repr((s,) + args)
+    for line in str(text).splitlines():
+        if line.strip():
+            log_lines[0] += 1
+            _dulcamara.log(1, "renpy log: " + line)
+
+
 def wrap(module):
     if module.__name__ == "renpy.error":
         originals["report_exception"] = module.report_exception
         module.report_exception = report_exception
+    elif module.__name__ == "renpy.config":
+        # no mipmaps unless a game asks for them: ps5-opengl makes those of a picture whose sides are not powers of
+        # two (nearly every one a visual novel has) on the CPU, pixel by pixel, while Ren'Py waits to draw; and the
+        # two silent ends of 0.2.5 came right after it had
+        module.mipmap = False
+    elif module.__name__ == "renpy.log" and "log_write" not in originals:
+        originals["log_write"] = module.LogFile.write
+        module.LogFile.write = log_write
     elif module.__name__ == "renpy.display.error":
         originals["report_parse_errors"] = module.report_parse_errors
         module.report_parse_errors = report_parse_errors
@@ -85,7 +112,8 @@ class Finder(importlib.abc.MetaPathFinder):
     """Finds the two modules as the other finders do, with Loader around their loader. Ren'Py imports them itself,
     and again when it reloads."""
 
-    names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences")
+    names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences", "renpy.log",
+             "renpy.config")
 
     def find_spec(self, name, path, target=None):
         if name not in self.names:

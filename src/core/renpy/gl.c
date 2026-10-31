@@ -68,6 +68,7 @@ static bool made;
 static GLuint fbo, color, depth, pbo[2];
 static int width, height;
 static int reading[2][2]; /* the size each pixel-pack buffer holds a frame of; 0 when it holds none */
+static size_t allocated[2]; /* each pixel-pack buffer's storage, made once for a picture's size */
 static int next_pbo;
 
 static const char *load(void)
@@ -135,6 +136,7 @@ bool gl_create(int w, int h, int depth_bits, char *error, size_t size)
     gl.Viewport(0, 0, w, h);
     gl.GenBuffers(2, pbo);
     memset(reading, 0, sizeof(reading));
+    memset(allocated, 0, sizeof(allocated));
     next_pbo = 0;
     made = true; /* the framebuffer stays bound: Ren'Py takes it as the screen's */
     return true;
@@ -285,7 +287,14 @@ void gl_present(void)
     gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
     const int slot = next_pbo;
     gl.BindBuffer(GL_PIXEL_PACK_BUFFER, pbo[slot]);
-    gl.BufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)width * height * 4, NULL, GL_STREAM_READ);
+    /* storage only for a new size: 0.2.5 made it again each frame, so fast-forward's 8 frames a refresh had
+     * ps5-opengl allocate and retire 8 of them (3.6 MB each at 1280x720) */
+    const size_t bytes = (size_t)width * (size_t)height * 4;
+    if (allocated[slot] != bytes)
+    {
+        gl.BufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)bytes, NULL, GL_STREAM_READ);
+        allocated[slot] = bytes;
+    }
     gl.ReadPixels(0, 0, width, height, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, NULL);
     note_errors();
     reading[slot][0] = width;

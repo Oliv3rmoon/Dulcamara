@@ -102,6 +102,9 @@ dulcamara_errors.install()
 os.environ["RENPY_PATH_TO_SAVES"] = saves
 # MultiPersistent data goes to ~/.renpy: with HOME the saves folder, it stays with the saves.
 os.environ["HOME"] = saves
+# Ren'Py copies each script it has just compiled into the saves folder, a developer's backup: on the console it only
+# costs a game's start time and storage
+os.environ["RENPY_DISABLE_BACKUPS"] = "I take responsibility for this."
 # gl2, the renderer that draws into the framebuffer bound when it starts (the core's), as Ren'Py 8's only renderer
 # does: never Ren'Py 7's older gl renderer, which saved preferences may name.
 os.environ["RENPY_RENDERER"] = "gl2"

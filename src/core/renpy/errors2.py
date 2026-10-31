@@ -53,6 +53,27 @@ def quit_event(interface):
     return originals["quit_event"](interface)
 
 
+log_lines = [0]
+
+
+def log_write(log, s, *args):
+    # Ren'Py's own log.txt (its start's stages and how long each took, its warnings) to Dulcamara's log too, its
+    # first 200 lines
+    originals["log_write"](log, s, *args)
+    if getattr(log, "name", None) != "log" or getattr(log, "raw_write", False) or log_lines[0] >= 200:
+        return
+    try:
+        text = s % args if args else s
+    except Exception:
+        text = repr((s,) + args)
+    if not isinstance(text, unicode):
+        text = text.decode("utf-8", "replace")
+    for line in text.splitlines():
+        if line.strip():
+            log_lines[0] += 1
+            _dulcamara.log(1, (u"renpy log: " + line).encode("utf-8"))
+
+
 def wrap(module):
     if module.__name__ == "renpy.error" and "report_exception" not in originals:
         originals["report_exception"] = module.report_exception
@@ -63,6 +84,9 @@ def wrap(module):
     elif module.__name__ == "renpy.display.core" and "quit_event" not in originals:
         originals["quit_event"] = module.Interface.quit_event
         module.Interface.quit_event = quit_event
+    elif module.__name__ == "renpy.log" and "log_write" not in originals:
+        originals["log_write"] = module.LogFile.write
+        module.LogFile.write = log_write
     elif module.__name__ == "renpy.preferences" and os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
         module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
 
@@ -70,7 +94,7 @@ def wrap(module):
 class Finder(object):
     """Python 2's import hook: the two modules are imported as they would be, then wrapped."""
 
-    names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences")
+    names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences", "renpy.log")
     busy = False
 
     def find_module(self, name, path=None):
@@ -86,7 +110,7 @@ class Finder(object):
             Finder.busy = False
         module = sys.modules[name]
         originals.pop({"renpy.error": "report_exception", "renpy.display.error": "report_parse_errors",
-                       "renpy.display.core": "quit_event"}.get(name), None)
+                       "renpy.display.core": "quit_event", "renpy.log": "log_write"}.get(name), None)
         wrap(module)
         return module
 
