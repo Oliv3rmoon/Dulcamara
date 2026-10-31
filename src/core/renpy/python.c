@@ -172,10 +172,18 @@ static bool start_interpreter(const char *boot)
     const bool set = ok(PyConfig_SetBytesString(&config, &config.home, engine), "set its home") &&
                      ok(PyConfig_SetBytesString(&config, &config.program_name, "renpy"), "set its name") &&
                      ok(PyConfig_SetBytesArgv(&config, 4, argv), "set its arguments");
+    /* in two parts, so that a log says which a start stopped in: the core (types, built-in modules, the frozen import
+     * system), then the main part (the path, the import system from the zip, the encodings, sys's streams) */
+    config._init_main = 0;
     if (set)
-        log_step("Python starting");
-    const bool up = set && ok(Py_InitializeFromConfig(&config), "start");
+        log_step("Python's core starting");
+    bool up = set && ok(Py_InitializeFromConfig(&config), "start");
     PyConfig_Clear(&config);
+    if (up)
+    {
+        log_step("Python's main part starting");
+        up = ok(_Py_InitializeMain(), "start");
+    }
     if (up)
         log_step("Python started");
     return up;
