@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.3
+
+A test build for Ren'Py on the console: 0.2.2 still crashed as Python started, one logged step later (its main part).
+
+- **The crash reports were read wrongly, and 0.2.2's cause was not the cause.** The console's kernel puts a crashed
+  thread's registers 64 bytes into the context a handler is given, not 16 as the SDK's header says (a PS5 port of
+  Wine measured the same). Every report so far read them 48 bytes early: its "rsp" was the fault address and its
+  "rip" another register, which is why the stack pointer looked like a string's address. `readlink` was still worth
+  standing in for (a title cannot reach it), but it was not what crashed.
+- **The cause, read again at the right place:** Python's start calls `getcwd`. Finding no `renpy` program to start
+  from, Python takes its own folder as the current one, and a PS5 title's libc has no `getcwd`: the one the link
+  took, `libSceLibcInternal`'s, crashed. 0.2.2's registers are `getcwd`'s buffer, its size (1024) and the buffer's
+  end. Both Ren'Py cores now keep the working folder themselves: each starts in its game's folder, `chdir` changes
+  the console's and notes the new one, and `getcwd` and `realpath` answer from it.
+- **`time.strftime` goes through `strftime`.** Python calls `wcsftime` for it (Ren'Py's save times), which, like
+  `getcwd`, only `libSceLibcInternal` has and no title is known to have run; `strftime` runs on the console (EasyRPG
+  Player's core uses it).
+- **Crash reports** read the registers where the console puts them (checked against the fault address, and saying
+  which layout they used), name the system module holding an address that is not in the app's list, and find return
+  addresses in any executable memory.
+
 ## 0.2.2
 
 A test build for Ren'Py on the console: 0.2.1 still crashed as Python started, at the same place.
