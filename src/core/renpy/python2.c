@@ -19,9 +19,11 @@
 #include "log.h"
 
 #include <SDL.h>
+#include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
@@ -127,6 +129,13 @@ static void *renpy_main(void *unused)
     (void)unused;
     handoff_engine_begin();
     log_step("Ren'Py's thread running");
+#if defined(__PROSPERO__)
+    /* the game's folder as the working one, which the core keeps (ps5_libc.c): Python asks for it as it starts */
+    if (chdir(game) == 0)
+        log_step("the working folder is the game's");
+    else
+        log_step("the working folder stays /: the game's could not be made it (%s)", strerror(errno));
+#endif
     static char boot[1100], home[1024], path[4200], name[] = "renpy", encoding[] = "utf-8";
     snprintf(boot, sizeof(boot), "%s/dulcamara_boot.py", engine);
     snprintf(home, sizeof(home), "%s", engine);

@@ -11,6 +11,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <netdb.h>
 #include <pthread.h>
 #include <pwd.h>
@@ -29,6 +30,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <wchar.h>
 
 /* ---------------------------------------------------------------- the environment: the core's own */
 
@@ -218,6 +220,72 @@ int clock_nanosleep(clockid_t clock, int flags, const struct timespec *request, 
     return nanosleep(&wait, remain) == 0 ? 0 : errno;
 }
 
+/* UTF-8 for a wide string (n bytes at most, with its 0), and the other way (n wide characters at most, with their 0):
+ * the lengths written, or -1 when out runs out first or a character has no UTF-8 */
+static long utf8_of(const wchar_t *text, char *out, size_t n)
+{
+    size_t at = 0;
+    for (; *text; ++text)
+    {
+        const unsigned long c = (unsigned long)*text;
+        const size_t length = c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : c < 0x110000 ? 4 : 0;
+        if (!length || at + length >= n)
+            return -1;
+        if (length == 1)
+            out[at++] = (char)c;
+        else
+        {
+            static const unsigned char LEAD[5] = {0, 0, 0xC0, 0xE0, 0xF0};
+            out[at++] = (char)(LEAD[length] | (c >> (6 * (length - 1))));
+            for (size_t i = length - 1; i-- > 0;)
+                out[at++] = (char)(0x80 | ((c >> (6 * i)) & 0x3F));
+        }
+    }
+    if (at >= n)
+        return -1;
+    out[at] = '\0';
+    return (long)at;
+}
+
+static long wide_of(const char *text, wchar_t *out, size_t n)
+{
+    size_t at = 0;
+    for (const unsigned char *p = (const unsigned char *)text; *p; ++at)
+    {
+        if (at + 1 >= n)
+            return -1;
+        unsigned long c = *p++;
+        const int more = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
+        if (more)
+            c &= 0x3F >> more;
+        for (int i = 0; i < more && (*p & 0xC0) == 0x80; ++i)
+            c = c << 6 | (*p++ & 0x3F);
+        out[at] = (wchar_t)c;
+    }
+    if (at >= n)
+        return -1;
+    out[at] = L'\0';
+    return (long)at;
+}
+
+/* Python's time.strftime calls wcsftime (Ren'Py's save times), which only libSceLibcInternal has and nothing on the
+ * console has been seen to run; strftime runs there (EasyRPG Player's core): the wide format and text go through it */
+size_t wcsftime(wchar_t *restrict text, size_t size, const wchar_t *restrict format, const struct tm *restrict when)
+{
+    const size_t format_size = wcslen(format) * 4 + 1, text_size = size * 4 + 1;
+    char *narrow_format = malloc(format_size), *narrow_text = malloc(text_size);
+    size_t length = 0;
+    if (narrow_format && narrow_text && size && utf8_of(format, narrow_format, format_size) >= 0 &&
+        strftime(narrow_text, text_size, narrow_format, when) > 0)
+    {
+        const long wide = wide_of(narrow_text, text, size);
+        length = wide > 0 ? (size_t)wide : 0;
+    }
+    free(narrow_format);
+    free(narrow_text);
+    return length;
+}
+
 clock_t times(struct tms *buffer)
 {
     const clock_t used = clock();
@@ -242,6 +310,121 @@ int getloadavg(double loads[], int count)
 {
     (void)loads, (void)count;
     return -1;
+}
+
+/* ---------------------------------------------------------------- the working folder: the core's own */
+
+/* A title's libc has no getcwd, and libSceLibcInternal's, which a title's link takes, crashed Dulcamara 0.2.0 to 0.2.2
+ * on the console as Python started: finding no "renpy" program to start from, getpath takes its folder as
+ * abspath('.') (0.2.2's crash report, read at the console's context layout, has getcwd's buffer, its size and its end
+ * in rdi, rsi and rbx). EasyRPG Player's core, which runs there, never calls it. The core keeps the working folder
+ * itself: chdir (which each core's link wraps, tools/renpy/ps5.sh) changes the console's and notes the new one,
+ * which getcwd and realpath answer from. Until a chdir it is "/". */
+static pthread_mutex_t folder_lock = PTHREAD_MUTEX_INITIALIZER;
+static char folder[PATH_MAX] = "/";
+
+/* path as an absolute one (against the working folder), without ".", ".." or empty parts, in out (size bytes) */
+static bool absolute_path(const char *path, char *out, size_t size)
+{
+    char joined[2 * PATH_MAX];
+    pthread_mutex_lock(&folder_lock);
+    const int n = path[0] == '/' ? snprintf(joined, sizeof(joined), "%s", path)
+                                 : snprintf(joined, sizeof(joined), "%s/%s", folder, path);
+    pthread_mutex_unlock(&folder_lock);
+    if (n < 0 || (size_t)n >= sizeof(joined))
+    {
+        errno = ENAMETOOLONG;
+        return false;
+    }
+    size_t at = 0;
+    for (const char *part = joined; *part;)
+    {
+        if (*part == '/')
+        {
+            ++part;
+            continue;
+        }
+        const size_t length = strcspn(part, "/");
+        if (length == 2 && part[0] == '.' && part[1] == '.')
+        {
+            while (at > 0 && out[at - 1] != '/')
+                --at;
+            if (at > 0)
+                --at; /* and its "/" */
+        }
+        else if (length != 1 || part[0] != '.')
+        {
+            if (at + 1 + length >= size)
+            {
+                errno = ENAMETOOLONG;
+                return false;
+            }
+            out[at++] = '/';
+            memcpy(out + at, part, length);
+            at += length;
+        }
+        part += length;
+    }
+    if (at == 0)
+        out[at++] = '/';
+    out[at] = '\0';
+    return true;
+}
+
+char *getcwd(char *buffer, size_t size)
+{
+    pthread_mutex_lock(&folder_lock);
+    const size_t n = strlen(folder) + 1;
+    char *result = NULL;
+    if (!buffer)
+        result = malloc(n > size ? n : size); /* as large as asked, or as needed */
+    else if (size == 0)
+        errno = EINVAL;
+    else if (size < n)
+        errno = ERANGE;
+    else
+        result = buffer;
+    if (result)
+        memcpy(result, folder, n);
+    else if (!buffer)
+        errno = ENOMEM;
+    pthread_mutex_unlock(&folder_lock);
+    return result;
+}
+
+int __real_chdir(const char *path);
+
+int __wrap_chdir(const char *path)
+{
+    char target[PATH_MAX];
+    if (!absolute_path(path, target, sizeof(target)) || __real_chdir(target) != 0)
+        return -1;
+    pthread_mutex_lock(&folder_lock);
+    memcpy(folder, target, strlen(target) + 1);
+    pthread_mutex_unlock(&folder_lock);
+    return 0;
+}
+
+/* libSceLibcInternal's realpath would ask its getcwd for a relative path. A title has no links to follow (readlink
+ * says so here), so the absolute path is the real one, when it is there. */
+char *realpath(const char *path, char *resolved)
+{
+    if (!path || !*path)
+    {
+        errno = path ? ENOENT : EINVAL;
+        return NULL;
+    }
+    char target[PATH_MAX];
+    struct stat st;
+    if (!absolute_path(path, target, sizeof(target)) || stat(target, &st) != 0)
+        return NULL;
+    if (!resolved && !(resolved = malloc(PATH_MAX)))
+    {
+        errno = ENOMEM;
+        return NULL;
+    }
+    memcpy(resolved, target, strlen(target) + 1);
+    return resolved;
 }
 
 /* ---------------------------------------------------------------- files */
@@ -408,10 +591,9 @@ char *ttyname(int fd)
 
 /* Functions whose only stub is libkernel_sys's: a title's link takes them, but its import does not reach them at run
  * time (tooling/radv/radv-link.sh says so of readlink, link and symlink; the SDK this app pins has no platform
- * functions for them). Dulcamara 0.2.0 and 0.2.1 crashed on the console as Python started, where its path
- * calculation calls readlink (getpath's realpath, in Py_InitializeFromConfig; Python 2.7's getpath too), with the
- * stack pointer set to a string's address: the import ran something else with readlink's arguments. Here a title
- * has no links to read, make or follow, and no owners, groups, sessions or children to change. */
+ * functions for them). Python's path calculation calls readlink as it starts (getpath's realpath; Python 2.7's
+ * getpath too). Here a title has no links to read, make or follow, and no owners, groups, sessions or children to
+ * change. */
 ssize_t readlink(const char *path, char *buffer, size_t size)
 {
     (void)path, (void)buffer, (void)size;

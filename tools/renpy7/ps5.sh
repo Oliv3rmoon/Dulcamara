@@ -137,7 +137,8 @@ done
 work="$out/isolate"
 rm -rf "$work"
 mkdir -p "$work"
-"$lld" -r -o "$work/renpy7.o" -u ps5_agc_gate2_run "${objects[@]}" --whole-archive "$out/librenpy7-modules.a" \
+# chdir goes through the core's own (ps5_libc.c), which keeps the working folder that its getcwd answers with
+"$lld" -r -o "$work/renpy7.o" --wrap=chdir -u ps5_agc_gate2_run "${objects[@]}" --whole-archive "$out/librenpy7-modules.a" \
     --no-whole-archive --start-group "${libraries[@]}" --end-group >"$log/isolate.log" 2>&1 || fail isolate
 "$nm" --defined-only --extern-only "$work/renpy7.o" | awk '{print $NF}' | grep -E '^retro_' | sort -u >"$work/api.txt"
 [[ -s $work/api.txt ]] || { echo "no retro_* symbols in the Ren'Py 7 core" >&2; exit 1; }
