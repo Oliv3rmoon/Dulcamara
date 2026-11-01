@@ -19,6 +19,12 @@
  *          takes "Adz", a Backspace, "a" and Return through its keyboard callback as Dulcamara's on-screen keyboard
  *          gives them (core/host.c), and says it has its text; a Return typed then goes nowhere, and Cross is the
  *          game's again.
+ *   sounds the game's sounds (renpy_sounds=<base>, from the environment): the core lists them in <base>.list and
+ *          plays nothing for those <base>.txt has off; as "start", run until the list is written and two seconds on,
+ *          with or without sound. With RENPY_HEADLESS_SWITCH_OFF=<name>, that sound is then switched off as the game
+ *          runs, <base>.txt written as Dulcamara's menu writes it, and the game runs at the console's pace (the core
+ *          looks at the file once a second of this computer's time); once the core plays nothing for it, the sound is
+ *          counted again from a second and a half on.
  *   error  the game has a script error: Ren'Py's error is logged and shown; it is then closed.
  *   --then a second game in the same process afterwards, as "start".
  */
@@ -32,6 +38,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define MAX_FRAMES 7200 /* two minutes of the game's time for each step */
 
@@ -133,12 +140,12 @@ static bool environment(unsigned cmd, void *data)
         return true;
     case RETRO_ENVIRONMENT_GET_VARIABLE:
     {
-        /* the core's options, as Dulcamara sets them: RENPY_HEADLESS_SKIP_UNSEEN=on, and a game's keys by their own
-         * names (renpy_key_l2=return) */
+        /* the core's options, as Dulcamara sets them: RENPY_HEADLESS_SKIP_UNSEEN=on, and a game's keys and its sounds'
+         * files by their own names (renpy_key_l2=return, renpy_sounds=<base>) */
         struct retro_variable *variable = data;
         if (!variable || !variable->key)
             return false;
-        if (!strncmp(variable->key, "renpy_key_", 10))
+        if (!strncmp(variable->key, "renpy_key_", 10) || !strcmp(variable->key, "renpy_sounds"))
         {
             variable->value = getenv(variable->key);
             return variable->value != NULL;
@@ -261,6 +268,22 @@ static bool until_logged(const char *what)
         frame();
     if (!logged(what))
         printf("FAIL: never logged \"%s\"\n", what);
+    return logged(what);
+}
+
+/* until_logged at the console's pace, a frame each 1/60 s of this computer's time, for `seconds` at most: what the core
+ * does by that clock (once a second) would otherwise come thousands of frames on, the game running here many times
+ * faster than its own time */
+static bool until_logged_in_time(const char *what, int seconds)
+{
+    const struct timespec frame_time = {0, 16666667};
+    for (int i = 0; i < seconds * 60 && !logged(what) && !shutdown_asked; ++i)
+    {
+        frame();
+        nanosleep(&frame_time, NULL);
+    }
+    if (!logged(what))
+        printf("FAIL: never logged \"%s\" in %d seconds\n", what, seconds);
     return logged(what);
 }
 
@@ -472,6 +495,27 @@ int main(int argc, char **argv)
         ok = ok && named && dropped && advanced && text_changes < 10;
         if (text_changes >= 10)
             printf("FAIL: the core said what text it wants %d times\n", text_changes);
+    }
+    else if (ok && !strcmp(mode, "sounds"))
+    {
+        ok = until_logged("DULCAMARA-TEST: started") && until_picture() && until_logged("sounds listed in");
+        frames(120);
+        const char *switch_off = getenv("RENPY_HEADLESS_SWITCH_OFF"), *base = getenv("renpy_sounds");
+        if (ok && switch_off && base)
+        {
+            char path[1024];
+            snprintf(path, sizeof(path), "%s.txt", base);
+            FILE *f = fopen(path, "w");
+            if (f)
+            {
+                fprintf(f, "# Dulcamara: switched off as the game runs\noff = %s\n", switch_off);
+                fclose(f);
+            }
+            ok = f && until_logged_in_time("plays nothing for", 10);
+            frames(90); /* what Ren'Py queued before plays out */
+            sound_frames = sound_loud = 0;
+            frames(120);
+        }
     }
     else if (ok && !strcmp(mode, "load"))
     {

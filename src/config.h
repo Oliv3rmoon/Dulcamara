@@ -41,4 +41,23 @@ void config_load_keys(int8_t keys[MAP_BUTTONS], const char *path);
 /* The buttons that are not at 0, under a line that names the game; with none, the file goes. */
 bool config_save_keys(const int8_t keys[MAP_BUTTONS], const char *path, const char *title);
 
+/* A Ren'Py game's sounds (Dulcamara's menu > Sounds for this game), kept beside each other in sounds/ in the data
+ * folder: <the game's id>.list, every sound the game has, one name a line as Ren'Py names it ("audio/sfx/Button
+ * Hover.ogg"), which its core writes once a run; and <the game's id>.txt, the ones switched off, one "off = <name>" a
+ * line, for which the core plays nothing. base is the two files' path without the extension. */
+typedef struct SoundList
+{
+    char *text[2]; /* the two files read: the names point into them */
+    char **names;  /* the list's, in its order, then any the off list has that it does not */
+    bool *off;
+    int count;
+} SoundList;
+
+/* The list and the ones off of base into sounds, after what it held; false, and no sounds, when there is no list
+ * (the game has not been started since). */
+bool config_load_sounds(SoundList *sounds, const char *base);
+void config_free_sounds(SoundList *sounds);
+/* The ones off into base.txt, under a line that names the game; with none, the file goes. */
+bool config_save_sounds(const SoundList *sounds, const char *base, const char *title);
+
 #endif

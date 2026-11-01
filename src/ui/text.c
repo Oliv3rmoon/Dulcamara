@@ -177,8 +177,8 @@ void text_want(const char *utf8)
     bool beyond_latin1 = false;
     for (size_t i = 0; i < n && !beyond_latin1; ++i)
         beyond_latin1 = (unsigned char)utf8[i] >= 0xC4; /* a lead byte past U+00FF */
-    if (!beyond_latin1)
-        return;
+    if (!beyond_latin1 || (wanted && strstr(wanted, utf8)))
+        return; /* nothing beyond Latin-1, or wanted already (Sounds for this game, opened again) */
     char *grown = realloc(wanted, wanted_len + n + 2);
     if (!grown)
         return;

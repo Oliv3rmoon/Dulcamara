@@ -164,6 +164,7 @@ void config_paths(Paths *p, const char *root)
     path_join(p->config, sizeof(p->config), root, "settings.ini");
     path_join(p->played, sizeof(p->played), root, "played.txt");
     path_join(p->keys, sizeof(p->keys), root, "keys");
+    path_join(p->sounds, sizeof(p->sounds), root, "sounds");
 }
 
 /* ---------------------------------------------------------------- a Ren'Py game's keys */
@@ -266,6 +267,176 @@ bool config_save_keys(const int8_t keys[MAP_BUTTONS], const char *path, const ch
     for (int pad = 0; pad < MAP_BUTTONS; ++pad)
         if (KEY_OPTIONS[pad] && keys[pad] > 0 && keys[pad] < KEY_ACTION_COUNT)
             fprintf(f, "%s = %s\n", KEY_OPTIONS[pad] + strlen(KEY_PREFIX), KEY_ACTIONS[keys[pad]].value);
+    const bool ok = fclose(f) == 0;
+    if (ok)
+    {
+        remove(path);
+        rename(temp, path);
+    }
+    return ok;
+}
+
+/* ---------------------------------------------------------------- a Ren'Py game's sounds */
+
+/* A whole file, '\0' after it; NULL when it can't be read. */
+static char *read_text(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return NULL;
+    fseek(f, 0, SEEK_END);
+    const long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *text = size >= 0 ? malloc((size_t)size + 1) : NULL;
+    if (text && fread(text, 1, (size_t)size, f) != (size_t)size)
+    {
+        free(text);
+        text = NULL;
+    }
+    fclose(f);
+    if (text)
+        text[size] = '\0';
+    return text;
+}
+
+/* The line at *at without its ending ("\n" or "\r\n"), and *at past it; NULL at the end. */
+static char *next_line(char **at)
+{
+    char *line = *at, *end = line + strcspn(line, "\n");
+    if (!*line)
+        return NULL;
+    *at = *end ? end + 1 : end;
+    *end = '\0';
+    if (end > line && end[-1] == '\r')
+        end[-1] = '\0';
+    return line;
+}
+
+/* The sound of an off list's line, "off = <name>": the name as it is, spaces and all; NULL for any other line. The
+ * engine's dulcamara_errors reads the file the same way. */
+static char *off_name(char *line)
+{
+    line += strspn(line, " \t");
+    if (strncmp(line, "off", 3))
+        return NULL;
+    line += 3;
+    line += strspn(line, " \t");
+    if (*line++ != '=')
+        return NULL;
+    if (*line == ' ')
+        ++line;
+    return *line ? line : NULL;
+}
+
+/* name's place in the list's first n names, -1 when it is not there. The core writes them in order (by their UTF-8
+ * bytes, as strcmp has them): then halved each step, else one by one. */
+static int find_sound(const SoundList *s, int n, bool in_order, const char *name)
+{
+    if (!in_order)
+    {
+        for (int i = 0; i < n; ++i)
+            if (!strcmp(s->names[i], name))
+                return i;
+        return -1;
+    }
+    int lo = 0, hi = n;
+    while (lo < hi)
+    {
+        const int mid = lo + (hi - lo) / 2, c = strcmp(s->names[mid], name);
+        if (!c)
+            return mid;
+        if (c < 0)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return -1;
+}
+
+void config_free_sounds(SoundList *sounds)
+{
+    free(sounds->text[0]);
+    free(sounds->text[1]);
+    free(sounds->names);
+    free(sounds->off);
+    memset(sounds, 0, sizeof(*sounds));
+}
+
+bool config_load_sounds(SoundList *s, const char *base)
+{
+    config_free_sounds(s);
+    char path[NP_PATH_MAX];
+    snprintf(path, sizeof(path), "%s.list", base);
+    if (!(s->text[0] = read_text(path)))
+        return false;
+    snprintf(path, sizeof(path), "%s.txt", base);
+    s->text[1] = read_text(path);
+    /* a name for each line of the two at most */
+    size_t lines = 2;
+    for (int t = 0; t < 2; ++t)
+        for (const char *p = s->text[t]; p && *p; ++p)
+            lines += *p == '\n';
+    s->names = malloc(lines * sizeof(*s->names));
+    s->off = calloc(lines, sizeof(*s->off));
+    if (!s->names || !s->off)
+    {
+        config_free_sounds(s);
+        return false;
+    }
+    bool in_order = true;
+    char *at = s->text[0];
+    for (char *line; (line = next_line(&at));)
+        if (*line)
+        {
+            in_order = in_order && (!s->count || strcmp(s->names[s->count - 1], line) < 0);
+            s->names[s->count++] = line;
+        }
+    const int listed = s->count;
+    at = s->text[1];
+    for (char *line; at && (line = next_line(&at));)
+    {
+        char *name = off_name(line);
+        if (!name)
+            continue;
+        int i = find_sound(s, listed, in_order, name);
+        /* one the list does not have (written by hand, or gone from the game): kept, after the list's */
+        for (int k = listed; i < 0 && k < s->count; ++k)
+            if (!strcmp(s->names[k], name))
+                i = k;
+        if (i < 0)
+        {
+            i = s->count++;
+            s->names[i] = name;
+        }
+        s->off[i] = true;
+    }
+    return true;
+}
+
+bool config_save_sounds(const SoundList *s, const char *base, const char *title)
+{
+    char path[NP_PATH_MAX], temp[NP_PATH_MAX], name[160];
+    snprintf(path, sizeof(path), "%s.txt", base);
+    bool any = false;
+    for (int i = 0; i < s->count && !any; ++i)
+        any = s->off[i];
+    if (!any)
+        return remove(path) == 0 || !path_exists(path);
+    snprintf(temp, sizeof(temp), "%s.new", path);
+    FILE *f = fopen(temp, "w");
+    if (!f)
+        return false;
+    /* the game's name on the first line, nothing in it that could start another */
+    str_copy(name, sizeof(name), title);
+    for (char *p = name; *p; ++p)
+        if ((unsigned char)*p < 0x20)
+            *p = ' ';
+    fprintf(f, "# Dulcamara %s: the sounds of %s switched off (Dulcamara's menu > Sounds for this game)\n",
+            NP_VERSION, name);
+    fprintf(f, "# off = a sound as the game's list beside this file names it: the game plays nothing for it\n");
+    for (int i = 0; i < s->count; ++i)
+        if (s->off[i])
+            fprintf(f, "off = %s\n", s->names[i]);
     const bool ok = fclose(f) == 0;
     if (ok)
     {

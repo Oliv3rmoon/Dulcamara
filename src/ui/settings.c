@@ -1,7 +1,8 @@
 /*
  * Dulcamara - Settings: tabs (L1 / R1) of rows (up / down), each changed with left / right or Cross.
  * Opened from a game, the game shows behind it, so a shader or a scale is seen as it is chosen. A Ren'Py game's
- * Keys for this game (from its menu, or any one's from the Ren'Py tab) is a page of the same rows.
+ * Keys for this game and Sounds for this game (from its menu, or any one's from the Ren'Py tab) are pages of the same
+ * rows.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "../app.h"
@@ -32,7 +33,7 @@ enum Kind
     K_INFO,   /* a line of text */
     K_KEY,    /* Keys for this game: what a controller button presses in a Ren'Py game */
     K_CORE,   /* Controls: whose buttons the rows under it show; in a game, its own, not to be changed */
-    K_GAME,   /* Ren'Py: one of the library's Ren'Py games, by title, whose Keys for this game Cross opens */
+    K_GAME,   /* Ren'Py: one of the library's Ren'Py games, by title, whose Keys or Sounds for this game Cross opens */
 };
 
 enum Action
@@ -44,6 +45,7 @@ enum Action
     A_CLOSE_APP,
     A_COMMUNITY,    /* nightly's card: its QR code (community.h) */
     A_DEFAULT_KEYS, /* Keys for this game: every button back to the core's own */
+    A_SOUNDS,       /* a K_GAME row's: Cross opens the game's Sounds for this game, not its keys */
 };
 
 typedef struct
@@ -159,6 +161,9 @@ static const Row RENPY_ROWS[] = {
     {"Keys for a game", "Keys a game needs of its own (its inventory's, say), as its menu's Keys for this game has "
                         "them: Left and Right choose the game, Cross opens them.",
      K_GAME, 0, NULL, 0, NULL, A_NONE, -1},
+    {"Sounds for a game", "A game's sounds on or off, as its menu's Sounds for this game has them: Left and Right "
+                          "choose the game, Cross opens them.",
+     K_GAME, 0, NULL, 0, NULL, A_SOUNDS, -1},
     /* the buttons as a Ren'Py game has them unless Controls or its keys change them (core/cores.c, core/renpy/input.c),
      * all on one page: nothing under the last row that can be chosen is scrolled to */
     {"{Cross} picks and moves the story on; {Circle} and {Options} open the game's menu (save, load, preferences) and "
@@ -247,7 +252,8 @@ static int tab, row, top;
 static float bar_y = -1.0f;
 static bool community_open;  /* nightly's card is up, over the page */
 static int controls_pick;    /* outside a game, whose buttons Controls shows (CORE_*) */
-static char keys_pick[24];   /* the Ren'Py tab's game for Keys for a game: its id (the library's order changes) */
+static char keys_pick[24];   /* the Ren'Py tab's game for Keys and Sounds for a game: its id (the library's order
+                                * changes) */
 
 /* ---------------------------------------------------------------- the library's Ren'Py games */
 
@@ -277,7 +283,8 @@ static int renpy_game_step(int from, int step)
     return next >= 0 ? next : wrap >= 0 ? wrap : from;
 }
 
-/* The game Keys for a game shows: the one chosen, else the first by title; -1 when the library has no Ren'Py game. */
+/* The game Keys and Sounds for a game show: the one chosen, else the first by title; -1 when the library has no
+ * Ren'Py game. */
 static int keys_pick_game(void)
 {
     for (int i = 0; i < app.library.count; ++i)
@@ -360,7 +367,7 @@ static bool selectable(const Row *r)
     return r->kind != K_INFO && !(r->kind == K_CORE && app.game >= 0);
 }
 
-/* The rows a tab shows now: Keys for a game only when the library has a Ren'Py game. */
+/* The rows a tab shows now: Keys and Sounds for a game only when the library has a Ren'Py game. */
 static int tab_rows(const Tab *t, const Row **rows)
 {
     int n = 0;
@@ -607,10 +614,18 @@ void settings_screen(uint32_t pressed)
         }
         else if (r->kind == K_GAME && (pressed & BIT(BTN_CROSS)))
         {
-            /* the game's keys, as its menu has them, and Circle back here */
+            /* the game's keys or sounds, as its menu has them, and Circle back here */
             sfx_play(SFX_SELECT);
-            keys_open(keys_pick_game(), SCREEN_SETTINGS);
-            keys_screen(0); /* drawn now */
+            if (r->action == A_SOUNDS)
+            {
+                sounds_open(keys_pick_game(), SCREEN_SETTINGS);
+                sounds_screen(0); /* drawn now */
+            }
+            else
+            {
+                keys_open(keys_pick_game(), SCREEN_SETTINGS);
+                keys_screen(0);
+            }
             return;
         }
         else if (r->kind == K_ACTION && (pressed & BIT(BTN_CROSS)))
@@ -652,8 +667,8 @@ void settings_screen(uint32_t pressed)
     }
     draw_pad_glyph(GLYPH_R1, tx + 30, ty + 28, 26);
 
-    /* the rows: eight a page; About, which has nothing to scroll to, all of its own on one */
-    const int visible = t->rows == ABOUT ? t->count : 8;
+    /* the rows: eight a page; About and Ren'Py, which have nothing to scroll to, all of theirs on one */
+    const int visible = t->rows == ABOUT || t->rows == RENPY_ROWS ? t->count : 8;
     const float list_y = 236, row_h = 8 * 78.0f / visible;
     top = list_top_row(top, row, visible, count);
     draw_rrect(x - 20, list_y - 16, w + 40, visible * row_h + 32, TH_RADIUS, TH_CARD_A(0xe6));
@@ -953,4 +968,229 @@ void keys_screen(uint32_t pressed)
     const char *jump_label = "Keys, letters, digits, F keys";
     draw_hint_combo(plat_width() - TH_MARGIN - hint_combo_width(jumps, 2, jump_label, 26), TH_HINT_Y, jumps, 2, '/',
                     jump_label, 26, TH_HINT);
+}
+
+/* ---------------------------------------------------------------- Sounds for this game */
+
+/* Sounds for this game, from a Ren'Py game's menu (Dulcamara's) or for any of the library's Ren'Py games from
+ * Settings > Ren'Py: each of the game's sounds, on or off. The game's core lists them once a run, from its archives and
+ * its folder, and plays a second of silence for each one the game's off list has (config.h), which it reads again
+ * within a second of a change: Cross switches a sound and writes the list at once, and the game itself is never
+ * changed. A visual novel has thousands (its voices): the page draws the rows it shows and no more, sliding them as it
+ * scrolls inside its card, and L1 and R1 move a page, Left and Right a folder. */
+static SoundList sound_list;      /* the page's game's sounds, from its files */
+static bool sounds_listed;        /* the game has a list: it has been started since it came */
+static int sound_row, sound_top, sound_offs, sound_game = -1;
+/* how far the rows are still to slide, in rows, eased toward 0 (anim_approach stops within 0.2 % of where it goes: a
+ * place in a list of thousands would be reached at once); and where the highlight is */
+static float sound_slide, sound_bar_y = -1.0f;
+static enum Screen sound_back;    /* where Circle goes: the game's menu, or Settings */
+
+/* The characters of the names beyond Latin-1 (a Japanese game's), each once, into the font atlases: the same text
+ * again, as the page opens again, is wanted already. */
+static void want_sound_names(void)
+{
+    static uint8_t seen[0x10000 / 8];
+    char wanted[3 * 1024 + 1];
+    size_t used = 0;
+    memset(seen, 0, sizeof(seen));
+    for (int i = 0; i < sound_list.count; ++i)
+        for (const unsigned char *p = (const unsigned char *)sound_list.names[i]; *p;)
+        {
+            /* a character of two or three bytes, read when its bytes are all there; any other byte on its own */
+            int n = *p >= 0xC0 && *p < 0xE0 ? 2 : *p >= 0xE0 && *p < 0xF0 ? 3 : 1;
+            for (int k = 1; k < n; ++k)
+                if ((p[k] & 0xC0) != 0x80)
+                    n = 1;
+            const unsigned cp = n == 3   ? (p[0] & 0x0Fu) << 12 | (p[1] & 0x3Fu) << 6 | (p[2] & 0x3Fu)
+                                : n == 2 ? (p[0] & 0x1Fu) << 6 | (p[1] & 0x3Fu)
+                                         : 0;
+            if (cp > 0xFF && !(seen[cp >> 3] & (1u << (cp & 7))) && used + (size_t)n < sizeof(wanted))
+            {
+                seen[cp >> 3] |= (uint8_t)(1u << (cp & 7));
+                memcpy(wanted + used, p, (size_t)n);
+                used += (size_t)n;
+            }
+            p += n;
+        }
+    wanted[used] = '\0';
+    if (used)
+        text_want(wanted);
+}
+
+void sounds_open(int index, enum Screen back_to)
+{
+    sound_game = index;
+    sound_back = back_to;
+    sounds_listed = app_load_sounds(index, &sound_list);
+    sound_offs = 0;
+    for (int i = 0; i < sound_list.count; ++i)
+        sound_offs += sound_list.off[i];
+    want_sound_names();
+    app.screen = SCREEN_SOUNDS;
+    sound_row = sound_top = 0;
+    sound_slide = 0.0f;
+    sound_bar_y = -1.0f;
+}
+
+/* Two sounds in the same folder: their names alike up to their last '/'. */
+static bool same_folder(int a, int b)
+{
+    const char *x = sound_list.names[a], *y = sound_list.names[b], *sx = strrchr(x, '/'), *sy = strrchr(y, '/');
+    const size_t nx = sx ? (size_t)(sx - x) : 0, ny = sy ? (size_t)(sy - y) : 0;
+    return nx == ny && !memcmp(x, y, nx);
+}
+
+/* Right: the first sound after this folder's (the last when this is the last folder). Left: this folder's first, or
+ * the folder before's first when the row is that already. */
+static int folder_step(int from, int step)
+{
+    int to = from;
+    if (step > 0)
+    {
+        while (to < sound_list.count && same_folder(to, from))
+            ++to;
+        return to < sound_list.count ? to : sound_list.count - 1;
+    }
+    if (to > 0 && !same_folder(to - 1, from))
+        from = --to;
+    while (to > 0 && same_folder(to - 1, from))
+        --to;
+    return to;
+}
+
+void sounds_screen(uint32_t pressed)
+{
+    const int visible = 8, count = sound_list.count;
+    if (pressed & BIT(BTN_CIRCLE))
+    {
+        config_free_sounds(&sound_list);
+        sfx_play(SFX_BACK);
+        app.screen = sound_back;
+        if (sound_back == SCREEN_SETTINGS)
+            settings_screen(0); /* drawn now, as it was */
+        else
+            app_draw_game(105);
+        return;
+    }
+    if (count)
+    {
+        int to = sound_row;
+        if (pressed & (BIT(BTN_UP) | BIT(BTN_DOWN)))
+            to += pressed & BIT(BTN_UP) ? -1 : 1;
+        else if (pressed & (BIT(BTN_L1) | BIT(BTN_R1)))
+            to += pressed & BIT(BTN_L1) ? -visible : visible;
+        else if (pressed & (BIT(BTN_LEFT) | BIT(BTN_RIGHT)))
+            to = folder_step(sound_row, pressed & BIT(BTN_LEFT) ? -1 : 1);
+        to = to < 0 ? 0 : to >= count ? count - 1 : to;
+        if (to != sound_row)
+        {
+            sound_row = to;
+            sfx_play(SFX_CLICK);
+        }
+        if (pressed & BIT(BTN_CROSS))
+        {
+            sound_list.off[sound_row] = !sound_list.off[sound_row];
+            sound_offs += sound_list.off[sound_row] ? 1 : -1;
+            app_save_sounds(sound_game, &sound_list); /* the running game's core reads it within a second */
+            sfx_play(SFX_CLICK);
+        }
+    }
+
+    /* behind it: the running game, darkened, as under Settings, or the library's backdrop */
+    if (app.game >= 0)
+    {
+        app_draw_game(110);
+        draw_rect(0, 0, (float)plat_width(), (float)plat_height(), 0x60000000u);
+    }
+    else
+        shelf_backdrop();
+    const float x = TH_MARGIN + 40, w = plat_width() - 2 * (TH_MARGIN + 40);
+    draw_rrect(TH_MARGIN + 6, 60, 10, 34, 5, TH_FOCUS);
+    text_draw(TH_MARGIN + 32, 54, 40, FONT_BOLD, TH_TEXT, ALIGN_LEFT, tr("Sounds for this game"));
+    /* the game, where Settings has its tabs, and how many of its sounds are off */
+    const Game *g = sound_game >= 0 && sound_game < app.library.count ? &app.library.games[sound_game] : NULL;
+    char tally[64] = "";
+    if (count == 1)
+        str_copy(tally, sizeof(tally), sound_offs ? tr("1 sound, 1 off") : tr("1 sound"));
+    else if (count && sound_offs)
+        snprintf(tally, sizeof(tally), tr("%d sounds, %d off"), count, sound_offs);
+    else if (count)
+        snprintf(tally, sizeof(tally), tr("%d sounds"), count);
+    const float tally_w = tally[0] ? text_width(26, FONT_REGULAR, tally) + 40 : 0;
+    icon_draw(ICON_VOLUME, x, 148, 36, TH_FOCUS);
+    text_draw_fit(x + 52, 150, 30, FONT_BOLD, TH_TEXT_SOFT, ALIGN_LEFT, w - 52 - tally_w, g ? g->title : "");
+    if (tally[0])
+        text_draw(x + w, 154, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_RIGHT, tally);
+
+    const float list_y = 236, row_h = 78, hy = list_y + visible * row_h + 40;
+    draw_rrect(x - 20, list_y - 16, w + 40, visible * row_h + 32, TH_RADIUS, TH_CARD_A(0xe6));
+    if (!count)
+    {
+        /* none to show: the game has not been started since it came, or it has no sounds */
+        text_draw(x + w * 0.5f, list_y + 3 * row_h, 30, FONT_BOLD, TH_TEXT_SOFT, ALIGN_CENTER,
+                  sounds_listed ? tr("The game has no sounds of its own.")
+                                : tr("Start the game once to see its sounds."));
+        if (!sounds_listed)
+            text_draw(x + w * 0.5f, list_y + 3 * row_h + 52, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_CENTER,
+                      tr("As it starts, Dulcamara lists them here, from its archives and its folder."));
+        static const int glyphs[] = {GLYPH_CIRCLE};
+        static const char *const labels[] = {"Back"};
+        app_draw_hints(glyphs, labels, 1, NULL);
+        return;
+    }
+
+    /* the rows slide to where the list is, a row behind it at most (held, Up and Down go 25 rows a second) */
+    const int top = list_top_row(sound_top, sound_row, visible, count);
+    sound_slide += (float)(top - sound_top);
+    sound_top = top;
+    sound_slide = sound_slide > 1 ? 1 : sound_slide < -1 ? -1 : sound_slide;
+    anim_approach(&sound_slide, 0.0f, app.dt, TH_SNAP);
+    const float sound_scroll = (float)sound_top - sound_slide; /* the first row shown, and how much of it */
+    if (count > visible)
+    {
+        const float track = visible * row_h - 8, thumb = track * visible / count > 24 ? track * visible / count : 24;
+        draw_rrect(x + w + 8, list_y, 4, track, 2, TH_DIVIDER);
+        draw_rrect(x + w + 8, list_y + (track - thumb) * sound_scroll / (count - visible), 4, thumb, 2, TH_TEXT_DIM);
+    }
+    const float target = list_y + (sound_row - sound_top) * row_h;
+    if (sound_bar_y < 0)
+        sound_bar_y = target;
+    anim_approach(&sound_bar_y, target, app.dt, TH_SNAP);
+    draw_rrect(x, sound_bar_y, w, row_h - 8, TH_RADIUS_SMALL, TH_ROW_SELECTED);
+    draw_rect(x, sound_bar_y + 16, 5, row_h - 40, TH_FOCUS);
+    /* the rows shown, and the parts of the two at the ends that have slid into the card, cut at its edges */
+    plat_set_clip((int)(x - 20), (int)(list_y - 16), (int)(w + 40), (int)(visible * row_h + 32));
+    for (int i = sound_scroll > 0 ? (int)sound_scroll : 0; i < count && i - sound_scroll < visible; ++i)
+    {
+        const float ry = list_y + (i - sound_scroll) * row_h, right = x + w - 24;
+        const bool on = i == sound_row, off = sound_list.off[i];
+        text_draw_fit(x + 28, ry + 21, 28, on ? FONT_BOLD : FONT_REGULAR,
+                      on ? TH_TEXT : off ? TH_TEXT_DIM : TH_TEXT_SOFT, ALIGN_LEFT, w - 200, sound_list.names[i]);
+        /* On or Off, in a pill the same width for both */
+        const float pw = 112, px = right - pw;
+        draw_rrect(px, ry + 12, pw, 48, 24, off ? argb_alpha(TH_DANGER, 0.45f) : on ? TH_PILL : TH_PILL_A(0x90));
+        text_draw(px + pw * 0.5f, ry + 12 + (48 - 24 * 1.2f) * 0.5f, 24, FONT_REGULAR,
+                  on || off ? TH_TEXT : TH_TEXT_SOFT, ALIGN_CENTER, off ? tr("Off") : tr("On"));
+    }
+    plat_set_clip(0, 0, 0, 0);
+    /* the chosen row's explanation, and the page's */
+    const char *help = sound_list.off[sound_row]
+                           ? tr("Off: the game plays a second of silence in its place. Cross turns it back on.")
+                           : tr("Cross switches it off: the game then plays nothing for it, and its files stay as "
+                                "they are.");
+    text_draw_fit(x, hy, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT, w, help);
+    const char *page = sound_game == app.game
+                           ? tr("A change applies the next time the game plays the sound, and Dulcamara keeps it.")
+                           : tr("Dulcamara keeps this game's sounds for it, and the game has them when it starts.");
+    text_draw_fit(x, hy + 40, 24, FONT_REGULAR, TH_HINT, ALIGN_LEFT, w, page);
+    static const int glyphs[] = {GLYPH_CROSS, GLYPH_CIRCLE}, pages[] = {GLYPH_L1, GLYPH_R1},
+                     folders[] = {GLYPH_LEFT, GLYPH_RIGHT};
+    static const char *const labels[] = {"Switch", "Back"};
+    app_draw_hints(glyphs, labels, 2, NULL);
+    const char *page_label = tr("A page"), *folder_label = tr("A folder");
+    float hx = plat_width() - TH_MARGIN - hint_combo_width(folders, 2, folder_label, 26);
+    draw_hint_combo(hx, TH_HINT_Y, folders, 2, '/', folder_label, 26, TH_HINT);
+    hx -= hint_combo_width(pages, 2, page_label, 26) + 40;
+    draw_hint_combo(hx, TH_HINT_Y, pages, 2, '/', page_label, 26, TH_HINT);
 }

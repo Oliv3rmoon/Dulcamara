@@ -23,7 +23,7 @@ void app_toast(const char *message); /* main.c: a short notice on screen */
 typedef struct
 {
     char key[64];
-    char value[64];
+    char value[NP_PATH_MAX]; /* a path too: a Ren'Py game's renpy_sounds */
 } Option;
 
 static const CoreInfo *core;

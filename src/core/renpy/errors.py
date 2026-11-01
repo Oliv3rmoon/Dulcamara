@@ -1,14 +1,17 @@
 # Dulcamara - logs Ren'Py's errors in full before Ren'Py shows them: renpy.error.report_exception (which writes
 # traceback.txt) and renpy.display.error.report_parse_errors (the script's errors) are wrapped as their modules load.
 # With Settings > Ren'Py's "skip unread text too" (DULCAMARA_SKIP_UNSEEN=1), Ren'Py's skip_unseen preference reads
-# as on, while the game's own value is kept for when it is off again.
+# as on, while the game's own value is kept for when it is off again. Sounds for this game (DULCAMARA_SOUNDS): the
+# game's sounds are listed for Dulcamara's menu, and those switched off there play as silence.
 # Shipped as the engine's dulcamara_errors.py and installed by the boot script (boot.py). It is a module of its own
 # because Ren'Py pickles its modules' globals as a backup: the wrappers must be functions it can find by name.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import importlib.abc
 import os
+import re
 import sys
+import time
 
 import _dulcamara
 
@@ -169,10 +172,163 @@ def sound_file(file, part):
     return rv
 
 
+# Sounds for this game (Dulcamara's menu): DULCAMARA_SOUNDS, the core's renpy_sounds option, is the path of the game's
+# two files without their extension. Once a run, as the game first waits, <it>.list gets every sound the game can
+# load, from its archives and its folder, in order. A sound that <it>.txt has off ("off = audio/sfx/Button Hover.ogg")
+# is a second of silence from memory for Ren'Py's sound, and the file the game asked for is closed unread: its channel
+# goes on as if it played, and the archive is never touched. The file is read again when it changes (looked at once a
+# second at most), so that a sound switched in Dulcamara's menu while the game runs is on or off the next time.
+SOUNDS = os.environ.get("DULCAMARA_SOUNDS", "")
+SOUND_EXTENSIONS = (".ogg", ".opus", ".oga", ".mp3", ".wav", ".flac")
+sounds_listed = [False]
+
+
+def list_sounds():
+    if sounds_listed[0] or not SOUNDS:
+        return
+    sounds_listed[0] = True
+    listed = SOUNDS + ".list"
+    try:
+        names = sorted(set(name for _folder, name in sys.modules["renpy.loader"].listdirfiles(False)
+                           if os.path.splitext(name)[1].lower() in SOUND_EXTENSIONS and
+                           "\n" not in name and "\r" not in name))
+        folder = os.path.dirname(listed)
+        if folder and not os.path.isdir(folder):
+            os.makedirs(folder)
+        with open(listed + ".new", "w", encoding="utf-8", newline="\n") as f:
+            f.write("".join(name + "\n" for name in names))
+        if os.path.exists(listed):
+            os.remove(listed)
+        os.rename(listed + ".new", listed)
+        _dulcamara.log(1, "renpy: the game's %d sounds listed in %s (Sounds for this game)" % (len(names), listed))
+    except Exception as e:
+        _dulcamara.log(2, "renpy: could not list the game's sounds in %s: %s" % (listed, describe(e)))
+
+
+# the real clock, kept before the boot script makes time's the core's: that one stands still while the game is paused,
+# and Ren'Py's sound thread has another
+real_clock = time.monotonic
+sounds_off = {"names": frozenset(), "file": None, "checked": None}
+
+
+def off_sounds():
+    """The sounds <SOUNDS>.txt has off: each line "off = <name>", the name as it is but for the line's ending (as
+    config.c reads it). A missing file has none."""
+    if not SOUNDS:
+        return sounds_off["names"]
+    now, checked = real_clock(), sounds_off["checked"]
+    if checked is not None and checked <= now < checked + 1:
+        return sounds_off["names"]
+    sounds_off["checked"] = now
+    path = SOUNDS + ".txt"
+    try:
+        st = os.stat(path)
+        stamp = (st.st_mtime, st.st_size, st.st_ino)
+    except OSError:
+        stamp = None
+    if stamp == sounds_off["file"]:
+        return sounds_off["names"]
+    sounds_off["file"] = stamp
+    names = set()
+    try:
+        if stamp is not None:
+            with open(path, encoding="utf-8", errors="replace", newline="") as f:
+                for line in f.read().split("\n"):
+                    key, equals, name = (line[:-1] if line.endswith("\r") else line).partition("=")
+                    name = name[1:] if name.startswith(" ") else name
+                    if equals and name and key.strip(" \t") == "off":
+                        names.add(name)
+    except Exception as e:
+        _dulcamara.log(2, "renpy: could not read the sounds off in %s: %s" % (path, describe(e)))
+        return sounds_off["names"]
+    if names != sounds_off["names"]:
+        _dulcamara.log(1, "renpy: %d of the game's sounds off in %s (Sounds for this game)" % (len(names), path))
+    sounds_off["names"] = frozenset(names)
+    return sounds_off["names"]
+
+
+def played_names(channel, name):
+    """The names a sound given to Ren'Py's sound may have in the game's list: as given, without a playback spec
+    (<loop 1.0>) and with / for \\; and as the channel and Ren'Py's loader find its file (in audio/, say, when the
+    game leaves that out)."""
+    m = re.match(r"<(.*)>(.*)", name)
+    name = (m.group(2) if m else name).replace("\\", "/")
+    found = name
+    try:
+        # the channel by its _number: its number property would give a number to each channel the game has not used
+        # yet, which Ren'Py's sound then makes room for as it mixes (renpysound_core.c's check_channel, unlocked)
+        for c in sys.modules["renpy.audio.audio"].all_channels:
+            if getattr(c, "_number", None) == channel:
+                found = c.file_prefix + found + c.file_suffix
+                break
+        loader = sys.modules["renpy.loader"]
+        found = re.sub(r"/+", "/", found).lstrip("/")
+        for prefix in loader.get_prefixes(directory="audio"):
+            if loader.loadable_core(prefix + found):
+                return name, prefix + found
+    except Exception:
+        pass
+    return name, found
+
+
+def sound_is_off(channel, name):
+    """The game's list's name for the sound Ren'Py's sound is given, when it is off; else None."""
+    off = off_sounds()
+    if not off or not isinstance(name, str):
+        return None
+    for each in played_names(channel, name):
+        if each in off:
+            return each
+    return None
+
+
+silent_wav = []
+
+
+def silence():
+    """A second of silence for Ren'Py's sound, from memory, as sound_file gives a sound: a WAV at 48 kHz, 16-bit,
+    stereo, made once."""
+    if not silent_wav:
+        import io
+        import wave
+        data = io.BytesIO()
+        out = wave.open(data, "wb")
+        out.setnchannels(2)
+        out.setsampwidth(2)
+        out.setframerate(48000)
+        out.writeframes(b"\0" * (48000 * 4))
+        out.close()
+        silent_wav.append(data.getvalue())
+    return sys.modules["renpy.loader"].RWopsIO.from_buffer(silent_wav[0], name="silence.wav")
+
+
 last_sound = {}
+last_silenced = {}
+silenced = [0]
 
 
-def sound(action, channel, file, name):
+def sound(action, channel, file, name, kwargs):
+    off = sound_is_off(channel, name)
+    if off is not None:
+        try:
+            rv = silence()
+        except Exception as e:
+            _dulcamara.log(2, "renpy: no silence for %s, so it plays: %s" % (describe(off), describe(e)))
+            off = None
+    if off is not None:
+        # noted the first 50 times, a loop (silenced again after itself) only the first; from its start, which a
+        # second of silence has (a loop's start further on would end it at once, and queue it again at once)
+        if (action == "plays" or last_silenced.get(channel) != name) and silenced[0] < 50:
+            silenced[0] += 1
+            _dulcamara.log(1, "renpy: plays nothing for '%s' on channel %s: it is off (Sounds for this game)" % (
+                off, describe(channel)))
+        last_sound[channel] = last_silenced[channel] = name
+        if "start" in kwargs:
+            kwargs["start"] = 0
+        if hasattr(file, "close"):
+            file.close()
+        return rv
+    last_silenced.pop(channel, None)
     part, where = sound_source(file)
     # a sound queued again after itself is a loop: noted the first time only
     if action == "plays" or last_sound.get(channel) != name:
@@ -182,12 +338,12 @@ def sound(action, channel, file, name):
 
 
 def sound_play(channel, file, name, *args, **kwargs):
-    file = sound("plays", channel, file, name)
+    file = sound("plays", channel, file, name, kwargs)
     return originals["sound_play"](channel, file, name, *args, **kwargs)
 
 
 def sound_queue(channel, file, name, *args, **kwargs):
-    file = sound("queues", channel, file, name)
+    file = sound("queues", channel, file, name, kwargs)
     return originals["sound_queue"](channel, file, name, *args, **kwargs)
 
 
@@ -318,6 +474,7 @@ def wrap(module):
         # two silent ends of 0.2.5 came right after it had
         module.mipmap = False
         module.periodic_callbacks.append(log_memory)
+        module.periodic_callbacks.append(list_sounds)
     elif module.__name__ == "renpy.audio.renpysound" and "sound_play" not in originals:
         originals["sound_play"] = module.play
         originals["sound_queue"] = module.queue

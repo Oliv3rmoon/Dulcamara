@@ -137,6 +137,7 @@ typedef struct
     char config[NP_PATH_MAX];  /* root/settings.ini */
     char played[NP_PATH_MAX];  /* root/played.txt: when each game was last played */
     char keys[NP_PATH_MAX];    /* root/keys: a Ren'Py game's keys, <the game's id>.txt (config.h) */
+    char sounds[NP_PATH_MAX];  /* root/sounds: a Ren'Py game's sounds, <the game's id>.list and .txt (config.h) */
 } Paths;
 
 void np_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));

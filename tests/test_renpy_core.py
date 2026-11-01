@@ -5,8 +5,9 @@
 """Builds the libretro core the PS5 app links (tools/build-renpy.sh host: the same Ren'Py, CPython, FFmpeg and
 Assimp, and the same renamed SDL calls) with the headless frontend of tests/core/renpy_headless.c, and plays
 tests/renpy-game: it must load, give a picture, change it when Cross is pressed, play its sound, take a menu choice
-and save, and a second run must load that save. Also runs the core's own checks (tests/core/renpy_unit.c): the
-handoff and its clock, the pictures, the sound and the OpenGL read-back."""
+and save, and a second run must load that save; it must list its sounds, and play none that is switched off. Also runs
+the core's own checks (tests/core/renpy_unit.c): the handoff and its clock, the pictures, the sound and the OpenGL
+read-back."""
 
 import math
 import os
@@ -207,6 +208,48 @@ class RenpyCoreTest(unittest.TestCase):
             self.assertRegex(output, r"plays u?'audio/tone\.ogg' on channel 0, from audio\.rpa at \d+ \(\d+ bytes\), "
                                      r"read into memory")
             self.assertNotIn("could not read the sound", output)
+
+    def test_sounds_for_this_game(self):
+        # Sounds for this game (the core's renpy_sounds option: sounds/<the game's id> in the data folder): the core
+        # lists the game's sounds in <base>.list, from its folder or its archive; with one of them off in <base>.txt it
+        # plays a second of silence in its place and says so; with none off (an empty file, or none at all) it plays.
+        # The archived game plays its music as "<loop 0.5>tone.wav", which Ren'Py finds in audio/.
+        header = "# Dulcamara: the sounds of Dulcamara test game switched off\n"
+        for is_archived in (False, True):
+            music = "<loop 0.5>tone.wav" if is_archived else "audio/tone.wav"
+            for off in (None, "", "off = audio/tone.wav\n"):
+                with tempfile.TemporaryDirectory() as directory:
+                    work = Path(directory)
+                    game, base = make_game(work / "Sounds", archived=is_archived), work / "data/sounds/0123abcd"
+                    if off is not None:
+                        base.parent.mkdir(parents=True)
+                        Path(f"{base}.txt").write_text(header + off, encoding="utf-8")
+                    output = self.run_core("sounds", game, work / "data", env={
+                        "RENPY_HEADLESS_VERBOSE": "1", "renpy_sounds": str(base), "DULCAMARA_TEST_MUSIC": music})
+                    self.assertEqual(Path(f"{base}.list").read_text(encoding="utf-8").splitlines(),
+                                     ["audio/tone.ogg", "audio/tone.wav"])
+                    self.assertFalse(Path(f"{base}.list.new").exists())
+                    if off:
+                        self.assertRegex(output, r"plays nothing for 'audio/tone\.wav' on channel \d+: it is off "
+                                                 r"\(Sounds for this game\)")
+                        self.assertIn("sound: silent", output)
+                    else:
+                        self.assertNotIn("plays nothing", output)
+                        self.assertIn("sound: playing", output)
+
+    def test_a_sound_switched_off_as_the_game_runs(self):
+        # Switched off in Dulcamara's menu while the game plays it (here the headless frontend writes <base>.txt): the
+        # core reads the file again within a second, and the next time the game plays the sound (its music, looped),
+        # it is silence.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            base = work / "data/sounds/0123abcd"
+            env = {"RENPY_HEADLESS_VERBOSE": "1", "renpy_sounds": str(base),
+                   "RENPY_HEADLESS_SWITCH_OFF": "audio/tone.wav"}
+            output = self.run_core("sounds", make_game(work / "Sounds"), work / "data", env=env)
+            self.assertIn("1 of the game's sounds off in", output)
+            self.assertRegex(output, r"plays nothing for 'audio/tone\.wav' on channel \d+")
+            self.assertIn("sound: silent", output)
 
     def test_the_presplash(self):
         # A game's presplash (game/presplash.png, or presplash_foreground and _background, a progress bar) is the

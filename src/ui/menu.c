@@ -23,7 +23,8 @@ enum
     ITEM_RESUME,
     ITEM_FAST,
     ITEM_RESET,
-    ITEM_KEYS, /* Ren'Py's games: what each button presses (ui/settings.c) */
+    ITEM_KEYS,   /* Ren'Py's games: what each button presses (ui/settings.c) */
+    ITEM_SOUNDS, /* Ren'Py's games: each of the game's sounds on or off (ui/settings.c) */
     ITEM_SETTINGS,
     ITEM_QUIT,
     ITEM_COUNT
@@ -39,12 +40,12 @@ static bool playing_renpy(void)
     return app.game >= 0 && core_is_renpy(app.library.games[app.game].core);
 }
 
-/* The game's items, in order: all of them, Keys for this game in Ren'Py's games only. */
+/* The game's items, in order: all of them, Keys and Sounds for this game in Ren'Py's games only. */
 static int menu_items(int *items)
 {
     int n = 0;
     for (int i = 0; i < ITEM_COUNT; ++i)
-        if (i != ITEM_KEYS || playing_renpy())
+        if ((i != ITEM_KEYS && i != ITEM_SOUNDS) || playing_renpy())
             items[n++] = i;
     return n;
 }
@@ -124,6 +125,11 @@ void menu_screen(uint32_t pressed)
             keys_open(app.game, SCREEN_MENU);
             keys_screen(0); /* drawn now, over the game */
             return;
+        case ITEM_SOUNDS:
+            sfx_play(SFX_SELECT);
+            sounds_open(app.game, SCREEN_MENU);
+            sounds_screen(0);
+            return;
         case ITEM_SETTINGS:
             sfx_play(SFX_SELECT);
             app_open_settings(SCREEN_MENU);
@@ -160,9 +166,9 @@ void menu_screen(uint32_t pressed)
     y += 120;
 
     static const int ICONS[ITEM_COUNT] = {ICON_PLAYER_PLAY, ICON_PLAYER_TRACK_NEXT, ICON_ROTATE, ICON_KEYBOARD,
-                                          ICON_SETTINGS, ICON_DOOR_EXIT};
-    /* six items (Ren'Py's) a little closer, so that the last stays clear of the lines at the foot */
-    const float row = count > 5 ? 78 : 84, inset = (row - 48) * 0.5f;
+                                          ICON_VOLUME,      ICON_SETTINGS,          ICON_DOOR_EXIT};
+    /* seven items (Ren'Py's) closer, so that the last stays clear of the lines at the foot under the game's cover */
+    const float row = count > 5 ? 68 : 84, inset = (row - 48) * 0.5f;
     const float target = y + selected * row;
     if (bar_y < 0)
         bar_y = target;
@@ -187,6 +193,7 @@ void menu_screen(uint32_t pressed)
                                            : tr("Back to the title screen"));
             break;
         case ITEM_KEYS: str_copy(label, sizeof(label), tr("Keys for this game")); break;
+        case ITEM_SOUNDS: str_copy(label, sizeof(label), tr("Sounds for this game")); break;
         case ITEM_SETTINGS: str_copy(label, sizeof(label), tr("Settings")); break;
         case ITEM_QUIT: str_copy(label, sizeof(label), tr("Quit to the library")); break;
         }

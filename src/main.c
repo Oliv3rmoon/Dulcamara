@@ -343,6 +343,39 @@ void app_save_keys(int index, const int8_t keys[MAP_BUTTONS])
         np_log("keys: could not write %s", file);
 }
 
+/* A Ren'Py game's sounds (Sounds for this game, from its menu or Settings > Ren'Py: ui/settings.c): sounds/<its id>
+ * in the data folder, .list its core's list of them and .txt the ones switched off (config.h). */
+static void sounds_base(const Game *g, char *out, size_t size)
+{
+    path_join(out, size, app.paths.sounds, g->id);
+}
+
+bool app_load_sounds(int index, struct SoundList *sounds)
+{
+    if (index < 0 || index >= app.library.count)
+    {
+        config_free_sounds(sounds);
+        return false;
+    }
+    char base[NP_PATH_MAX];
+    sounds_base(&app.library.games[index], base, sizeof(base));
+    return config_load_sounds(sounds, base);
+}
+
+void app_save_sounds(int index, const struct SoundList *sounds)
+{
+    if (index < 0 || index >= app.library.count || app.storage_error[0])
+        return;
+    const Game *g = &app.library.games[index];
+    char base[NP_PATH_MAX];
+    sounds_base(g, base, sizeof(base));
+    make_dirs(app.paths.sounds);
+    if (config_save_sounds(sounds, base, g->title))
+        np_log("sounds: %s.txt for %s", base, g->title);
+    else
+        np_log("sounds: could not write %s.txt", base);
+}
+
 /* At start: the game a restart was for, if any (and the file gone, so it opens once). */
 static void open_restart_game(void)
 {
@@ -390,6 +423,10 @@ void app_start_game(int index)
             own += app.keys[pad] != 0;
         if (own)
             np_log("keys: %d of the buttons press %s's own keys (%s)", own, g->title, file);
+        /* its sounds: the core lists them in sounds/<its id>.list and plays nothing for those its .txt has off */
+        sounds_base(g, file, sizeof(file));
+        make_dirs(app.paths.sounds);
+        host_set_option("renpy_sounds", file);
     }
     if (!host_load(g, app.paths.root, error, sizeof(error)))
     {
@@ -701,7 +738,7 @@ int main(int argc, char **argv)
         message_box_input(&pressed);
         const bool backdrop = app.screen == SCREEN_LIBRARY || (app.screen == SCREEN_SETTINGS && app.game < 0);
         plat_begin_frame(backdrop ? 0 : 0xff000000u);
-        static const char *const names[SCREEN_COUNT] = {"library", "game", "menu", "settings", "keys"};
+        static const char *const names[SCREEN_COUNT] = {"library", "game", "menu", "settings", "keys", "sounds"};
         ps5_crash_step(names[app.screen]);
         switch (app.screen)
         {
@@ -710,6 +747,7 @@ int main(int argc, char **argv)
         case SCREEN_MENU: menu_screen(pressed); break;
         case SCREEN_SETTINGS: settings_screen(pressed); break;
         case SCREEN_KEYS: keys_screen(pressed); break;
+        case SCREEN_SOUNDS: sounds_screen(pressed); break;
         default: break;
         }
         covers_update(app.game >= 0 ? app.game : app.settings.last_game);

@@ -125,9 +125,11 @@ static void keyboard(bool down, unsigned keycode, uint32_t character, uint16_t m
 void retro_set_environment(retro_environment_t cb)
 {
     environ_cb = cb;
-    /* the core's options: Dulcamara's Settings > Ren'Py, and a game's keys (each RetroPad button's action, input.h) */
+    /* the core's options: Dulcamara's Settings > Ren'Py, a game's keys (each RetroPad button's action, input.h), and
+     * where its sounds' two files are (Sounds for this game: the path without .list and .txt, none by default) */
     static const struct retro_variable variables[] = {
         {"renpy_skip_unseen", "Fast-forward skips unread text too; off|on"},
+        {"renpy_sounds", "Sounds for this game, the path of its list and its sounds off; "},
         {"renpy_key_b", "Cross; default"},       {"renpy_key_y", "Square; default"},
         {"renpy_key_select", "Create; default"}, {"renpy_key_start", "Options; default"},
         {"renpy_key_up", "Up; default"},         {"renpy_key_down", "Down; default"},
@@ -269,6 +271,15 @@ bool retro_load_game(const struct retro_game_info *info)
     const bool skip_all = environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &skip_unseen) && skip_unseen.value &&
                           !strcmp(skip_unseen.value, "on");
     setenv("DULCAMARA_SKIP_UNSEEN", skip_all ? "1" : "0", 1);
+    /* and the sounds' files: dulcamara_errors lists the game's sounds in <it>.list and plays nothing for those
+     * <it>.txt has off */
+    struct retro_variable sounds = {"renpy_sounds", NULL};
+    const char *sounds_base =
+        environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &sounds) && sounds.value ? sounds.value : "";
+    setenv("DULCAMARA_SOUNDS", sounds_base, 1);
+    if (*sounds_base)
+        log_queue(1, "renpy: the game's sounds are listed in %s.list, the ones off in %s.txt", sounds_base,
+                  sounds_base);
     read_keys();
     log_step("starting Ren'Py's thread");
     if (!python_start(engine, info->path, saves, error, sizeof(error)))

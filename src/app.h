@@ -15,6 +15,7 @@ enum Screen
     SCREEN_MENU,     /* the in-game menu (the touchpad) */
     SCREEN_SETTINGS,
     SCREEN_KEYS,     /* Keys for this game: a Ren'Py game's buttons, from its menu or Settings > Ren'Py */
+    SCREEN_SOUNDS,   /* Sounds for this game: a Ren'Py game's sounds, on or off, from the same two places */
     SCREEN_COUNT
 };
 
@@ -62,6 +63,11 @@ void app_apply_keys(void);
  * into it. */
 void app_load_keys(int index, int8_t keys[MAP_BUTTONS]);
 void app_save_keys(int index, const int8_t keys[MAP_BUTTONS]);
+/* The sounds of the library's game index from its two files (config.h): false, and none, when the game has no list
+ * of them yet; and the ones off into its file. */
+struct SoundList;
+bool app_load_sounds(int index, struct SoundList *sounds);
+void app_save_sounds(int index, const struct SoundList *sounds);
 
 /* The bottom hint bar: pairs of (PadGlyph, label), then an optional right-hand text. */
 void app_draw_hints(const int *glyphs, const char *const *labels, int count, const char *right);
@@ -79,6 +85,9 @@ void settings_opened(void);
  * back_to (SCREEN_MENU or SCREEN_SETTINGS). */
 void keys_open(int index, enum Screen back_to);
 void keys_screen(uint32_t pressed);
+/* Sounds for this game, likewise. */
+void sounds_open(int index, enum Screen back_to);
+void sounds_screen(uint32_t pressed);
 /* The on-screen keyboard (ui/keyboard.c), each frame of the game screen, while the game wants text typed (a Ren'Py
  * game's name entry): pad is the controller, pressed its presses with the menus' repeats, options_tapped a short
  * press of Options let go (Done; held, Options is still Dulcamara's menu). True while the keyboard has the
