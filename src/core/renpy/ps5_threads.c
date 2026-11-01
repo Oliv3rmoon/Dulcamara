@@ -27,6 +27,14 @@ typedef struct
     void *arg;
 } Start;
 
+/* threads started and ended, in the log as they come (the first 200): a short sound's decode thread ends at once */
+static int traced;
+
+static bool trace_thread(void)
+{
+    return __atomic_fetch_add(&traced, 1, __ATOMIC_RELAXED) < 200;
+}
+
 static pthread_once_t key_once = PTHREAD_ONCE_INIT;
 static pthread_key_t signal_stack_key;
 static bool key_made;
@@ -34,6 +42,8 @@ static bool key_made;
 /* a thread's signal stack, freed as it ends (by returning or by pthread_exit), once the system has let it go */
 static void free_signal_stack(void *stack)
 {
+    if (trace_thread())
+        log_now(1, "renpy: trace: a thread ends");
     stack_t off = {0};
     off.ss_flags = SS_DISABLE;
     sigaltstack(&off, NULL);
@@ -81,6 +91,8 @@ int __wrap_pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(
     }
     Start *s = malloc(sizeof(*s));
     int rc;
+    if (trace_thread())
+        log_now(1, "renpy: trace: a thread starts at %p", (void *)start);
     if (s)
     {
         s->start = start;
