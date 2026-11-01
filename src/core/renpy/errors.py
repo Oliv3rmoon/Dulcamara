@@ -266,6 +266,23 @@ def change_focus(newfocus, default=False):
     return originals["change_focus"](newfocus, default)
 
 
+sized_images = set()
+
+
+def note_size(image, loaded):
+    # each image's size once Ren'Py has it, the first 200: which pictures are 64x64 or larger, whose textures Ren'Py
+    # fills with a copy on the GPU (gl.c), and how large a game's backgrounds are
+    try:
+        if loaded is None or len(sized_images) >= 200 or image.identity in sized_images:
+            return
+        w, h = loaded.get_size()
+        sized_images.add(image.identity)
+        _dulcamara.log(1, "image %s is %dx%d as Ren'Py loads it" % (
+            describe(getattr(image, "filename", image)), w, h))
+    except Exception:
+        pass
+
+
 def image_get(cache, image, *args, **kwargs):
     try:
         new = image.identity not in seen_images
@@ -275,7 +292,9 @@ def image_get(cache, image, *args, **kwargs):
         new = False
     if new:
         crumb("image", 200, "image %s" % describe(image))
-    return originals["image_get"](cache, image, *args, **kwargs)
+    loaded = originals["image_get"](cache, image, *args, **kwargs)
+    note_size(image, loaded)
+    return loaded
 
 
 def wrap(module):

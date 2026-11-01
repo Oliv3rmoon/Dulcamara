@@ -14,6 +14,18 @@ sound, and the game played on past its menu.
   sound from the archive first, with Python's own file: up to 32 MB into memory, which Ren'Py then plays from; a larger
   one (a movie) is read through Python as it plays. Sounds in their own files are played as before. Not yet tried on
   a console: the build machine played archived sounds both ways.
+- **Copied textures are written back from the cache first (PS5).** The missing options and save panels, the
+  version number's flashing background and the dialogue box gone black: ps5-opengl zeroes a new texture through the
+  CPU's cache and leaves those lines unwritten, while the GPU fills a texture Ren'Py copies (each image of 64x64 or
+  more, each movie frame) past the cache; when the zeroed lines are written back later they put zeros over the copy.
+  The core now has Ren'Py's `glCopyTexImage2D` write one texel first, which makes the driver write the whole empty
+  texture back, and then copy into that storage (`glCopyTexSubImage2D`). The first four copies are checked against
+  their source in the log, the old way and the new. Not yet tried on a console.
+- **The picture is read back straight into the frame (PS5).** Reading it back took 13.5 ms of each 16.7 ms frame;
+  ps5-opengl reads on the CPU at once anyway, so the pixel-pack buffers only added a conversion, two cache flushes
+  and a copy. Every 600 frames the log now also gives what Ren'Py's OpenGL work costs (draws, uploads, new textures,
+  copies, the slowest picture), and a picture whose OpenGL work took over 50 ms gets a line of its own; each image's
+  size as Ren'Py loads it is logged too (the first 200).
 - **An on-screen keyboard for a Ren'Py game's text.** When a game asks for text (a name to enter), Dulcamara's own
   keyboard comes up, away from the game's input, and goes away once the game has its text; the console's keyboard
   cannot be used (a title that imports it does not start). The D-pad, the left stick or the touchpad move on it, Cross
