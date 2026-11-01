@@ -216,9 +216,14 @@ int __wrap_avformat_find_stream_info(void *context, void **options)
 }
 
 /* Ren'Py opens each codec with "threads" "auto": a thread for each of the console's cores, 16 for each movie, each
- * with a core thread's 2 MB of stack (ps5_threads.c). 0.2.8's log had the console refuse them (EAGAIN) for a menu's
- * movie opened a second time while the first still decoded: its picture's codec never opened. A codec gets
- * DULCAMARA_CODEC_THREADS threads (4 unless that is set) at most. */
+ * with a core thread's 2 MB of stack (ps5_threads.c). 0.2.8's log had the console refuse them (EAGAIN) at about 31 of
+ * the core's threads, for a menu's movie opened a second time while the first still decoded: its picture's codec
+ * never opened, and the menu was drawn without it. 0.2.9 gave a codec 4, and the menu came back; but a game's screens
+ * can play several movies at once, a mask (a second stream) with each and its next loop opened early, and in game
+ * boxes still went black and animations stopped, as a movie whose mask or picture did not open would (the log now
+ * says which do not, ps5_threads.c which threads are refused). A codec now decodes on Ren'Py's own thread for it,
+ * FFmpeg starting none (one Zen 2 core decodes a 1080p VP9 movie faster than it plays): DULCAMARA_CODEC_THREADS
+ * gives each up to that many instead. */
 typedef struct
 {
     char *key, *value;
@@ -229,7 +234,7 @@ int av_dict_set(void **dictionary, const char *key, const char *value, int flags
 static void fewer_threads(void **options)
 {
     const char *setting = getenv("DULCAMARA_CODEC_THREADS");
-    const int most = setting && atoi(setting) > 0 ? atoi(setting) : 4;
+    const int most = setting && atoi(setting) > 0 ? atoi(setting) : 1;
     const Entry *threads = options && *options ? av_dict_get(*options, "threads", NULL, 0) : NULL;
     if (!threads || (atoi(threads->value) > 0 && atoi(threads->value) <= most))
         return;
