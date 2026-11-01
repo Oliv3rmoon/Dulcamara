@@ -67,7 +67,8 @@ static void *with_signal_stack(void *p)
     stack_t own = {0};
     own.ss_sp = malloc(SIGNAL_STACK);
     own.ss_size = SIGNAL_STACK;
-    if (own.ss_sp && key_made && sigaltstack(&own, NULL) == 0 && pthread_setspecific(signal_stack_key, own.ss_sp) == 0)
+    const bool installed = own.ss_sp && key_made && sigaltstack(&own, NULL) == 0;
+    if (installed && pthread_setspecific(signal_stack_key, own.ss_sp) == 0)
     {
         /* the most at once, in the log each time it passes another 8 */
         const int now = __atomic_add_fetch(&running, 1, __ATOMIC_RELAXED);
@@ -78,7 +79,16 @@ static void *with_signal_stack(void *p)
             log_queue(1, "renpy: threads: %d of the core's run at once, the most yet", now);
     }
     else
+    {
+        /* not to be freed while it is the thread's (its key not set, nothing would free it as the thread ends) */
+        if (installed)
+        {
+            stack_t off = {0};
+            off.ss_flags = SS_DISABLE;
+            sigaltstack(&off, NULL);
+        }
         free(own.ss_sp);
+    }
     return s.start(s.arg);
 }
 
