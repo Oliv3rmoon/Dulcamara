@@ -60,14 +60,17 @@ build_python_ps5() {
         ac_cv_have_long_long_format=yes ac_cv_little_endian_double=yes ac_cv_x87_double_rounding=no \
         ac_cv_tanh_preserves_zero_sign=yes ac_cv_wchar_t_signed=yes ac_cv_rshift_extends_sign=yes \
         ac_cv_have_size_t_format=yes >"$src/config.site"
-    # PacBrew's zlib and bzip2 headers, and no others: its expat.h would come before Python's own expat (whose
-    # names pyexpat's build changes), as Setup.local's flags follow CFLAGS
-    local headers="$out/work/python/pacbrew-include" h
-    mkdir -p "$headers"
+    # the SDK's stdio.h with its character macros made the console's functions (tools/renpy7/include/stdio.h), copied
+    # where the build's flags can name it (the checkout's path may have spaces); and PacBrew's zlib and bzip2 headers,
+    # and no others: its expat.h would come before Python's own expat (whose names pyexpat's build changes), as
+    # Setup.local's flags follow CFLAGS
+    local stdio="$out/work/python/stdio-include" headers="$out/work/python/pacbrew-include" h
+    mkdir -p "$stdio" "$headers"
+    cp "$root/tools/renpy7/include/stdio.h" "$stdio/stdio.h"
     for h in zlib.h zconf.h bzlib.h; do ln -sf "$hb/include/$h" "$headers/$h"; done
     (cd "$src" && CONFIG_SITE=config.site ./configure --host=x86_64-unknown-freebsd11 --build="$(./config.guess)" \
         --prefix="$out/python" --disable-shared --enable-unicode=ucs4 --without-ensurepip --disable-ipv6 \
-        CC="$cc" CFLAGS="$ps5_flags -I$headers" LDFLAGS="-L$hb/lib" AR="$ar" RANLIB="$ranlib" \
+        CC="$cc" CFLAGS="$ps5_flags -I$stdio -I$headers" LDFLAGS="-L$hb/lib" AR="$ar" RANLIB="$ranlib" \
         PYTHON_FOR_BUILD="$hostpy") >>"$log/python.log" 2>&1 || fail python
     make -C "$src" -j"$jobs" libpython2.7.a >>"$log/python.log" 2>&1 || fail python
     mkdir -p "$out/python/include/python2.7" "$out/python/lib"
@@ -76,8 +79,16 @@ build_python_ps5() {
     cp "$src/libpython2.7.a" "$out/python/lib/"
 }
 python_key="python-ps5-3 $python_version $toolchain_key $(recipe build_python_ps5) $(
-    digest "$root/tools/renpy7/Setup.local" "$root"/tools/patches/python-2.7.18-*.diff)"
+    digest "$root/tools/renpy7/Setup.local" "$root/tools/renpy7/include/stdio.h" \
+        "$root"/tools/patches/python-2.7.18-*.diff)"
 fresh python "$python_key" || { build_python_ps5; stamp python "$python_key"; }
+# FreeBSD's stdio internals, which the SDK's character macros call (tools/renpy7/include/stdio.h): the console's
+# __srget ended Ren'Py 7 at the first .py file Python read (0.2.9). ps5-opengl's Mesa takes __srget too, in flex
+# lexers that only scan strings.
+if "$nm" -u "$out/python/lib/libpython2.7.a" | grep -qwE '__srget|__swbuf'; then
+    echo "CPython 2.7 for the PS5 calls FreeBSD's stdio internals, which end the app on the console" >&2
+    exit 1
+fi
 
 # ---- Ren'Py's and pygame_sdl2's modules: the host build's generated C, compiled for the PS5 with the renamed SDL
 # calls.

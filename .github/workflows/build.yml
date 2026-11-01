@@ -120,7 +120,7 @@ jobs:
             build/renpy-ps5
             build/renpy7-host
             build/renpy7-ps5
-          key: renpy-ps5-${{ hashFiles('build-core-sources.txt', 'tools/build-renpy*.sh', 'tools/renpy/*', 'tools/renpy7/*', 'tools/patches/*', 'tooling/ps5-stubs/*', 'src/core/renpy/*') }}
+          key: renpy-ps5-${{ hashFiles('build-core-sources.txt', 'tools/build-renpy*.sh', 'tools/renpy/*', 'tools/renpy7/*', 'tools/renpy7/include/*', 'tools/patches/*', 'tooling/ps5-stubs/*', 'src/core/renpy/*') }}
           restore-keys: renpy-ps5-
 
       # On the build machine: the update's release decision, the library's game detection, EasyRPG Player's core

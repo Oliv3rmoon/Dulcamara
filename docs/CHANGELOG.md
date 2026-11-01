@@ -5,8 +5,18 @@
 A test build after 0.2.9's console runs. The OGG crash is gone: the tester's title screen plays, she loaded a save
 into the game, and 0.2.8's transparent menu is back. Left were black flashes at the borders of the game's boxes
 (the dialogue box, the title screen's), its animations stopping, and fast cursor movement over its title menu
-hanging the app for a while and losing the menu's background.
+hanging the app for a while and losing the menu's background. And a Ren'Py 7 game ended the app as it started.
 
+- **Ren'Py 7 games no longer end the app as they start (PS5).** A tester's 0.2.9 log had Ren'Py 7's core end the
+  app right after "Ren'Py starting", the same way twice: a protection fault in the console's libc, called from
+  CPython 2.7's tokenizer (`Py_UniversalNewlineFgets`), as Python compiled a module from its source (most likely
+  Ren'Py's `renpy/__init__.py`, which the engine keeps beside its compiled file, older than it once the app is
+  copied). The tokenizer reads a character at a time with `getc_unlocked`, which the SDK's headers, FreeBSD's, make
+  an inline read of the `FILE` and a call to FreeBSD's `__srget`; the app does not link FreeBSD's libc but the
+  console's. CPython 2.7 is now built with a `stdio.h` whose character macros are the console's functions
+  (`tools/renpy7/include/stdio.h`), and Ren'Py 7's build fails if its Python still calls `__srget` or `__swbuf`. A
+  host test checks that the header leaves neither in a file built with it (macOS's headers are FreeBSD's too).
+  Ren'Py 8's Python reads its sources through its own I/O, not a `FILE`.
 - **Images partly clear are made ready on the CPU (PS5).** A tester's shots showed images drawn with their colours
   right and black where they should be clear, changing from one picture to the next: a box around a small cup on a
   table, the title screen's whole logo, a strip beside a name tag, black at the borders of boxes. Ren'Py makes each
