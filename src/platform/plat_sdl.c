@@ -692,6 +692,10 @@ void plat_poll(PadState pads[NP_MAX_PADS], bool *quit)
             {
                 memcpy(p->quat, b.d.quat, sizeof(p->quat));
                 p->motion = motion_on && (b.d.quat[0] || b.d.quat[1] || b.d.quat[2] || b.d.quat[3]);
+                /* the touchpad's click, from the pad itself: SDL's button for it is not the touchpad on every pad
+                 * ("Touchpad isn't a button!", 0.2.6, in a Ren'Py game) */
+                if (touch_on && (b.d.buttons & 0x00100000u)) /* SCE_PAD_BUTTON_TOUCH_PAD */
+                    p->buttons |= BIT(BTN_MENU);
                 /* touch: a finger count, then points of x, y (16 bits each), finger id */
                 p->touching = touch_on && b.d.touch[0] > 0;
                 p->touch_x = (uint16_t)(b.d.touch[8] | b.d.touch[9] << 8);

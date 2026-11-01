@@ -432,8 +432,26 @@ static const int FF_SPEEDS[] = {2, 3, 4, 6, 8};
 static void game_screen(PadState *pads, uint32_t pressed)
 {
     const PadState *p = &pads[app_nav_pad()];
-    if (pressed & BIT(BTN_MENU))
+    /* In a Ren'Py game (whose touchpad is its mouse), Options held for 0.6 s opens Dulcamara's menu too: a short press
+     * of Options is the game's, given to it as Options is let go. */
+    static uint64_t options_since;
+    static bool options_held, options_taken;
+    static int options_frames;
+    const bool own_options = host_core_skips(), options = (p->buttons & BIT(BTN_START)) != 0;
+    if (options && !options_held)
     {
+        options_since = plat_ticks_us();
+        options_taken = false;
+    }
+    bool open_menu = (pressed & BIT(BTN_MENU)) != 0;
+    if (own_options && options && !options_taken && plat_ticks_us() - options_since >= 600000)
+        options_taken = open_menu = true;
+    if (own_options && !options && options_held && !options_taken)
+        options_frames = 6;
+    options_held = options;
+    if (open_menu)
+    {
+        options_frames = 0;
         menu_open();
         app_draw_game(255);
         return;
@@ -453,6 +471,18 @@ static void game_screen(PadState *pads, uint32_t pressed)
 
     PadState game_pad = *p;
     game_pad.buttons &= ~(BIT(BTN_MENU) | BIT(BTN_R2));
+    if (own_options)
+    {
+        game_pad.buttons &= ~BIT(BTN_START);
+        if (options_frames > 0)
+        {
+            game_pad.buttons |= BIT(BTN_START);
+            --options_frames;
+        }
+        /* a click of the touchpad opens the menu: it is no tap on the game's pointer */
+        if (p->buttons & BIT(BTN_MENU))
+            game_pad.touching = false;
+    }
     host_set_input(&game_pad, &app.settings);
 
     /* Ren'Py's cores skip at Ren'Py's own pace: 0.2.5 ran one up to 8 times a frame, each a picture drawn on the GPU
