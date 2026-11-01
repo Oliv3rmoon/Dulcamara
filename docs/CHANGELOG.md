@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.2.6
+
+A test build for Ren'Py on the console, with what its first tester asked for. 0.2.5 showed Ren'Py's picture (its
+stand-in TV output worked: ps5-opengl asked for the output, and pictures came back lit), but the game's menu did not
+answer the controller, its first launch ended without a crash report, and turning fast-forward on and off crashed
+Ren'Py and then the console.
+
+- **The controller is Ren'Py's keyboard and mouse.** 0.2.5 gave Ren'Py an SDL virtual controller, which played on
+  the build machine and did nothing on the console. Each button is now a key of Ren'Py's keymap, put into SDL's
+  events as the skip key always was, which every Ren'Py game knows: the D-pad (and the left stick) move between
+  choices as the arrows, Cross is Return (pick, and move the story on), Circle and Options are Escape (the game's
+  menu, and back out of it), L1 and R1 are Page Up and Down (roll back and forward), Square is H (hide the text
+  window) and Triangle is Tab (skip on and off). A held direction repeats, as a key does. Letter keys carry their
+  text, as Ren'Py's bindings by character need.
+- **The cursor.** L3 turns it on and off: the left stick moves a pointer, drawn on the picture, and Cross clicks
+  where it points. The touchpad moves it too, and it shows for two seconds after.
+- **A game's own keys.** In a Ren'Py game, the menu (the touchpad) has **Keys for this game**: a page with each
+  button but R2 and what it presses, its default or a key the game uses (its inventory's, say): a letter, a digit,
+  F1 to F12, Space, Tab, Return, Escape, the arrows, Page Up and Down, Home, End, Delete, Backspace, Shift, Ctrl or
+  Alt, or the cursor, a click or a right click. Left and Right go through them, L1 and R1 jump from letters to digits
+  to F keys. A change applies at once, and Dulcamara keeps a game's keys for it in `keys/<the game's id>.txt` in its
+  data folder (only the buttons that do not do their default). The core takes them as options
+  (`renpy_key_<button>`) at the game's start and whenever they change; L2 now reaches the Ren'Py cores for it, and
+  Settings > Controls has an L2 to give a button.
+- **Ren'Py games have their own section in the library.** With both kinds of game, the shelf shows RPG Maker's games
+  or Ren'Py's (8's, 7's and 6's together), under two tabs: Up and Down switch, and each section comes back to the game
+  last chosen in it. Sorting applies within each. With one kind of game, the library is as it was.
+- **Fast-forward in a Ren'Py game is Ren'Py's own skip only.** The app ran a Ren'Py core up to 8 times a frame while
+  fast-forwarding, as it runs EasyRPG Player's, and each run is a picture drawn on the GPU and read back (14 ms on the
+  console): the most GPU work a Ren'Py game gave the console. A Ren'Py core now runs once a frame while
+  fast-forwarding, and Ren'Py skips at its own pace; the badge says "Skip". Each picture's read-back buffer is also
+  made once for its size, where 0.2.5 had ps5-opengl allocate and retire one each frame. The log notes each time
+  fast-forward is turned on and off.
+- **What the core's libraries print is written to the log at once.** When the GPU stops answering for 30 seconds,
+  ps5-opengl prints why and ends the app at once (`_Exit`, so no crash report); 0.2.5 held such lines for the next
+  frame, which never came. 0.2.5's first launch ended that way or another way that leaves no report.
+- **Ren'Py's own log goes to `dulcamara.log`:** how long each stage of a game's start took ("Loading script took
+  ..."), and its warnings, the first 200 lines. 0.2.5's 6.5 seconds before the first picture are Ren'Py's start,
+  and the next log says which stage they are.
+- **Ren'Py no longer backs up a game's scripts** into the saves folder each time it compiles them, a developer's
+  backup that only cost a game's start time and storage on the console.
+- **No mipmaps in Ren'Py 8 unless a game asks for them** (`config.mipmap` is off by default). ps5-opengl makes the
+  mipmaps of a picture whose sides are not powers of two, nearly every picture a visual novel has, on the CPU, pixel
+  by pixel, while Ren'Py waits to draw: seconds of work as a scene's pictures load. Both of 0.2.5's silent ends came
+  right after it had made some (and its log held the next frame's lines, so what came after is not known). Ren'Py 7
+  makes mipmaps in its compiled code, which a setting does not reach.
+- **Checked on the build machine:** both Ren'Py cores play the test game with the controller as keys (Cross, Down,
+  Cross), move it on from a game's own key on L2, and draw the cursor, move it with the stick and click with Cross
+  (`tests/test_renpy_core.py`, `tests/test_renpy7_core.py`); the library's sections keep each kind of game together
+  in each sort (`tests/library_check.c`).
+
 ## 0.2.5
 
 A test build for Ren'Py on the console: 0.2.4 ran a Ren'Py game without crashing, with its music, but its picture
