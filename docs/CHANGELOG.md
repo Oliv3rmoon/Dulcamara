@@ -37,6 +37,12 @@ hanging the app for a while and losing the menu's background.
   them) without the audio lock, while the mixer goes through them on its own thread: when they moved, the mixer read
   freed memory. The host tests crashed on it as they made many channels at once
   (`tools/patches/renpy-renpysound-channels.diff`, Ren'Py's `renpysound_core.c` in both cores).
+- **Some 96 MB of graphics memory back (PS5).** Ren'Py's framebuffer, where it makes images ready and draws pictures
+  into textures, is the size of its largest texture, 4096x4096 (64 MB, and as much again for its depth), cleared whole
+  for each picture it draws into a texture. On the console it is now 2048x2048, or a larger game's own size and a
+  border (`config.max_texture_size` and `fbo_size`; `DULCAMARA_MAX_TEXTURE_SIZE` chooses another). The tester thought
+  her game ran out of graphics memory as she moved the cursor fast: the log now says at once when the console refuses
+  OpenGL memory, and each time what it holds passes another 64 MB.
 - **The log names what does not open.** Whatever the trace's count: each movie file the first time it opens, each
   file and codec that does not open (with its file), each thread the console refuses, and the most of the core's
   threads that have run at once.

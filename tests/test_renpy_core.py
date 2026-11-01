@@ -300,6 +300,15 @@ class RenpyCoreTest(unittest.TestCase):
                 hashes[cpu] = re.search(r"picture: 1280x720, XRGB8888, hash ([0-9a-f]{16})", output).group(1)
         self.assertEqual(hashes["0"], hashes["1"])
 
+    def test_a_smaller_largest_texture(self):
+        # Ren'Py's framebuffer is the size of its largest texture, 4096x4096 (64 MB, and as much for its depth): on
+        # the console it is asked for at 2048, DULCAMARA_MAX_TEXTURE_SIZE anywhere, and Ren'Py says what it made.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("start", make_game(work / "Textures"), work / "data",
+                                   env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_MAX_TEXTURE_SIZE": "2048"})
+            self.assertIn("Maximum texture size: 2048x2048", output)
+
     def test_the_presplash(self):
         # A game's presplash (game/presplash.png, or presplash_foreground and _background, a progress bar) is the
         # picture while the game loads, centred on black: Ren'Py draws it into a window of its own the console never

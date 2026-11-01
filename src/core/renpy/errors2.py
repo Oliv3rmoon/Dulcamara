@@ -512,6 +512,15 @@ def movie_texture(channel, mask_channel=None, side_mask=False, mipmap=None):
     return video.texture.get(channel, None), False
 
 
+def max_texture_size():
+    """The size of Ren'Py's largest texture and its framebuffer to ask for: 2048 on the console unless
+    DULCAMARA_MAX_TEXTURE_SIZE says otherwise, anywhere; 0 to leave Ren'Py's own."""
+    setting = os.environ.get("DULCAMARA_MAX_TEXTURE_SIZE", "")
+    if setting.isdigit() and int(setting) >= 1024:
+        return int(setting)
+    return 2048 if _dulcamara.memory() is not None else 0
+
+
 def wrap(module):
     if module.__name__ == "renpy.error" and "report_exception" not in originals:
         originals["report_exception"] = module.report_exception
@@ -553,6 +562,14 @@ def wrap(module):
         if os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
             module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
     elif module.__name__ == "renpy.config":
+        # Ren'Py's framebuffer, where it makes images ready and draws pictures into textures, is the size of its largest
+        # texture (config.max_texture_size, 4096x4096: 64 MB, and as much again for its depth), cleared whole for each
+        # picture it draws into a texture. On the console 2048x2048, or a larger game's own size and a border (Ren'Py's
+        # own sizing): some 96 MB of graphics memory back, which a tester's game seemed to run out of.
+        # (and fbo_size, which 00compat.rpy raises it to)
+        size = max_texture_size()
+        if size:
+            module.max_texture_size = module.fbo_size = (size, size)
         module.periodic_callbacks.append(log_memory)
         module.periodic_callbacks.append(list_sounds)
 
