@@ -180,6 +180,36 @@ def sound_queue(channel, file, name, *args, **kwargs):
     return originals["sound_queue"](channel, file, name, *args, **kwargs)
 
 
+# Every MEMORY_EVERY seconds (the core's clock), what the game holds: the app's heap and the direct memory ps5-opengl
+# holds (on the console), Ren'Py's textures and image cache, Python's objects. The console went down after a long
+# session; the next long log shows what grew.
+MEMORY_EVERY = float(os.environ.get("DULCAMARA_MEMORY_EVERY", 180))  # the tests set it
+memory_next = [0.0]
+
+
+def log_memory():
+    now = _dulcamara.monotonic()
+    if now < memory_next[0]:
+        return
+    memory_next[0] = now + MEMORY_EVERY
+    parts = []
+    try:
+        counts = _dulcamara.memory()
+        if counts:
+            parts.append("the heap %d MB, OpenGL's memory %d MB in %d blocks" % (counts[0] >> 20, counts[1] >> 20,
+                                                                                 counts[2]))
+        loader = getattr(sys.modules["renpy.display"].draw, "texture_loader", None)
+        if loader is not None:
+            size, count = loader.get_texture_size()
+            parts.append("Ren'Py's textures %d (%d MB)" % (count, int(size) >> 20))
+        cache = sys.modules["renpy.display.im"].cache
+        parts.append("its image cache %d MB" % (cache.get_total_size() * 4 >> 20))
+        parts.append("Python's blocks %d" % sys.getallocatedblocks())
+    except Exception as e:
+        parts.append(describe(e))
+    _dulcamara.now("memory: " + ", ".join(parts))
+
+
 last_focus = [None]
 
 
@@ -213,6 +243,7 @@ def wrap(module):
         # two (nearly every one a visual novel has) on the CPU, pixel by pixel, while Ren'Py waits to draw; and the
         # two silent ends of 0.2.5 came right after it had
         module.mipmap = False
+        module.periodic_callbacks.append(log_memory)
     elif module.__name__ == "renpy.audio.renpysound" and "sound_play" not in originals:
         originals["sound_play"] = module.play
         originals["sound_queue"] = module.queue

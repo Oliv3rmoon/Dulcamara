@@ -192,6 +192,15 @@ class RenpyCoreTest(unittest.TestCase):
                 self.assertRegex(output, r"plays u?'audio/tone\.wav' on channel 0, " + source)
                 self.assertNotIn("could not read the sound", output)
 
+    def test_the_memory_line(self):
+        # Every few minutes (DULCAMARA_MEMORY_EVERY seconds; here, at each of Ren'Py's periodic calls) the log says what
+        # the game holds; the heap and ps5-opengl's memory only on the console.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("play", make_game(work / "Memory"), work / "data",
+                                   env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_MEMORY_EVERY": "0"})
+            self.assertRegex(output, r"memory: Ren'Py's textures \d+ \(\d+ MB\), its image cache \d+ MB")
+
     def test_a_game_at_44100_hz(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)

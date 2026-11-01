@@ -187,6 +187,35 @@ def sound_queue(channel, file, name, *args, **kwargs):
     return originals["sound_queue"](channel, file, name, *args, **kwargs)
 
 
+# Every MEMORY_EVERY seconds (the core's clock), what the game holds: the app's heap and the direct memory ps5-opengl
+# holds (on the console), Ren'Py's textures and image cache, Python's objects. The console went down after a long
+# session; the next long log shows what grew.
+MEMORY_EVERY = float(os.environ.get("DULCAMARA_MEMORY_EVERY", 180))  # the tests set it
+memory_next = [0.0]
+
+
+def log_memory():
+    now = _dulcamara.monotonic()
+    if now < memory_next[0]:
+        return
+    memory_next[0] = now + MEMORY_EVERY
+    parts = []
+    try:
+        counts = _dulcamara.memory()
+        if counts:
+            parts.append("the heap %d MB, OpenGL's memory %d MB in %d blocks" % (counts[0] >> 20, counts[1] >> 20,
+                                                                                 counts[2]))
+        loader = getattr(sys.modules["renpy.display"].draw, "texture_loader", None)
+        if loader is not None:
+            size, count = loader.get_texture_size()
+            parts.append("Ren'Py's textures %d (%d MB)" % (count, int(size) >> 20))
+        cache = sys.modules["renpy.display.im"].cache
+        parts.append("its image cache %d MB" % (cache.get_total_size() * 4 >> 20))
+    except Exception as e:
+        parts.append(describe(e))
+    _dulcamara.now("memory: " + ", ".join(parts))
+
+
 last_focus = [None]
 
 
@@ -237,13 +266,15 @@ def wrap(module):
         module.LogFile.write = log_write
     elif module.__name__ == "renpy.preferences" and os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
         module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
+    elif module.__name__ == "renpy.config":
+        module.periodic_callbacks.append(log_memory)
 
 
 class Finder(object):
     """Python 2's import hook: the two modules are imported as they would be, then wrapped."""
 
     names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences", "renpy.log",
-             "renpy.audio.renpysound", "renpy.display.focus", "renpy.display.im")
+             "renpy.audio.renpysound", "renpy.display.focus", "renpy.display.im", "renpy.config")
     busy = False
 
     def find_module(self, name, path=None):

@@ -216,7 +216,7 @@ mkdir -p "$core"
 core_flags=($ps5_flags -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -I"$libretro"
     -I"$out/python/include/python3.12" -I"$out/ps5-opengl/sdk/include" $(pc_cflags))
 objects=()
-for f in core python hooks input log handoff frames audio gl gl_egl ps5_libc ps5_gl_output ps5_console ps5_threads ps5_trace; do
+for f in core python hooks input log handoff frames audio gl gl_egl ps5_libc ps5_gl_output ps5_console ps5_threads ps5_trace ps5_memory; do
     "$cc" "${core_flags[@]}" -c "$root/src/core/renpy/$f.c" -o "$core/$f.o" >"$log/core.log" 2>&1 ||
         { cat "$log/core.log" >&2; exit 1; }
     objects+=("$core/$f.o")
@@ -241,7 +241,8 @@ mkdir -p "$work"
 # chdir goes through the core's own (ps5_libc.c), which keeps the working folder that its getcwd answers with;
 # ps5-opengl's TV output is the core's stand-in (ps5_gl_output.c), so the app keeps the screen; what the core's
 # libraries print goes to dulcamara.log too (ps5_console.c); their threads get room and a signal stack
-# (ps5_threads.c); what ends the app and FFmpeg's steps are traced (ps5_trace.c)
+# (ps5_threads.c); what ends the app and FFmpeg's steps are traced (ps5_trace.c); the direct memory ps5-opengl
+# holds is counted (ps5_memory.c)
 wraps=()
 for f in Open Close SetFlipRate RegisterBuffers2 UnregisterBuffers SubmitFlip IsFlipPending WaitVblank GetFlipStatus \
     AddFlipEvent DeleteFlipEvent IsOutputSupported ConfigureOutput GetOutputStatus GetResolutionStatus; do
@@ -249,7 +250,7 @@ for f in Open Close SetFlipRate RegisterBuffers2 UnregisterBuffers SubmitFlip Is
 done
 for f in printf puts fprintf fputs fwrite pthread_create abort exit _exit _Exit avformat_open_input \
     avformat_find_stream_info avcodec_open2 avcodec_send_packet avcodec_receive_frame av_read_frame swr_convert_frame \
-    avcodec_free_context avformat_close_input swr_free; do
+    avcodec_free_context avformat_close_input swr_free sceKernelAllocateDirectMemory sceKernelReleaseDirectMemory; do
     wraps+=("--wrap=$f")
 done
 "$lld" -r -o "$work/renpy.o" --wrap=chdir "${wraps[@]}" -u ps5_agc_gate2_run "${objects[@]}" --whole-archive "$out/librenpy-modules.a" \
@@ -288,9 +289,10 @@ grep -ohE '\bsceAgc[A-Za-z0-9_]+[[:space:]]*\(' "$root"/tooling/ps5-stubs/*.c | 
     sed 's/^ps5_//' >>"$work/console.txt"
 echo __emutls_get_address >>"$work/console.txt"
 LC_ALL=C sort -u -o "$work/console.txt" "$work/console.txt"
-# The app provides dirfd, nl_langinfo, uselocale, strcasestr and ___mb_cur_max (src/platform/ps5_shims.c), and its
+# The app provides dirfd, nl_langinfo, uselocale, strcasestr and ___mb_cur_max (src/platform/ps5_shims.c) and its
+# heap's size for the memory line (ps5_heap_mapped_bytes, src/platform/ps5_heap.c), and its
 # link the C++ runtime's __dso_handle (as for EasyRPG Player's core).
-LC_ALL=C comm -23 "$work/undefined.txt" "$work/console.txt" | grep -vxE 'dirfd|nl_langinfo|uselocale|strcasestr|___mb_cur_max|__dso_handle' \
+LC_ALL=C comm -23 "$work/undefined.txt" "$work/console.txt" | grep -vxE 'dirfd|nl_langinfo|uselocale|strcasestr|___mb_cur_max|__dso_handle|ps5_heap_mapped_bytes' \
     >"$work/unresolved.txt" || true
 
 # ---- the engine: the host's (Ren'Py's Python, the standard library, the packages are the same on the console)

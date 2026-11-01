@@ -16,6 +16,10 @@ sound, and the game played on past its menu.
   a console: the build machine played archived sounds both ways.
 - **Each sound's source is logged.** Each sound Ren'Py plays or queues says, in `dulcamara.log`, where it comes from:
   the archive, the offset and the size, and how it is read, or its own file.
+- **What the game holds is logged every 3 minutes.** A tester's console went down after a 15-minute session: a
+  `memory:` line in `dulcamara.log` now gives the app's heap, the direct memory ps5-opengl holds (each core counts
+  its `sceKernelAllocateDirectMemory` and `sceKernelReleaseDirectMemory`, `ps5_memory.c`), Ren'Py's textures and
+  image cache, and Python's objects, so a long session's log shows what grows.
 - **What ends the app is logged.** `abort`, `exit`, `_exit` and `_Exit`, called anywhere in a core, write where they
   were called from to `dulcamara.log` before they end the app (`ps5_trace.c`).
 - **FFmpeg's steps are logged.** For each stream Ren'Py opens: opening it, reading its streams, opening its codec,

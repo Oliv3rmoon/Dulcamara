@@ -21,6 +21,7 @@
 #include <SDL.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -118,6 +119,25 @@ static PyObject *py_now(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+#if defined(__PROSPERO__)
+size_t ps5_heap_mapped_bytes(void); /* the app's heap, src/platform/ps5_heap.c */
+int64_t ps5_memory_direct_bytes(void);
+int64_t ps5_memory_direct_blocks(void);
+#endif
+
+/* (the app's heap, the direct memory the core's libraries hold, in how many allocations), in bytes; None off the
+ * console: dulcamara_errors logs it every few minutes */
+static PyObject *py_memory(PyObject *self, PyObject *unused)
+{
+    (void)self, (void)unused;
+#if defined(__PROSPERO__)
+    return Py_BuildValue("(LLL)", (long long)ps5_heap_mapped_bytes(), (long long)ps5_memory_direct_bytes(),
+                         (long long)ps5_memory_direct_blocks());
+#else
+    Py_RETURN_NONE;
+#endif
+}
+
 static PyMethodDef methods[] = {
     {"time", py_time, METH_NOARGS, "time.time() by the core's clock."},
     {"monotonic", py_monotonic, METH_NOARGS, "time.time() since the game started, by the core's clock."},
@@ -126,6 +146,7 @@ static PyMethodDef methods[] = {
     {"step", py_step, METH_VARARGS, "step(text): a step of starting Ren'Py, written to Dulcamara's log at once."},
     {"now", py_now, METH_VARARGS, "now(text): a line of Dulcamara's log, written at once."},
     {"log", py_log, METH_VARARGS, "log(level, text): a line of Dulcamara's log (text in UTF-8)."},
+    {"memory", py_memory, METH_NOARGS, "The app's heap and the direct memory the core holds (PS5)."},
     {NULL, NULL, 0, NULL},
 };
 
