@@ -109,12 +109,24 @@ static PyObject *py_step(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+/* a line written at once, as the steps are: what Ren'Py was doing when a crash leaves no report (dulcamara_errors) */
+static PyObject *py_now(PyObject *self, PyObject *args)
+{
+    (void)self;
+    const char *text;
+    if (!PyArg_ParseTuple(args, "s", &text))
+        return NULL;
+    log_now(1, "renpy: %s", text);
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef methods[] = {
     {"time", py_time, METH_NOARGS, "time.time() by the core's clock."},
     {"monotonic", py_monotonic, METH_NOARGS, "time.monotonic() by the core's clock."},
     {"sleep", py_sleep, METH_O, "time.sleep() on Ren'Py's thread, by the core's clock."},
     {"stopping", py_stopping, METH_NOARGS, "Whether the frontend is closing the game: Ren'Py is to quit."},
     {"step", py_step, METH_VARARGS, "step(text): a step of starting Ren'Py, written to Dulcamara's log at once."},
+    {"now", py_now, METH_VARARGS, "now(text): a line of Dulcamara's log, written at once."},
     {"log", py_log, METH_VARARGS, "log(level, text): a line of Dulcamara's log."},
     {NULL, NULL, 0, NULL},
 };

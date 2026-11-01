@@ -72,6 +72,59 @@ def log_write(log, s, *args):
             _dulcamara.log(1, "renpy log: " + line)
 
 
+crumbs = {"sound": 0, "focus": 0, "image": 0}
+seen_images = set()
+
+
+def crumb(kind, limit, text):
+    # what Ren'Py does as it does it, written at once (_dulcamara.now): a crash that leaves no report ends the log on
+    # the last of these; the first `limit` of each kind
+    if crumbs[kind] < limit:
+        crumbs[kind] += 1
+        _dulcamara.now(text[:200])
+
+
+def describe(what):
+    try:
+        return repr(what)
+    except Exception:
+        return object.__repr__(what)
+
+
+def sound_play(channel, file, name, *args, **kwargs):
+    crumb("sound", 100, "plays %s on channel %s" % (describe(name), describe(channel)))
+    return originals["sound_play"](channel, file, name, *args, **kwargs)
+
+
+def sound_queue(channel, file, name, *args, **kwargs):
+    crumb("sound", 100, "queues %s on channel %s" % (describe(name), describe(channel)))
+    return originals["sound_queue"](channel, file, name, *args, **kwargs)
+
+
+last_focus = [None]
+
+
+def change_focus(newfocus, default=False):
+    # Ren'Py asks again at each interaction: only a new focus is noted
+    text = "focus on %s" % describe(newfocus)
+    if text != last_focus[0]:
+        last_focus[0] = text
+        crumb("focus", 100, text)
+    return originals["change_focus"](newfocus, default)
+
+
+def image_get(cache, image, *args, **kwargs):
+    try:
+        new = image.identity not in seen_images
+        if new:
+            seen_images.add(image.identity)
+    except Exception:
+        new = False
+    if new:
+        crumb("image", 200, "image %s" % describe(image))
+    return originals["image_get"](cache, image, *args, **kwargs)
+
+
 def wrap(module):
     if module.__name__ == "renpy.error":
         originals["report_exception"] = module.report_exception
@@ -81,6 +134,17 @@ def wrap(module):
         # two (nearly every one a visual novel has) on the CPU, pixel by pixel, while Ren'Py waits to draw; and the
         # two silent ends of 0.2.5 came right after it had
         module.mipmap = False
+    elif module.__name__ == "renpy.audio.renpysound" and "sound_play" not in originals:
+        originals["sound_play"] = module.play
+        originals["sound_queue"] = module.queue
+        module.play = sound_play
+        module.queue = sound_queue
+    elif module.__name__ == "renpy.display.focus" and "change_focus" not in originals:
+        originals["change_focus"] = module.change_focus
+        module.change_focus = change_focus
+    elif module.__name__ == "renpy.display.im" and "image_get" not in originals:
+        originals["image_get"] = module.Cache.get
+        module.Cache.get = image_get
     elif module.__name__ == "renpy.log" and "log_write" not in originals:
         originals["log_write"] = module.LogFile.write
         module.LogFile.write = log_write
@@ -113,7 +177,7 @@ class Finder(importlib.abc.MetaPathFinder):
     and again when it reloads."""
 
     names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences", "renpy.log",
-             "renpy.config")
+             "renpy.config", "renpy.audio.renpysound", "renpy.display.focus", "renpy.display.im")
 
     def find_spec(self, name, path, target=None):
         if name not in self.names:

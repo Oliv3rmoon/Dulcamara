@@ -216,7 +216,7 @@ mkdir -p "$core"
 core_flags=($ps5_flags -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -I"$libretro"
     -I"$out/python/include/python3.12" -I"$out/ps5-opengl/sdk/include" $(pc_cflags))
 objects=()
-for f in core python hooks input log handoff frames audio gl gl_egl ps5_libc ps5_gl_output ps5_console; do
+for f in core python hooks input log handoff frames audio gl gl_egl ps5_libc ps5_gl_output ps5_console ps5_threads; do
     "$cc" "${core_flags[@]}" -c "$root/src/core/renpy/$f.c" -o "$core/$f.o" >"$log/core.log" 2>&1 ||
         { cat "$log/core.log" >&2; exit 1; }
     objects+=("$core/$f.o")
@@ -240,13 +240,14 @@ rm -rf "$work"
 mkdir -p "$work"
 # chdir goes through the core's own (ps5_libc.c), which keeps the working folder that its getcwd answers with;
 # ps5-opengl's TV output is the core's stand-in (ps5_gl_output.c), so the app keeps the screen; what the core's
-# libraries print goes to dulcamara.log too (ps5_console.c)
+# libraries print goes to dulcamara.log too (ps5_console.c); their threads get room and a signal stack
+# (ps5_threads.c)
 wraps=()
 for f in Open Close SetFlipRate RegisterBuffers2 UnregisterBuffers SubmitFlip IsFlipPending WaitVblank GetFlipStatus \
     AddFlipEvent DeleteFlipEvent IsOutputSupported ConfigureOutput GetOutputStatus GetResolutionStatus; do
     wraps+=("--wrap=sceVideoOut$f")
 done
-for f in printf puts fprintf fputs fwrite; do
+for f in printf puts fprintf fputs fwrite pthread_create; do
     wraps+=("--wrap=$f")
 done
 "$lld" -r -o "$work/renpy.o" --wrap=chdir "${wraps[@]}" -u ps5_agc_gate2_run "${objects[@]}" --whole-archive "$out/librenpy-modules.a" \
