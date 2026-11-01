@@ -14,7 +14,7 @@ enum Screen
     SCREEN_GAME,
     SCREEN_MENU,     /* the in-game menu (the touchpad) */
     SCREEN_SETTINGS,
-    SCREEN_KEYS,     /* the in-game menu's Keys for this game: a Ren'Py game's buttons */
+    SCREEN_KEYS,     /* Keys for this game: a Ren'Py game's buttons, from its menu or Settings > Ren'Py */
     SCREEN_COUNT
 };
 
@@ -56,9 +56,12 @@ void app_save_settings(void);
 void app_open_settings(enum Screen back_to);
 /* The settings changed what the platform layer or the sounds use: applied now. */
 void app_apply_settings(void);
-/* The running Ren'Py game's keys (app.keys) to its core, which reads them at its next frame; and into its keys file. */
+/* The running Ren'Py game's keys (app.keys) to its core, which reads them at its next frame. */
 void app_apply_keys(void);
-void app_save_keys(void);
+/* The keys of the library's game index (each RetroPad button's KEY_ACTIONS index, config.h) from its keys file, and
+ * into it. */
+void app_load_keys(int index, int8_t keys[MAP_BUTTONS]);
+void app_save_keys(int index, const int8_t keys[MAP_BUTTONS]);
 
 /* The bottom hint bar: pairs of (PadGlyph, label), then an optional right-hand text. */
 void app_draw_hints(const int *glyphs, const char *const *labels, int count, const char *right);
@@ -72,7 +75,9 @@ void menu_open(void);
 void menu_screen(uint32_t pressed);
 void settings_screen(uint32_t pressed);
 void settings_opened(void);
-void keys_open(void);
+/* Keys for this game, for the library's Ren'Py game index (the running one's from its menu); Circle goes back to
+ * back_to (SCREEN_MENU or SCREEN_SETTINGS). */
+void keys_open(int index, enum Screen back_to);
 void keys_screen(uint32_t pressed);
 
 #endif

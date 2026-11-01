@@ -301,7 +301,8 @@ static void restart_for(const Game *g)
 }
 #endif
 
-/* A Ren'Py game's keys (Keys for this game in its menu, ui/settings.c): keys/<its id>.txt in the data folder. */
+/* A Ren'Py game's keys (Keys for this game, from its menu or Settings > Ren'Py: ui/settings.c): keys/<its id>.txt in
+ * the data folder. */
 static void keys_file(const Game *g, char *out, size_t size)
 {
     char name[40];
@@ -316,15 +317,27 @@ void app_apply_keys(void)
             host_set_option(config_key_option(pad), KEY_ACTIONS[app.keys[pad]].value);
 }
 
-void app_save_keys(void)
+void app_load_keys(int index, int8_t keys[MAP_BUTTONS])
 {
-    if (app.game < 0 || app.storage_error[0])
+    if (index < 0 || index >= app.library.count)
+    {
+        memset(keys, 0, MAP_BUTTONS);
         return;
-    const Game *g = &app.library.games[app.game];
+    }
+    char file[NP_PATH_MAX];
+    keys_file(&app.library.games[index], file, sizeof(file));
+    config_load_keys(keys, file);
+}
+
+void app_save_keys(int index, const int8_t keys[MAP_BUTTONS])
+{
+    if (index < 0 || index >= app.library.count || app.storage_error[0])
+        return;
+    const Game *g = &app.library.games[index];
     char file[NP_PATH_MAX];
     keys_file(g, file, sizeof(file));
     make_dirs(app.paths.keys);
-    if (config_save_keys(app.keys, file, g->title))
+    if (config_save_keys(keys, file, g->title))
         np_log("keys: %s for %s", file, g->title);
     else
         np_log("keys: could not write %s", file);

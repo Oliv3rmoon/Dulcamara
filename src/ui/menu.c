@@ -121,7 +121,7 @@ void menu_screen(uint32_t pressed)
             break;
         case ITEM_KEYS:
             sfx_play(SFX_SELECT);
-            keys_open();
+            keys_open(app.game, SCREEN_MENU);
             keys_screen(0); /* drawn now, over the game */
             return;
         case ITEM_SETTINGS:
