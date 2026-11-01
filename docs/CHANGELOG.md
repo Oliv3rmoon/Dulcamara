@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.2.10
+
+A test build after 0.2.9's console runs. The OGG crash is gone: the tester's title screen plays, she loaded a save
+into the game, and 0.2.8's transparent menu is back. Left were black flashes at the borders of the game's boxes
+(the dialogue box, the title screen's), its animations stopping, and fast cursor movement over its title menu
+hanging the app for a while and losing the menu's background.
+
+- **A movie's picture waits for its mask's.** A movie with a mask of its own (`Movie(play=..., mask=...)`, as a
+  box's animated border is) is two streams, each decoded on its own thread. Ren'Py uploaded a colour frame whose
+  mask frame had not come yet as it was (`get_movie_texture`), and a masked movie's colour frames are black wherever
+  its mask makes it clear: the borders flashed black each time the mask's frame came late on the console, and
+  stayed black when the mask's stream did not open. Dulcamara's hook now keeps such a frame until its mask's comes
+  (the movie keeps its last picture meanwhile), and the log counts the waits. The test game feeds Ren'Py's own
+  function frames as the console's late masks come, in both Ren'Py cores.
+- **FFmpeg starts no threads of its own (PS5).** 0.2.9's 4 threads a codec brought the menu back, but a screen
+  can play several movies at once, each with its mask's stream and its next loop opened early, and 0.2.8's log had
+  the console refuse threads at about 31 of the core's. Each stream now decodes on Ren'Py's own thread for it
+  (`DULCAMARA_CODEC_THREADS` gives more).
+- **A movie or sound the console gives no thread for no longer hangs the game.** Ren'Py makes a decode thread for
+  each movie and sound, and drawing a movie's picture waited for that thread forever (`media_read_video`); fast
+  cursor movement over a title menu, a sound for each button, could use up the threads. With none, it is now ready
+  with nothing in it, as one whose file does not open is (`tools/patches/renpy-ffmedia-no-thread.diff`, Ren'Py's
+  `ffmedia.c` in both cores).
+- **A new sound channel is made while the mixer waits.** Ren'Py grows its channels (a movie's and its mask's among
+  them) without the audio lock, while the mixer goes through them on its own thread: when they moved, the mixer read
+  freed memory. The host tests crashed on it as they made many channels at once
+  (`tools/patches/renpy-renpysound-channels.diff`, Ren'Py's `renpysound_core.c` in both cores).
+- **The log names what does not open.** Whatever the trace's count: each movie file the first time it opens, each
+  file and codec that does not open (with its file), each thread the console refuses, and the most of the core's
+  threads that have run at once.
+- **Sounds for this game.** A Ren'Py game's sounds, from its archives and its own files, are listed as it runs;
+  Dulcamara's menu in game (or **Settings > Ren'Py > Sounds for a game**) turns any one off or on again. One that is
+  off plays as a second of silence from memory, so the game's sound goes on as if it played, and its archive is not
+  touched; a change counts from the next play. Asked for by a tester, for a game's hover sound.
+- **Settings > System > Test builds.** With it on, the update offers test builds (pre-releases) too: the newest of
+  the 20 newest releases, with the same checks as a release (this repository's own `PPSA99010.zip` and `SHA256SUMS`
+  for its tag, the ZIP checked against them), so testers need not install each by hand. Turned off, a test build
+  already offered is not installed. Asked for by a tester.
+- Not yet tried on a console, any of it: the host tests (both Ren'Py cores, the update's checks) pass.
+
 ## 0.2.9
 
 A test build after 0.2.8's console log, which ended at the same step in both of a tester's runs: the menu's MP3 and

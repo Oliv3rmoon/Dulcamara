@@ -55,16 +55,20 @@ plays, Triangle sorts, Square looks for new games, OPTIONS opens Settings.
 - **Playing:** the fast-forward speed and how R2 works, the left stick, the game's volume, the FPS.
 - **Controls:** each controller button's game button.
 - **Library:** the order, the interface sounds.
-- **System:** the update check, and closing the app.
+- **Ren'Py:** fast-forward over unread text, and for each of the library's Ren'Py games its keys (**Keys for a
+  game**) and its sounds (**Sounds for a game**: turn any one off, its hover sound say; the game's archive is not
+  changed, the sound plays as silence). In a Ren'Py game, Dulcamara's menu has both for that game.
+- **System:** the update check, **Test builds**, and closing the app.
 
 ## Updates
 
 When it starts (and from **Settings > System > Check for updates now**) Dulcamara asks GitHub for
 the newest release of [Oliv3rmoon/Dulcamara](https://github.com/Oliv3rmoon/Dulcamara/releases)
-that is not a pre-release. When its tag is a newer version and it carries `PPSA99010.zip` and
-`SHA256SUMS`, both this repository's own files, the ZIP is checked against `SHA256SUMS` and installed
-into the folder the app runs from; the new version runs from the next start. Your games and saves are not
-touched. A release built by this repository's workflow can be checked with
+that is not a pre-release. With **Settings > System > Test builds** on, it asks for the 20 newest releases
+instead, test builds (pre-releases) among them, and the newest of those is offered. When its tag is a newer
+version and it carries `PPSA99010.zip` and `SHA256SUMS`, both this repository's own files, the ZIP is checked
+against `SHA256SUMS` and installed into the folder the app runs from; the new version runs from the next start.
+Your games and saves are not touched. A release built by this repository's workflow can be checked with
 `gh attestation verify PPSA99010.zip -R Oliv3rmoon/Dulcamara`.
 ## Building from source
 
