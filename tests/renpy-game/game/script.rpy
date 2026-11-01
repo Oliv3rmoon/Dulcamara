@@ -76,7 +76,8 @@ label start:
         $ dulcamara_test("fullscreen=" + str(_preferences.fullscreen))
     scene expression Solid("#203040")
     show dulcamara at truecenter
-    play music "audio/tone.wav"
+    # DULCAMARA_TEST_MUSIC: another of the game's sounds than its tone (audio/tone.ogg, say)
+    play music os.environ.get("DULCAMARA_TEST_MUSIC", "audio/tone.wav")
     # DULCAMARA_TEST_INPUT=1: a name asked for, as a game asks (renpy.input); the headless frontend types it through
     # the core's keyboard callback, as Dulcamara's on-screen keyboard does
     if os.environ.get("DULCAMARA_TEST_INPUT") == "1":

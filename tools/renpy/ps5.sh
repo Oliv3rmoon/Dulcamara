@@ -117,6 +117,12 @@ build_ffmpeg_ps5() {
         exit 1
     }
     { make -C "$src" -j"$jobs" && make -C "$src" install; } >>"$log/ffmpeg.log" 2>&1 || fail ffmpeg
+    # The console maps code execute-only: a table in the code that the code reads ends the app on that read (the
+    # FFT's, ffmpeg-4.3.1-fft-tables.diff: a game's first OGG sound).
+    if [[ -f $src/libavcodec/x86/fft.o ]] && "$nm" "$src/libavcodec/x86/fft.o" | grep -qE ' t dispatch_tab'; then
+        echo "FFmpeg's FFT keeps its dispatch tables in its code, which the PS5 cannot read" >&2
+        exit 1
+    fi
 }
 
 # ---- Assimp for the PS5, through a CMake toolchain like tools/build-easyrpg.sh's (CMake's checks only compile).

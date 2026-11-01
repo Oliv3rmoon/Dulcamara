@@ -64,7 +64,8 @@ def write_rpa(path, files):
 
 def make_game(directory, width=1280, height=720, sound_rate=48000, broken=False, archived=False):
     """A copy of the test game in `directory`, with its picture, its sound and this run's screen size; `archived`, its
-    sound in an archive (game/audio.rpa) instead of its own file."""
+    sounds in an archive (game/audio.rpa) instead of their own files. Its OGG sound (game/audio/tone.ogg, a second of
+    440 and 660 Hz, oggenc -q 0) is kept in the repository: no Vorbis encoder is at hand."""
     shutil.copytree(GAME, directory)
     game = directory / "game"
     (game / "images").mkdir(exist_ok=True)
@@ -72,8 +73,10 @@ def make_game(directory, width=1280, height=720, sound_rate=48000, broken=False,
     write_png(game / "images/dulcamara.png", 256, 256)
     write_tone(game / "audio/tone.wav")
     if archived:
-        write_rpa(game / "audio.rpa", {"audio/tone.wav": (game / "audio/tone.wav").read_bytes()})
-        (game / "audio/tone.wav").unlink()
+        sounds = sorted((game / "audio").iterdir())
+        write_rpa(game / "audio.rpa", {f"audio/{sound.name}": sound.read_bytes() for sound in sounds})
+        for sound in sounds:
+            sound.unlink()
     (game / "size.rpy").write_text(f"define config.screen_width = {width}\n"
                                    f"define config.screen_height = {height}\n"
                                    f"define config.sound_sample_rate = {sound_rate}\n", encoding="utf-8")
@@ -179,7 +182,7 @@ class RenpyCoreTest(unittest.TestCase):
         # A sound in a game's archive (.rpa) is read before Ren'Py's sound has it: into memory, or, when it is large,
         # through Python's own file as it plays (DULCAMARA_SOUND_IN_MEMORY=0 makes every sound large). The log says
         # where each sound comes from.
-        archived = r"from audio\.rpa at 34 \(\d+ bytes\), "
+        archived = r"from audio\.rpa at \d+ \(\d+ bytes\), "
         for is_archived, limit, source in ((False, None, r"from the file .*tone\.wav"),
                                            (True, None, archived + "read into memory"),
                                            (True, "0", archived + "read through Python")):
@@ -191,6 +194,19 @@ class RenpyCoreTest(unittest.TestCase):
                 self.assertIn("sound: playing", output)
                 self.assertRegex(output, r"plays u?'audio/tone\.wav' on channel 0, " + source)
                 self.assertNotIn("could not read the sound", output)
+
+    def test_an_ogg_sound_in_an_archive(self):
+        # A game's first OGG (Vorbis) sound, from its archive, ended 0.2.6 to 0.2.8 on the console: FFmpeg's FFT read a
+        # table out of the code, which the console cannot read (tools/patches/ffmpeg-4.3.1-fft-tables.diff). This
+        # computer reads its code, so this plays one as the game did, through the same steps.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("play", make_game(work / "Vorbis", archived=True), work / "data",
+                                   env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_MUSIC": "audio/tone.ogg"})
+            self.assertIn("sound: playing", output)
+            self.assertRegex(output, r"plays u?'audio/tone\.ogg' on channel 0, from audio\.rpa at \d+ \(\d+ bytes\), "
+                                     r"read into memory")
+            self.assertNotIn("could not read the sound", output)
 
     def test_the_presplash(self):
         # A game's presplash (game/presplash.png, or presplash_foreground and _background, a progress bar) is the
