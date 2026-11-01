@@ -202,8 +202,10 @@ def list_sounds():
         folder = os.path.dirname(listed)
         if folder and not os.path.isdir(folder):
             os.makedirs(folder)
-        with io.open(listed + ".new", "w", encoding="utf-8", newline="\n") as f:
-            f.write(u"".join(name + u"\n" for name in names))
+        with io.open(listed + ".new", "w", encoding="utf-8", errors="replace", newline="\n") as f:
+            # a name not in UTF-8 (bytes) as near as it comes, not the whole list lost
+            f.write(u"".join((name if isinstance(name, unicode) else name.decode("utf-8", "replace")) + u"\n"
+                             for name in names))
         if os.path.exists(listed):
             os.remove(listed)
         os.rename(listed + ".new", listed)
@@ -272,7 +274,10 @@ def played_names(channel, name):
         found = re.sub(u"/+", u"/", found).lstrip(u"/")
         for prefix in loader.get_prefixes(directory="audio"):
             if loader.loadable_core(prefix + found):
-                return name, prefix + found
+                # the file's own name, which the loader finds whatever the case the game gives it in
+                import unicodedata
+                key = unicodedata.normalize("NFC", (prefix + found).lower())
+                return name, prefix + found, loader.lower_map.get(key, prefix + found)
     except Exception:
         pass
     return name, found
@@ -345,8 +350,53 @@ def sound(action, channel, file, name, kwargs):
     return sound_file(file, part) if part else file
 
 
+# Each copy of a sound that plays at once is a decode thread of its own, and the console refuses threads past some 31:
+# a tester's fast cursor over a title menu played its hover sound on 35 channels at once (Ren'Py's audio channel opens
+# another while the others play), the threads ran out, and the game stopped answering. A sound plays on
+# DULCAMARA_SAME_SOUND_AT_ONCE channels at once at most (2 unless that is set): another copy stops the one started
+# first.
+SAME_SOUND_AT_ONCE = max(1, int(os.environ.get("DULCAMARA_SAME_SOUND_AT_ONCE", "2") or 2))
+started = {}  # channel: (the sound's name, when it was started, counted)
+started_count = [0]
+copies_stopped = [0]
+
+
+def fewer_copies(channel, name):
+    renpysound = sys.modules["renpy.audio.renpysound"]
+    copies = []
+    for other, (other_name, order) in list(started.items()):
+        if other == channel or other_name != name:
+            continue
+        try:
+            playing = renpysound.playing_name(other) == name
+        except Exception:
+            playing = False
+        if playing:
+            copies.append((order, other))
+        else:
+            started.pop(other, None)
+    copies.sort()
+    while len(copies) >= SAME_SOUND_AT_ONCE:
+        _order, oldest = copies.pop(0)
+        started.pop(oldest, None)
+        try:
+            renpysound.stop(oldest)
+        except Exception:
+            continue
+        copies_stopped[0] += 1
+        if copies_stopped[0] <= 20 or copies_stopped[0] % 500 == 0:
+            _dulcamara.log(1, "renpy: %s plays on %d channels at once: the copy on channel %s stopped (%d so far)" % (
+                describe(name), SAME_SOUND_AT_ONCE + 1, describe(oldest), copies_stopped[0]))
+    started_count[0] += 1
+    started[channel] = (name, started_count[0])
+
+
 def sound_play(channel, file, name, *args, **kwargs):
     file = sound("plays", channel, file, name, kwargs)
+    try:
+        fewer_copies(channel, name)
+    except Exception as e:
+        _dulcamara.log(2, "renpy: the copies of %s were not counted: %s" % (describe(name), describe(e)))
     return originals["sound_play"](channel, file, name, *args, **kwargs)
 
 
@@ -474,9 +524,10 @@ def image_get(cache, image, *args, **kwargs):
 # A movie with a mask of its own (Movie(play=..., mask=...)) is two streams, each decoded on its own thread. Ren'Py
 # uploads a colour frame whose mask frame has not come yet as it is (get_movie_texture): such a movie's colour frames
 # are black wherever its mask makes it clear, so a box's animated border flashed black each time the mask's frame came
-# late on the console, and stayed black when the mask's stream did not open. Here a colour frame waits for its mask's
-# (the movie keeps its last picture meanwhile), and is drawn with it when it comes.
-movie_waiting = {}  # channel: its colour frame that waits for the mask's
+# late on the console, and stayed black when the mask's stream did not open. Here each stream's frames wait for the
+# other's, and the oldest of each are drawn together, whichever comes first (two of each kept at most); a movie whose
+# mask never comes is not drawn.
+movie_frames = {}  # channel: (the name playing on it, its colour frames waiting, its mask frames waiting)
 movie_waits = [0]
 
 
@@ -486,24 +537,30 @@ def movie_texture(channel, mask_channel=None, side_mask=False, mipmap=None):
     video = sys.modules["renpy.display.video"]
     if not mask_channel or side_mask or renpy.emscripten:
         return originals["get_movie_texture"](channel, mask_channel, side_mask, mipmap)
-    if not renpy.audio.music.get_playing(channel):
-        movie_waiting.pop(channel, None)
+    playing = renpy.audio.music.get_playing(channel)
+    if not playing:
+        movie_frames.pop(channel, None)
         return None, False
     if mipmap is None:
         mipmap = renpy.config.mipmap_movies
     surf = renpy.audio.music.get_channel(channel).read_video()
     mask_surf = renpy.audio.music.get_channel(mask_channel).read_video()
-    if surf is None and mask_surf is not None:
-        surf = movie_waiting.pop(channel, None)
-    elif surf is not None and mask_surf is None:
-        movie_waiting[channel] = surf
-        surf = None
+    name, colours, masks = movie_frames.get(channel, (None, [], []))
+    if name != playing:  # another movie on the channel: none of the last one's frames
+        name, colours, masks = playing, [], []
+    if surf is not None:
+        colours = (colours + [surf])[-2:]
+    if mask_surf is not None:
+        masks = (masks + [mask_surf])[-2:]
+    surf = mask_surf = None
+    if colours and masks:
+        surf, mask_surf = colours.pop(0), masks.pop(0)
+    elif colours:
         movie_waits[0] += 1
         if movie_waits[0] <= 20 or movie_waits[0] % 600 == 0:
             _dulcamara.log(1, "renpy: movie %s: a picture waits for its mask's (%d so far)" % (channel, movie_waits[0]))
-    elif surf is not None:
-        movie_waiting.pop(channel, None)
-    if surf is not None and mask_surf is not None:
+    movie_frames[channel] = (name, colours, masks)
+    if surf is not None:
         renpy.display.module.alpha_munge(mask_surf, surf, renpy.display.im.identity)
         renpy.display.render.mutated_surface(surf)
         tex = renpy.display.draw.load_texture(surf, True, {"mipmap": mipmap})

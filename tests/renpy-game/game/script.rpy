@@ -69,6 +69,23 @@ init python:
             music.get_playing, music.get_channel = playing, channel
         return "new %s alpha %s" % (news, [s.get_at((0, 0))[3] for s in colours])
 
+    # DULCAMARA_TEST_COPIES=1: a sound played six times at once on Ren'Py's audio channel, which opens another channel
+    # for each while the others play (and starts them as it next goes through its channels): on how many channels it
+    # plays after
+    def dulcamara_copies_play():
+        for _i in range(6):
+            renpy.play("audio/tone.ogg", channel="audio")
+
+    def dulcamara_copies():
+        import renpy.audio.renpysound as renpysound
+        playing = 0
+        for c in renpy.audio.audio.all_channels:
+            number = getattr(c, "_number", None)
+            name = renpysound.playing_name(number) if number is not None else None
+            if name and name.endswith("tone.ogg"):
+                playing += 1
+        return str(playing)
+
     # DULCAMARA_TEST_THREAD=1: a thread of the game's own that is still running when the game is closed
     def dulcamara_forever():
         import time
@@ -119,6 +136,10 @@ label start:
     if os.environ.get("DULCAMARA_TEST_FULLSCREEN") == "1":
         $ _preferences.fullscreen = True
         $ dulcamara_test("fullscreen=" + str(_preferences.fullscreen))
+    if os.environ.get("DULCAMARA_TEST_COPIES") == "1":
+        $ dulcamara_copies_play()
+        $ renpy.pause(0.3, hard=True)
+        $ dulcamara_test("copies playing: " + dulcamara_copies())
     if os.environ.get("DULCAMARA_TEST_MOVIE_MASK") == "1":
         $ dulcamara_test("movie mask: " + dulcamara_movie_mask())
     scene expression Solid("#203040")

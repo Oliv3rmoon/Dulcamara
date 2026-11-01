@@ -163,6 +163,8 @@ static bool environment(unsigned cmd, void *data)
 static const uint32_t *last_picture; /* the last picture given, valid until the next frame */
 static unsigned last_w, last_h;
 static size_t last_pitch;
+static uint32_t *kept;     /* with RENPY_HEADLESS_PICTURE=<file>: the last picture, its rows together, for report() */
+static size_t kept_pixels; /* to write there as raw XRGB8888, top row first */
 static int16_t stick_x, stick_y; /* the left stick */
 
 static void video_refresh(const void *data, unsigned width, unsigned height, size_t pitch)
@@ -193,6 +195,20 @@ static void video_refresh(const void *data, unsigned width, unsigned height, siz
     picture_hash = hash;
     picture_w = width;
     picture_h = height;
+    if (getenv("RENPY_HEADLESS_PICTURE"))
+    {
+        const size_t n = (size_t)width * height;
+        if (kept_pixels < n)
+        {
+            uint32_t *grown = realloc(kept, n * sizeof(uint32_t));
+            if (!grown)
+                return;
+            kept = grown;
+            kept_pixels = n;
+        }
+        for (unsigned y = 0; y < height; ++y)
+            memcpy(kept + (size_t)y * width, (const uint8_t *)data + y * pitch, width * sizeof(uint32_t));
+    }
 }
 
 static void audio_sample(int16_t left, int16_t right)
@@ -360,6 +376,13 @@ static void report(void)
            (unsigned long long)picture_hash);
     printf("sound: %s (%llu frames, %llu batches with sound in them)\n", sound_loud > 10 ? "playing" : "silent",
            (unsigned long long)sound_frames, (unsigned long long)sound_loud);
+    const char *keep = getenv("RENPY_HEADLESS_PICTURE");
+    FILE *f = keep && kept ? fopen(keep, "wb") : NULL;
+    if (f)
+    {
+        fwrite(kept, sizeof(uint32_t), (size_t)picture_w * picture_h, f);
+        fclose(f);
+    }
 }
 
 int main(int argc, char **argv)

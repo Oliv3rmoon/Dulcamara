@@ -284,8 +284,9 @@ class RenpyCoreTest(unittest.TestCase):
         # On the console some images lost their alpha (a black box around a small cup, black at boxes' borders) as
         # Ren'Py made them ready, drawing them premultiplied and copying that. The core makes them ready on the CPU
         # instead there (gl.c, DULCAMARA_GL_CPU_LOAD): the picture of images partly clear, a large and a small one,
-        # is the same either way, to the pixel.
-        hashes = {}
+        # is the same either way, each channel of each pixel within 2 (OpenGLs round the draw's premultiplying a
+        # little differently; premultiplying wrongly is off by up to 255).
+        pictures = {}
         for cpu in ("0", "1"):
             with tempfile.TemporaryDirectory() as directory:
                 work = Path(directory)
@@ -293,12 +294,16 @@ class RenpyCoreTest(unittest.TestCase):
                 write_png_rgba(game / "game/images/dulcamara_glass.png", 96, 80)
                 write_png_rgba(game / "game/images/dulcamara_dot.png", 24, 30)
                 output = self.run_core("start", game, work / "data", env={
-                    "RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_ALPHA": "1", "DULCAMARA_GL_CPU_LOAD": cpu})
+                    "RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_ALPHA": "1", "DULCAMARA_GL_CPU_LOAD": cpu,
+                    "RENPY_HEADLESS_PICTURE": str(work / "picture.raw")})
                 self.assertIn("DULCAMARA-TEST: alpha shown", output)
                 made = "an image made ready on the CPU, the first" in output
                 self.assertEqual(made, cpu == "1", output[-2000:])
-                hashes[cpu] = re.search(r"picture: 1280x720, XRGB8888, hash ([0-9a-f]{16})", output).group(1)
-        self.assertEqual(hashes["0"], hashes["1"])
+                pictures[cpu] = (work / "picture.raw").read_bytes()
+        self.assertEqual(len(pictures["0"]), 1280 * 720 * 4)
+        self.assertEqual(len(pictures["0"]), len(pictures["1"]))
+        worst = max(abs(a - b) for a, b in zip(pictures["0"], pictures["1"]))
+        self.assertLessEqual(worst, 2, "a channel of a pixel differs by %d" % worst)
 
     def test_a_smaller_largest_texture(self):
         # Ren'Py's framebuffer is the size of its largest texture, 4096x4096 (64 MB, and as much for its depth): on
@@ -308,6 +313,17 @@ class RenpyCoreTest(unittest.TestCase):
             output = self.run_core("start", make_game(work / "Textures"), work / "data",
                                    env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_MAX_TEXTURE_SIZE": "2048"})
             self.assertIn("Maximum texture size: 2048x2048", output)
+
+    def test_a_sound_on_two_channels_at_most(self):
+        # Each copy of a sound playing at once is a decode thread of its own, and a tester's fast cursor over a title
+        # menu played its hover sound on 35 channels at once (Ren'Py's audio channel opens another while the others
+        # play) until the console refused threads: played six times at once, it plays on two, the older stopped.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("start", make_game(work / "Copies"), work / "data",
+                                   env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_COPIES": "1"})
+            self.assertIn("DULCAMARA-TEST: copies playing: 2", output)
+            self.assertRegex(output, r"plays on 3 channels at once: the copy on channel \S+ stopped \(4 so far\)")
 
     def test_the_presplash(self):
         # A game's presplash (game/presplash.png, or presplash_foreground and _background, a progress bar) is the
