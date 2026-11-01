@@ -16,6 +16,10 @@ sound, and the game played on past its menu.
   a console: the build machine played archived sounds both ways.
 - **Each sound's source is logged.** Each sound Ren'Py plays or queues says, in `dulcamara.log`, where it comes from:
   the archive, the offset and the size, and how it is read, or its own file.
+- **Nothing runs while another app has the screen.** Switching from a running Ren'Py game to another app, back, and
+  away again took the console down, as opening Dulcamara after rest mode once did. While the PS5 has another app in
+  front (`sceSystemServiceGetStatus`), Dulcamara now runs no game, draws and presents nothing and plays no sound, and
+  `dulcamara.log` says when it leaves and gets the screen back.
 - **What the game holds is logged every 3 minutes.** A tester's console went down after a 15-minute session: a
   `memory:` line in `dulcamara.log` now gives the app's heap, the direct memory ps5-opengl holds (each core counts
   its `sceKernelAllocateDirectMemory` and `sceKernelReleaseDirectMemory`, `ps5_memory.c`), Ren'Py's textures and

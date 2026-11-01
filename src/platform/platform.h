@@ -143,6 +143,9 @@ void plat_asset_path(char *out, size_t size, const char *relative);
 
 uint64_t plat_ticks_us(void);
 void plat_sleep_us(uint32_t us);
+/* Whether another app has the console's screen (the PS5 switched to it, or to its home screen): the app is not to run
+ * its game, draw or present until it is back. Always false on the desktop. */
+bool plat_in_background(void);
 void plat_notify(const char *message); /* PS5 system notification; desktop log */
 
 #endif

@@ -2270,6 +2270,33 @@ void plat_sleep_us(uint32_t us)
     SDL_Delay(us / 1000);
 }
 
+#if defined(__PROSPERO__)
+/* sceSystemServiceGetStatus's answer: the PS4 layout, with room to spare (as Physalis reads it). */
+typedef struct
+{
+    int32_t event_count;
+    uint8_t system_ui_overlaid;
+    uint8_t in_background;
+    uint8_t cpu_mode7_normal;
+    uint8_t live_streaming;
+    uint8_t out_of_vr_area;
+    uint8_t reserved[251];
+} SystemStatus;
+
+int sceSystemServiceGetStatus(SystemStatus *status);
+#endif
+
+bool plat_in_background(void)
+{
+#if defined(__PROSPERO__)
+    SystemStatus status;
+    memset(&status, 0, sizeof(status));
+    return sceSystemServiceGetStatus(&status) == 0 && status.in_background;
+#else
+    return false;
+#endif
+}
+
 void plat_notify(const char *message)
 {
     np_log("notify: %s", message);

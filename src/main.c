@@ -644,6 +644,7 @@ int main(int argc, char **argv)
     uint64_t last = plat_ticks_us();
     const uint64_t opened = last;
     bool update_offered = false;
+    bool in_background = false;
     while (!quit)
     {
         const uint64_t now = plat_ticks_us();
@@ -651,6 +652,29 @@ int main(int argc, char **argv)
         if (app.dt > 0.1f)
             app.dt = 0.1f;
         last = now;
+
+        /* While another app has the screen (the PS5 switched to one, or to its home screen), nothing runs: no game,
+         * no drawing, no presenting, no sound. Switching away from a running Ren'Py game, back and away again took the
+         * console down, as opening Dulcamara after rest mode once did, with the core's OpenGL, its read-back and the
+         * app's Vulkan presents all going on behind the other app. */
+        if (plat_in_background())
+        {
+            if (!in_background)
+            {
+                in_background = true;
+                np_log("app: another app has the screen: the game, drawing and sound stop");
+                plat_audio_clear();
+            }
+            plat_poll(pads, &quit);
+            plat_sleep_us(50000);
+            continue;
+        }
+        if (in_background)
+        {
+            in_background = false;
+            np_log("app: the screen is the app's again");
+            last = plat_ticks_us();
+        }
 
         /* an update found at start installs by itself, once, a second after the app opened (as Mandrake) */
         if (!update_offered && update_state() == UPDATE_AVAILABLE && now - opened >= 1000000 && app.game < 0)
