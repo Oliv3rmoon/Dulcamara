@@ -18,10 +18,29 @@ import _dulcamara
 originals = {}
 
 
+def save_error(text):
+    """Ren'Py's error as its error screen shows it, also in <logs>/renpy-errors.txt beside dulcamara.log (the newest
+    last, begun again once past 1 MB), headed by the game's folder: a tester sends it and plays on past the screen."""
+    folder = os.environ.get("DULCAMARA_LOGS")
+    if not folder:
+        return
+    try:
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, "renpy-errors.txt")
+        mode = "a" if os.path.exists(path) and os.path.getsize(path) < (1 << 20) else "w"
+        config = sys.modules.get("renpy.config")
+        game = os.path.basename(os.path.normpath(config.basedir)) if getattr(config, "basedir", None) else "?"
+        with open(path, mode, encoding="utf-8", errors="replace") as f:
+            f.write("-- " + game + "\n" + text + "\n\n")
+    except Exception as e:
+        _dulcamara.log(2, "renpy: the error could not be written to %s: %s" % (folder, describe(e)))
+
+
 def log_error(text):
     _dulcamara.log(2, "Ren'Py reported an error:")
     for line in text.splitlines():
         _dulcamara.log(2, line)
+    save_error(text)
 
 
 def report_exception(e, editor=True):

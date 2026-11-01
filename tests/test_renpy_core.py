@@ -438,6 +438,10 @@ class RenpyCoreTest(unittest.TestCase):
                                    env={**env, "DULCAMARA_TEST_REPORT": "error"})
             self.assertIn("Ren'Py reported an error", output)
             self.assertFalse(opened.exists(), "Ren'Py opened an editor for the error")
+            # and kept beside dulcamara.log, for a tester to send
+            saved = (work / "data2" / "logs" / "renpy-errors.txt").read_text(encoding="utf-8")
+            self.assertTrue(saved.startswith("-- Reported\n"), saved[:200])
+            self.assertIn("a test error, reported", saved)
 
     def test_fast_forward_skips_unread_text_when_set(self):
         # Settings > Ren'Py's "skip unread text too": the game's own preference (here, the default: unread text stops

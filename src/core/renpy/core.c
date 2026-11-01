@@ -277,6 +277,10 @@ bool retro_load_game(const struct retro_game_info *info)
     const char *sounds_base =
         environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &sounds) && sounds.value ? sounds.value : "";
     setenv("DULCAMARA_SOUNDS", sounds_base, 1);
+    /* and the logs' folder beside the frontend's dulcamara.log, where dulcamara_errors keeps Ren'Py's errors */
+    char logs[1100];
+    snprintf(logs, sizeof(logs), "%s/logs", save ? save : info->path);
+    setenv("DULCAMARA_LOGS", logs, 1);
     if (*sounds_base)
         log_queue(1, "renpy: the game's sounds are listed in %s.list, the ones off in %s.txt", sounds_base,
                   sounds_base);

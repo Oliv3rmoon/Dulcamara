@@ -16,6 +16,9 @@ that only starting the app again cleared.
   autosave the console gives no thread for is made at once on Ren'Py's own thread, as a blocking autosave is, its
   flag and its thread put right first (a host test refuses the thread, in both Ren'Py cores). The memory line every
   3 minutes and each refused thread now say how much of that system memory is free.
+- **Ren'Py's error screen is kept in `logs/renpy-errors.txt`**, beside `dulcamara.log`, as the screen shows it and
+  headed by the game's folder (the newest last; begun again once past 1 MB): a tester sends it and plays on past the
+  screen (the tester's own request). It was in `dulcamara.log` already, among everything else.
 - **The log finds black flashes in the core's pictures.** A part of the picture that turns pure black and is not
   black again within 6 pictures is in the log with its box and the OpenGL work of the picture it began in
   (`black flash N, picture P, ...`). A flash a tester sees that is not in the log happens after the core's pictures,
