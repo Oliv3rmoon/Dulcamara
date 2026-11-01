@@ -38,6 +38,14 @@ typedef struct
     int capacity;
 } Library;
 
+/* The library's sections, in their order on the shelf: RPG Maker's games, then Ren'Py's (8's, 7's and 6's alike). */
+enum
+{
+    SECTION_RPG_MAKER,
+    SECTION_RENPY,
+    SECTION_COUNT
+};
+
 /* A folder that holds RPG_RT.ldb and RPG_RT.lmt. */
 bool library_dir_is_game(const char *dir);
 /* An archive that holds a game: fills g (title, inner, path...) and returns true. */
@@ -48,8 +56,12 @@ bool library_read_folder(const char *dir, Game *g);
 /* Every game in root (the games folder), in no particular order. */
 void library_scan(Library *lib, const char *root);
 void library_free(Library *lib);
-/* mode 0: by title; 1: the last played first, then by title. */
+/* Section by section (SECTION_*), and in each, mode 0: by title; 1: the last played first, then by title. */
 void library_sort(Library *lib, int mode);
+/* The section a game is in. */
+int library_section(const Game *g);
+/* Where a section's games start in a sorted library (library_sort keeps each together), and how many there are. */
+int library_section_start(const Library *lib, int section, int *count);
 
 /* The picture of the game's title screen: a file path for a folder, the name of the entry inside an archive. Reads
  * RPG_RT.ldb for its name (and sets g->engine); without one, the only picture in Title/. False when there is none. */

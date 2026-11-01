@@ -1,6 +1,7 @@
 /*
  * Dulcamara - the library's game detection (src/library.c, src/rpgmaker.c), on the build machine: a games
- * folder of made-up games is written, scanned and checked, then EasyRPG's TestGame when it is given.
+ * folder of made-up games is written, scanned, sorted into its sections and checked, then EasyRPG's TestGame when it
+ * is given.
  * tests/test_library.py builds and runs it.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -445,6 +446,81 @@ static void check_renpy_games(void)
     library_free(&lib);
 }
 
+/* The titles of a library, in its order, one space between. */
+static void titles(const Library *lib, char *out, size_t size)
+{
+    out[0] = '\0';
+    for (int i = 0; i < lib->count; ++i)
+        snprintf(out + strlen(out), size - strlen(out), "%s%s", i ? " " : "", lib->games[i].title);
+}
+
+/* The sections: in a games folder of both kinds, sorted, RPG Maker's games come first and Ren'Py's (8's and 7's
+ * together) after, each section in its own order, by title or the last played first. One kind alone is one section. */
+static void check_sections(void)
+{
+    char root[NP_PATH_MAX], dir[NP_PATH_MAX], sub[NP_PATH_MAX], order[256];
+    path_join(root, sizeof(root), base, "mixed-games");
+    make_dirs(root);
+    /* by title alone they would mix: Alfa (Ren'Py), Bravo (RPG Maker), Mike (Ren'Py 7), Yankee (RPG Maker), Zulu */
+    static const char *const RPG_MAKER[] = {"Yankee", "Bravo"}, *const RENPY[] = {"Zulu", "Mike", "Alfa"};
+    for (size_t i = 0; i < sizeof(RPG_MAKER) / sizeof(RPG_MAKER[0]); ++i)
+    {
+        make_dir(dir, sizeof(dir), root, RPG_MAKER[i]);
+        write_text(dir, "RPG_RT.ldb", "x");
+        write_text(dir, "RPG_RT.lmt", "x");
+    }
+    for (size_t i = 0; i < sizeof(RENPY) / sizeof(RENPY[0]); ++i)
+    {
+        make_dir(dir, sizeof(dir), root, RENPY[i]);
+        make_dir(sub, sizeof(sub), dir, "game");
+        write_text(sub, "script.rpy", "label start:\n");
+    }
+    path_join(dir, sizeof(dir), root, "Mike");
+    make_dir(sub, sizeof(sub), dir, "renpy");
+    write_text(sub, "__init__.py", "version_tuple = (7, 4, 11, vc_version)\n");
+
+    Library lib = {0};
+    library_scan(&lib, root);
+    library_sort(&lib, 0);
+    titles(&lib, order, sizeof(order));
+    CHECK(!strcmp(order, "Bravo Yankee Alfa Mike Zulu"), "by title, RPG Maker's section first: %s", order);
+    int count = -1, first = library_section_start(&lib, SECTION_RPG_MAKER, &count);
+    CHECK(first == 0 && count == 2, "RPG Maker's section: %d games from %d", count, first);
+    first = library_section_start(&lib, SECTION_RENPY, &count);
+    CHECK(first == 2 && count == 3, "Ren'Py's section: %d games from %d", count, first);
+    const Game *m = find(&lib, "Mike");
+    CHECK(m && m->core == CORE_RENPY7 && library_section(m) == SECTION_RENPY,
+          "a Ren'Py 7 game is in Ren'Py's section, on Ren'Py 7's core: core %d", m ? m->core : -1);
+
+    /* Zulu, played last of them all, still comes after RPG Maker's games */
+    for (int i = 0; i < lib.count; ++i)
+    {
+        const char *name = lib.games[i].name;
+        lib.games[i].played = !strcmp(name, "Zulu")     ? 300
+                              : !strcmp(name, "Yankee") ? 200
+                              : !strcmp(name, "Mike")   ? 100
+                                                        : 0;
+    }
+    library_sort(&lib, 1);
+    titles(&lib, order, sizeof(order));
+    CHECK(!strcmp(order, "Yankee Bravo Zulu Mike Alfa"), "the last played first, in each section: %s", order);
+    library_free(&lib);
+
+    library_scan(&lib, games);
+    library_sort(&lib, 0);
+    first = library_section_start(&lib, SECTION_RPG_MAKER, &count);
+    CHECK(first == 0 && count == lib.count && count > 0, "RPG Maker's games alone: one section of %d", count);
+    library_section_start(&lib, SECTION_RENPY, &count);
+    CHECK(count == 0, "and Ren'Py's is empty: %d", count);
+    library_free(&lib);
+    path_join(root, sizeof(root), base, "renpy-games");
+    library_scan(&lib, root);
+    library_sort(&lib, 1);
+    first = library_section_start(&lib, SECTION_RENPY, &count);
+    CHECK(first == 0 && count == lib.count && count > 0, "Ren'Py's games alone: one section of %d", count);
+    library_free(&lib);
+}
+
 static void check_testgame(const char *dir)
 {
     Library lib = {0};
@@ -491,6 +567,7 @@ int main(int argc, char **argv)
     make_games();
     check_made_up_games();
     check_renpy_games();
+    check_sections();
     check_pieces();
     if (argc > 2)
         check_testgame(argv[2]);

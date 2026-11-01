@@ -135,6 +135,7 @@ typedef struct
     char cache[NP_PATH_MAX];   /* downloads (the update) */
     char config[NP_PATH_MAX];  /* root/settings.ini */
     char played[NP_PATH_MAX];  /* root/played.txt: when each game was last played */
+    char keys[NP_PATH_MAX];    /* root/keys: a Ren'Py game's keys, <the game's id>.txt (config.h) */
 } Paths;
 
 void np_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));

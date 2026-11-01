@@ -301,6 +301,35 @@ static void restart_for(const Game *g)
 }
 #endif
 
+/* A Ren'Py game's keys (Keys for this game in its menu, ui/settings.c): keys/<its id>.txt in the data folder. */
+static void keys_file(const Game *g, char *out, size_t size)
+{
+    char name[40];
+    snprintf(name, sizeof(name), "%s.txt", g->id);
+    path_join(out, size, app.paths.keys, name);
+}
+
+void app_apply_keys(void)
+{
+    for (int pad = 0; pad < MAP_BUTTONS; ++pad)
+        if (config_key_option(pad))
+            host_set_option(config_key_option(pad), KEY_ACTIONS[app.keys[pad]].value);
+}
+
+void app_save_keys(void)
+{
+    if (app.game < 0 || app.storage_error[0])
+        return;
+    const Game *g = &app.library.games[app.game];
+    char file[NP_PATH_MAX];
+    keys_file(g, file, sizeof(file));
+    make_dirs(app.paths.keys);
+    if (config_save_keys(app.keys, file, g->title))
+        np_log("keys: %s for %s", file, g->title);
+    else
+        np_log("keys: could not write %s", file);
+}
+
 /* At start: the game a restart was for, if any (and the file gone, so it opens once). */
 static void open_restart_game(void)
 {
@@ -336,6 +365,19 @@ void app_start_game(int index)
     np_log("game: starting %s (%s)", g->title, g->path);
     ps5_crash_step("loading a game");
     host_set_option("renpy_skip_unseen", app.settings.renpy_skip_unseen ? "on" : "off");
+    if (core_is_renpy(g->core))
+    {
+        /* every button's key, the game's own or the core's: none stays from the game before */
+        char file[NP_PATH_MAX];
+        keys_file(g, file, sizeof(file));
+        config_load_keys(app.keys, file);
+        app_apply_keys();
+        int own = 0;
+        for (int pad = 0; pad < MAP_BUTTONS; ++pad)
+            own += app.keys[pad] != 0;
+        if (own)
+            np_log("keys: %d of the buttons press %s's own keys (%s)", own, g->title, file);
+    }
     if (!host_load(g, app.paths.root, error, sizeof(error)))
     {
         app_message_box(error);
@@ -584,7 +626,7 @@ int main(int argc, char **argv)
         message_box_input(&pressed);
         const bool backdrop = app.screen == SCREEN_LIBRARY || (app.screen == SCREEN_SETTINGS && app.game < 0);
         plat_begin_frame(backdrop ? 0 : 0xff000000u);
-        static const char *const names[SCREEN_COUNT] = {"library", "game", "menu", "settings"};
+        static const char *const names[SCREEN_COUNT] = {"library", "game", "menu", "settings", "keys"};
         ps5_crash_step(names[app.screen]);
         switch (app.screen)
         {
@@ -592,6 +634,7 @@ int main(int argc, char **argv)
         case SCREEN_GAME: game_screen(pads, pressed); break;
         case SCREEN_MENU: menu_screen(pressed); break;
         case SCREEN_SETTINGS: settings_screen(pressed); break;
+        case SCREEN_KEYS: keys_screen(pressed); break;
         default: break;
         }
         covers_update(app.game >= 0 ? app.game : app.settings.last_game);

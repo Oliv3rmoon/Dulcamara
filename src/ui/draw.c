@@ -301,7 +301,7 @@ static const char *glyph_label(enum PadGlyph g)
     case GLYPH_L3: return "L3";
     case GLYPH_R3: return "R3";
     case GLYPH_START: return "OPTIONS";
-    case GLYPH_SELECT: return "SELECT";
+    case GLYPH_SELECT: return "CREATE"; /* the DualSense's name for it */
     case GLYPH_PS1_START: return "START";
     default: return NULL;
     }

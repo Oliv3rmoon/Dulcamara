@@ -482,9 +482,31 @@ void library_free(Library *lib)
     memset(lib, 0, sizeof(*lib));
 }
 
+int library_section(const Game *g)
+{
+    return core_is_renpy(g->core) ? SECTION_RENPY : SECTION_RPG_MAKER;
+}
+
+int library_section_start(const Library *lib, int section, int *count)
+{
+    int first = -1, n = 0;
+    for (int i = 0; i < lib->count; ++i)
+        if (library_section(&lib->games[i]) == section)
+        {
+            if (first < 0)
+                first = i;
+            ++n;
+        }
+    if (count)
+        *count = n;
+    return first < 0 ? 0 : first;
+}
+
 static int by_title(const void *a, const void *b)
 {
     const Game *x = a, *y = b;
+    if (library_section(x) != library_section(y))
+        return library_section(x) - library_section(y);
     int c = str_icmp(x->title, y->title);
     return c ? c : strcmp(x->location, y->location);
 }
@@ -492,6 +514,8 @@ static int by_title(const void *a, const void *b)
 static int by_played(const void *a, const void *b)
 {
     const Game *x = a, *y = b;
+    if (library_section(x) != library_section(y))
+        return library_section(x) - library_section(y);
     if (x->played != y->played)
         return x->played > y->played ? -1 : 1;
     return by_title(a, b);

@@ -23,12 +23,13 @@ enum
     ITEM_RESUME,
     ITEM_FAST,
     ITEM_RESET,
+    ITEM_KEYS, /* Ren'Py's games: what each button presses (ui/settings.c) */
     ITEM_SETTINGS,
     ITEM_QUIT,
     ITEM_COUNT
 };
 
-static int selected;
+static int selected; /* a place in the game's items */
 static float slide;  /* 0..1, the panel coming in */
 static float bar_y;  /* the highlight, animated */
 static bool confirm_reset;
@@ -38,10 +39,20 @@ static bool playing_renpy(void)
     return app.game >= 0 && core_is_renpy(app.library.games[app.game].core);
 }
 
+/* The game's items, in order: all of them, Keys for this game in Ren'Py's games only. */
+static int menu_items(int *items)
+{
+    int n = 0;
+    for (int i = 0; i < ITEM_COUNT; ++i)
+        if (i != ITEM_KEYS || playing_renpy())
+            items[n++] = i;
+    return n;
+}
+
 void menu_open(void)
 {
     app.screen = SCREEN_MENU;
-    selected = ITEM_RESUME;
+    selected = 0; /* Resume */
     slide = 0.0f;
     bar_y = -1.0f;
     confirm_reset = false;
@@ -56,6 +67,9 @@ static void resume(void)
 
 void menu_screen(uint32_t pressed)
 {
+    int items[ITEM_COUNT];
+    const int count = menu_items(items);
+    selected = selected < count ? selected : count - 1;
     if (pressed & (BIT(BTN_CIRCLE) | BIT(BTN_MENU)))
     {
         resume();
@@ -64,19 +78,19 @@ void menu_screen(uint32_t pressed)
     }
     if (pressed & BIT(BTN_UP))
     {
-        selected = (selected + ITEM_COUNT - 1) % ITEM_COUNT;
+        selected = (selected + count - 1) % count;
         confirm_reset = false;
         sfx_play(SFX_CLICK);
     }
     if (pressed & BIT(BTN_DOWN))
     {
-        selected = (selected + 1) % ITEM_COUNT;
+        selected = (selected + 1) % count;
         confirm_reset = false;
         sfx_play(SFX_CLICK);
     }
     if (pressed & BIT(BTN_CROSS))
     {
-        switch (selected)
+        switch (items[selected])
         {
         case ITEM_RESUME: resume(); break;
         case ITEM_FAST:
@@ -105,6 +119,11 @@ void menu_screen(uint32_t pressed)
                 resume();
             }
             break;
+        case ITEM_KEYS:
+            sfx_play(SFX_SELECT);
+            keys_open();
+            keys_screen(0); /* drawn now, over the game */
+            return;
         case ITEM_SETTINGS:
             sfx_play(SFX_SELECT);
             app_open_settings(SCREEN_MENU);
@@ -140,19 +159,22 @@ void menu_screen(uint32_t pressed)
     text_draw(x + 64, y + 50, 24, FONT_REGULAR, argb_alpha(TH_TEXT_DIM, slide), ALIGN_LEFT, host_core_name());
     y += 120;
 
-    static const int ICONS[ITEM_COUNT] = {ICON_PLAYER_PLAY, ICON_PLAYER_TRACK_NEXT, ICON_ROTATE, ICON_SETTINGS,
-                                          ICON_DOOR_EXIT};
-    const float row = 84;
+    static const int ICONS[ITEM_COUNT] = {ICON_PLAYER_PLAY, ICON_PLAYER_TRACK_NEXT, ICON_ROTATE, ICON_KEYBOARD,
+                                          ICON_SETTINGS, ICON_DOOR_EXIT};
+    /* six items (Ren'Py's) a little closer, so that the last stays clear of the lines at the foot */
+    const float row = count > 5 ? 78 : 84, inset = (row - 48) * 0.5f;
     const float target = y + selected * row;
     if (bar_y < 0)
         bar_y = target;
     anim_approach(&bar_y, target, app.dt, TH_SNAP);
     draw_rrect(x + 40, bar_y, w - 80, row - 10, TH_RADIUS_SMALL, argb_alpha(TH_ROW_SELECTED, slide));
     draw_rect(x + 40, bar_y + 14, 5, row - 38, argb_alpha(TH_FOCUS, slide));
-    for (int i = 0; i < ITEM_COUNT; ++i)
+    for (int i = 0; i < count; ++i)
     {
+        const int item = items[i];
+        const bool on = i == selected;
         char label[96];
-        switch (i)
+        switch (item)
         {
         case ITEM_RESUME: str_copy(label, sizeof(label), tr("Resume")); break;
         case ITEM_FAST:
@@ -160,19 +182,20 @@ void menu_screen(uint32_t pressed)
             break;
         case ITEM_RESET:
             str_copy(label, sizeof(label),
-                     playing_renpy()                         ? tr("Back to the title screen: the game's menu")
-                     : confirm_reset && selected == ITEM_RESET ? tr("Press again: unsaved progress is lost")
-                                                               : tr("Back to the title screen"));
+                     playing_renpy()       ? tr("Back to the title screen: the game's menu")
+                     : confirm_reset && on ? tr("Press again: unsaved progress is lost")
+                                           : tr("Back to the title screen"));
             break;
+        case ITEM_KEYS: str_copy(label, sizeof(label), tr("Keys for this game")); break;
         case ITEM_SETTINGS: str_copy(label, sizeof(label), tr("Settings")); break;
         case ITEM_QUIT: str_copy(label, sizeof(label), tr("Quit to the library")); break;
         }
         const float ry = y + i * row;
-        const uint32_t color = i == selected ? TH_TEXT : TH_TEXT_SOFT;
-        icon_draw(ICONS[i], x + 72, ry + 18, 36, argb_alpha(i == selected ? TH_FOCUS : TH_TEXT_DIM, slide));
-        text_draw_fit(x + 130, ry + 20, 30, i == selected ? FONT_BOLD : FONT_REGULAR,
-                      argb_alpha(i == ITEM_RESET && confirm_reset && selected == i ? TH_DANGER : color, slide),
-                      ALIGN_LEFT, w - 200, label);
+        const uint32_t color = on ? TH_TEXT : TH_TEXT_SOFT;
+        icon_draw(ICONS[item], x + 72, ry + inset, 36, argb_alpha(on ? TH_FOCUS : TH_TEXT_DIM, slide));
+        text_draw_fit(x + 130, ry + inset + 2, 30, on ? FONT_BOLD : FONT_REGULAR,
+                      argb_alpha(item == ITEM_RESET && confirm_reset && on ? TH_DANGER : color, slide), ALIGN_LEFT,
+                      w - 200, label);
     }
     text_draw_fit(x + 64, h - 176, 22, FONT_REGULAR, argb_alpha(TH_HINT, slide), ALIGN_LEFT, w - 128,
                   tr("Save in the game's own menu."));

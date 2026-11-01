@@ -14,6 +14,7 @@ enum Screen
     SCREEN_GAME,
     SCREEN_MENU,     /* the in-game menu (the touchpad) */
     SCREEN_SETTINGS,
+    SCREEN_KEYS,     /* the in-game menu's Keys for this game: a Ren'Py game's buttons */
     SCREEN_COUNT
 };
 
@@ -33,6 +34,7 @@ typedef struct
     float fps;                /* the game's frames a second */
     bool fast_forward;        /* running faster now */
     bool fast_latched;        /* turned on from the menu: stays on until turned off there */
+    int8_t keys[MAP_BUTTONS]; /* the running Ren'Py game's keys: each RetroPad button's KEY_ACTIONS index (config.h) */
     PadState pads[NP_MAX_PADS];
     bool quit_requested;
 } App;
@@ -54,6 +56,9 @@ void app_save_settings(void);
 void app_open_settings(enum Screen back_to);
 /* The settings changed what the platform layer or the sounds use: applied now. */
 void app_apply_settings(void);
+/* The running Ren'Py game's keys (app.keys) to its core, which reads them at its next frame; and into its keys file. */
+void app_apply_keys(void);
+void app_save_keys(void);
 
 /* The bottom hint bar: pairs of (PadGlyph, label), then an optional right-hand text. */
 void app_draw_hints(const int *glyphs, const char *const *labels, int count, const char *right);
@@ -67,5 +72,7 @@ void menu_open(void);
 void menu_screen(uint32_t pressed);
 void settings_screen(uint32_t pressed);
 void settings_opened(void);
+void keys_open(void);
+void keys_screen(uint32_t pressed);
 
 #endif

@@ -5,8 +5,9 @@
 """Builds tests/library_check.c with src/library.c, src/rpgmaker.c and miniz under the address and
 undefined-behaviour sanitizers, warnings as errors, and runs it: a games folder of made-up games (folders, names in
 any case, a folder of games, .zip and .easyrpg archives, titles in windows-1252, Shift-JIS and windows-1251, title
-pictures named by the database, XYZ pictures, things that are not games), then EasyRPG's TestGame when
-tools/fetch-testgame.sh can fetch it. CC names another compiler (default: clang)."""
+pictures named by the database, XYZ pictures, things that are not games), Ren'Py's games, the library's sections
+(RPG Maker's games, then Ren'Py's, each in its own order), then EasyRPG's TestGame when tools/fetch-testgame.sh can
+fetch it. CC names another compiler (default: clang)."""
 
 import os
 import platform
