@@ -6,8 +6,16 @@ A test build for Ren'Py on the console. 0.2.7 got the controller into Ren'Py (th
 menu), and showed that a thread's stack on the console is 64 KB unless asked for (the core's now get 2 MB). But the
 game still ended without a crash report, even with a signal stack on every thread, at the same moment: as Ren'Py
 played its first OGG, the hover sound, beside an MP3 (the music) and a WebM (the menu's movie). The build machine
-plays the same three in both Ren'Py cores.
+plays the same three in both Ren'Py cores. Then a tester deleted the game's archive (`.rpa`) that holds the hover
+sound, and the game played on past its menu.
 
+- **Sounds in a game's archives are read before Ren'Py plays them.** Ren'Py hands its decode thread an archived
+  sound as the archive itself, opened through SDL's own file reading, at the sound's offset. Dulcamara now reads the
+  sound from the archive first, with Python's own file: up to 32 MB into memory, which Ren'Py then plays from; a larger
+  one (a movie) is read through Python as it plays. Sounds in their own files are played as before. Not yet tried on
+  a console: the build machine played archived sounds both ways.
+- **Each sound's source is logged.** Each sound Ren'Py plays or queues says, in `dulcamara.log`, where it comes from:
+  the archive, the offset and the size, and how it is read, or its own file.
 - **What ends the app is logged.** `abort`, `exit`, `_exit` and `_Exit`, called anywhere in a core, write where they
   were called from to `dulcamara.log` before they end the app (`ps5_trace.c`).
 - **FFmpeg's steps are logged.** For each stream Ren'Py opens: opening it, reading its streams, opening its codec,

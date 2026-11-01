@@ -83,7 +83,7 @@ def crumb(kind, limit, text):
     # the last of these; the first `limit` of each kind
     if crumbs[kind] < limit:
         crumbs[kind] += 1
-        _dulcamara.now(text[:200])
+        _dulcamara.now(text[:300])
 
 
 def describe(what):
@@ -93,13 +93,97 @@ def describe(what):
         return object.__repr__(what)
 
 
+# A sound in one of a game's archives (.rpa) is read here, before Ren'Py's sound has it, as errors.py does for Ren'Py
+# 8: Ren'Py would hand its decode thread the archive opened through SDL's own file reading, where Ren'Py 8 games ended
+# without a word as their first archived sound started. Up to SOUND_IN_MEMORY bytes it goes to Ren'Py as a buffer; a
+# larger one (a movie) is read through Python's own file as Ren'Py plays it.
+SOUND_IN_MEMORY = int(os.environ.get("DULCAMARA_SOUND_IN_MEMORY", 32 << 20))  # the tests set it
+
+
+class ArchivePart(object):
+    """A file's part of an archive, through Python's own file. Not an io object, so that Ren'Py's sound reads it
+    through Python (with the GIL, from its decode thread) instead of opening the archive again itself."""
+
+    def __init__(self, path, base, length):
+        self._file = open(path, "rb")
+        self._base, self._length, self._at = base, length, 0
+
+    def tell(self):
+        return self._at
+
+    def seek(self, offset, whence=0):
+        start = (0, self._at, self._length)[whence]
+        self._at = min(max(start + offset, 0), self._length)
+        return self._at
+
+    def read(self, size=-1):
+        if size is None or size < 0 or size > self._length - self._at:
+            size = self._length - self._at
+        self._file.seek(self._base + self._at)
+        data = self._file.read(size)
+        self._at += len(data)
+        return data
+
+
+def sound_source(file):
+    """Where a file Ren'Py's sound is to play comes from: (path, offset, length) for a part of an archive (renpy.loader
+    gives it as an RWopsIO of the archive, in an io.BufferedReader), else None; and a word on it for the log."""
+    raw = file
+    try:
+        while True:
+            raw = raw.raw
+    except AttributeError:
+        pass
+    path, base, length = (getattr(raw, a, None) for a in ("name", "base", "length"))
+    if not isinstance(path, basestring):
+        return None, "from a %s" % type(raw).__name__
+    if isinstance(path, unicode):
+        shown = path.encode("utf-8")
+    else:
+        shown = path
+    if base is None or length is None:
+        return None, ("from the file %s" if os.path.isfile(path) else "from %s") % shown
+    how = "read into memory" if length <= SOUND_IN_MEMORY else "read through Python"
+    return (path, base, length), "from %s at %d (%d bytes), %s" % (os.path.basename(shown), base, length, how)
+
+
+def sound_file(file, part):
+    """The file Ren'Py's sound gets for an archived one: its bytes, or an ArchivePart of a large one."""
+    path, base, length = part
+    try:
+        if length <= SOUND_IN_MEMORY:
+            with open(path, "rb") as f:
+                f.seek(base)
+                rv = sys.modules["renpy.loader"].RWopsIO.from_buffer(f.read(length), name=path)
+        else:
+            rv = ArchivePart(path, base, length)
+    except Exception as e:
+        _dulcamara.log(2, "renpy: could not read the sound from %s, so Ren'Py reads it: %s" % (describe(path),
+                                                                                             describe(e)))
+        return file
+    file.close()
+    return rv
+
+
+last_sound = {}
+
+
+def sound(action, channel, file, name):
+    part, where = sound_source(file)
+    # a sound queued again after itself is a loop: noted the first time only
+    if action == "plays" or last_sound.get(channel) != name:
+        crumb("sound", 100, "%s %s on channel %s, %s" % (action, describe(name), describe(channel), where))
+    last_sound[channel] = name
+    return sound_file(file, part) if part else file
+
+
 def sound_play(channel, file, name, *args, **kwargs):
-    crumb("sound", 100, "plays %s on channel %s" % (describe(name), describe(channel)))
+    file = sound("plays", channel, file, name)
     return originals["sound_play"](channel, file, name, *args, **kwargs)
 
 
 def sound_queue(channel, file, name, *args, **kwargs):
-    crumb("sound", 100, "queues %s on channel %s" % (describe(name), describe(channel)))
+    file = sound("queues", channel, file, name)
     return originals["sound_queue"](channel, file, name, *args, **kwargs)
 
 

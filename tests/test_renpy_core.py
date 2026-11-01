@@ -10,6 +10,7 @@ handoff and its clock, the pictures, the sound and the OpenGL read-back."""
 
 import math
 import os
+import pickle
 import shutil
 import struct
 import subprocess
@@ -50,14 +51,29 @@ def write_tone(path, seconds=1.0, rate=48000, hz=440):
         out.writeframes(samples)
 
 
-def make_game(directory, width=1280, height=720, sound_rate=48000, broken=False):
-    """A copy of the test game in `directory`, with its picture, its sound and this run's screen size."""
+def write_rpa(path, files):
+    """A Ren'Py archive (RPA-3.0) of `files` (name: bytes): its header, the files, then its index (a pickle, zlib'd),
+    whose offsets and lengths are XORed with the header's key."""
+    key, data, index = 0x42424242, b"", {}
+    for name, blob in files.items():
+        index[name] = [((34 + len(data)) ^ key, len(blob) ^ key, b"")]
+        data += blob
+    path.write_bytes(b"RPA-3.0 %016x %08x\n" % (34 + len(data), key) + data
+                     + zlib.compress(pickle.dumps(index, protocol=2)))
+
+
+def make_game(directory, width=1280, height=720, sound_rate=48000, broken=False, archived=False):
+    """A copy of the test game in `directory`, with its picture, its sound and this run's screen size; `archived`, its
+    sound in an archive (game/audio.rpa) instead of its own file."""
     shutil.copytree(GAME, directory)
     game = directory / "game"
     (game / "images").mkdir(exist_ok=True)
     (game / "audio").mkdir(exist_ok=True)
     write_png(game / "images/dulcamara.png", 256, 256)
     write_tone(game / "audio/tone.wav")
+    if archived:
+        write_rpa(game / "audio.rpa", {"audio/tone.wav": (game / "audio/tone.wav").read_bytes()})
+        (game / "audio/tone.wav").unlink()
     (game / "size.rpy").write_text(f"define config.screen_width = {width}\n"
                                    f"define config.screen_height = {height}\n"
                                    f"define config.sound_sample_rate = {sound_rate}\n", encoding="utf-8")
@@ -158,6 +174,23 @@ class RenpyCoreTest(unittest.TestCase):
             work = Path(directory)
             output = self.run_core("start", make_game(work / "Large", 2560, 1440), work / "data")
             self.assertIn("picture: 1920x1080", output)
+
+    def test_a_sound_in_an_archive(self):
+        # A sound in a game's archive (.rpa) is read before Ren'Py's sound has it: into memory, or, when it is large,
+        # through Python's own file as it plays (DULCAMARA_SOUND_IN_MEMORY=0 makes every sound large). The log says
+        # where each sound comes from.
+        archived = r"from audio\.rpa at 34 \(\d+ bytes\), "
+        for is_archived, limit, source in ((False, None, r"from the file .*tone\.wav"),
+                                           (True, None, archived + "read into memory"),
+                                           (True, "0", archived + "read through Python")):
+            with tempfile.TemporaryDirectory() as directory:
+                work = Path(directory)
+                game = make_game(work / "Archived", archived=is_archived)
+                env = {"RENPY_HEADLESS_VERBOSE": "1", **({"DULCAMARA_SOUND_IN_MEMORY": limit} if limit else {})}
+                output = self.run_core("play", game, work / "data", env=env)
+                self.assertIn("sound: playing", output)
+                self.assertRegex(output, r"plays u?'audio/tone\.wav' on channel 0, " + source)
+                self.assertNotIn("could not read the sound", output)
 
     def test_a_game_at_44100_hz(self):
         with tempfile.TemporaryDirectory() as directory:
