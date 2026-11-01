@@ -8,6 +8,7 @@
  */
 #include "libretro.h"
 
+#include "../dulcamara_libretro.h"
 #include "audio.h"
 #include "frames.h"
 #include "handoff.h"
@@ -40,6 +41,7 @@ static retro_log_printf_t log_cb;
 static retro_usec_t frame_usec = FRAME_USEC;
 static bool loaded, shutdown_sent, sound_by_callback, bitmasks;
 static int picture_w, picture_h;
+static struct retro_dulcamara_text_input text_told; /* what the frontend was last told of the text Ren'Py wants */
 
 static void emit(int level, const char *line)
 {
@@ -94,6 +96,31 @@ static bool make_folders(const char *path)
 }
 
 static void read_keys(void); /* below, with the controller */
+
+/* The frontend's on-screen keyboard (RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK), while Ren'Py wants text: a character
+ * is Ren'Py's text; a key the input's own (Backspace, Return to confirm, the arrows, Home and End). */
+static void keyboard(bool down, unsigned keycode, uint32_t character, uint16_t modifiers)
+{
+    (void)modifiers;
+    if (character)
+    {
+        if (down)
+            input_type_text(character);
+        return;
+    }
+    static const struct
+    {
+        unsigned keycode;
+        const char *name; /* input_bind's */
+    } KEYS[] = {
+        {RETROK_BACKSPACE, "backspace"}, {RETROK_RETURN, "return"}, {RETROK_KP_ENTER, "return"},
+        {RETROK_DELETE, "delete"},       {RETROK_LEFT, "left"},     {RETROK_RIGHT, "right"},
+        {RETROK_HOME, "home"},           {RETROK_END, "end"},
+    };
+    for (size_t i = 0; i < sizeof(KEYS) / sizeof(KEYS[0]); ++i)
+        if (KEYS[i].keycode == keycode)
+            input_type_key(KEYS[i].name, down);
+}
 
 void retro_set_environment(retro_environment_t cb)
 {
@@ -228,6 +255,9 @@ bool retro_load_game(const struct retro_game_info *info)
     struct retro_audio_callback audio = {sound, sound_state};
     sound_by_callback = environ_cb(RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK, &audio);
     bitmasks = environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL);
+    struct retro_keyboard_callback typing = {keyboard};
+    environ_cb(RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK, &typing);
+    memset(&text_told, 0, sizeof(text_told));
     frame_usec = FRAME_USEC;
     picture_w = picture_h = 0;
     shutdown_sent = false;
@@ -375,6 +405,14 @@ void retro_run(void)
                           input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_PRESSED) != 0);
     handoff_frame(frame_usec, frame_usec * 3 / 4);
     log_flush(emit);
+    /* the text Ren'Py wants, as it changes: the frontend shows its keyboard for it, away from the game's own input */
+    struct retro_dulcamara_text_input text = {false, 0, 0};
+    text.wanted = input_text_wanted(&text.top, &text.bottom);
+    if (text.wanted != text_told.wanted || text.top != text_told.top || text.bottom != text_told.bottom)
+    {
+        text_told = text;
+        environ_cb(RETRO_ENVIRONMENT_DULCAMARA_TEXT_INPUT, &text);
+    }
 
     int w = 0, h = 0;
     bool fresh = false;

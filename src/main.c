@@ -460,7 +460,8 @@ static void game_screen(PadState *pads, uint32_t pressed)
     bool open_menu = !own_options && (pressed & BIT(BTN_MENU));
     if (own_options && options && !options_taken && plat_ticks_us() - options_since >= 600000)
         options_taken = open_menu = true;
-    if (own_options && !options && options_held && !options_taken)
+    const bool options_tapped = own_options && !options && options_held && !options_taken;
+    if (options_tapped)
         options_frames = 6;
     options_held = options;
     if (open_menu)
@@ -494,6 +495,13 @@ static void game_screen(PadState *pads, uint32_t pressed)
             --options_frames;
         }
         game_pad.buttons |= p->buttons & BIT(BTN_MENU); /* the touchpad's click, to the pointer (core/host.c) */
+    }
+    /* while the game wants text typed, the on-screen keyboard has the controller (ui/keyboard.c), Options' short
+     * press too (its Done): the game's is an idle one */
+    if (keyboard_frame(p, pressed, options_tapped, &game_pad))
+    {
+        options_frames = 0;
+        game_pad = (PadState){.connected = p->connected};
     }
     host_set_input(&game_pad, &app.settings);
 
@@ -530,6 +538,7 @@ static void game_screen(PadState *pads, uint32_t pressed)
         return;
     }
     app_draw_game(255);
+    keyboard_draw();
     if (app.fast_forward)
     {
         char speed[16];

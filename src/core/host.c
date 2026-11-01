@@ -7,6 +7,7 @@
 #include "host.h"
 
 #include "cores.h"
+#include "dulcamara_libretro.h"
 
 #include "../platform/platform.h"
 
@@ -59,6 +60,18 @@ static uint64_t finger_down_us;
 static int finger_down_x, finger_down_y, tap_frames;
 static bool clicked_this_touch; /* the touchpad pressed down during this touch: its click, and no tap after it */
 static int volume = 10;
+
+/* Typing, for a core that takes it: the text it wants (RETRO_ENVIRONMENT_DULCAMARA_TEXT_INPUT), its keyboard callback
+ * (RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK), and the on-screen keyboard's presses, held until the core polls, as
+ * libretro's frontends give a keyboard's */
+static struct retro_dulcamara_text_input text_input;
+static retro_keyboard_event_t keyboard_cb;
+static struct
+{
+    unsigned key;
+    uint32_t character;
+} typed[32];
+static int typed_count;
 
 /* ---------------------------------------------------------------- options */
 
@@ -208,6 +221,17 @@ static bool environment(unsigned cmd, void *data)
     case RETRO_ENVIRONMENT_SHUTDOWN:
         shutdown_asked = true;
         return true;
+    case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK:
+        keyboard_cb = ((const struct retro_keyboard_callback *)data)->callback;
+        return true;
+    case RETRO_ENVIRONMENT_DULCAMARA_TEXT_INPUT:
+    {
+        const struct retro_dulcamara_text_input *t = data;
+        if (t->wanted != text_input.wanted)
+            np_log("host: %s", t->wanted ? "the game wants text typed" : "the game has its text");
+        text_input = *t;
+        return true;
+    }
     case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
     case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
     case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
@@ -290,6 +314,12 @@ static size_t audio_batch(const int16_t *samples, size_t frames)
 
 static void input_poll(void)
 {
+    for (int i = 0; i < typed_count && keyboard_cb; ++i)
+    {
+        keyboard_cb(true, typed[i].key, typed[i].character, 0);
+        keyboard_cb(false, typed[i].key, 0, 0);
+    }
+    typed_count = 0;
 }
 
 static int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
@@ -353,6 +383,9 @@ bool host_load(const Game *g, const char *system, char *error, size_t error_size
     pointer_x = pointer_y = 0;
     pointer_pressed = finger_was_down = clicked_this_touch = false;
     tap_frames = 0;
+    memset(&text_input, 0, sizeof(text_input));
+    keyboard_cb = NULL;
+    typed_count = 0;
     plat_pad_touch(core->pointer);
 
     struct retro_system_info info;
@@ -410,6 +443,9 @@ void host_unload(void)
     loaded = false;
     audio_cb_set = audio_enabled = false;
     frame_data = NULL;
+    memset(&text_input, 0, sizeof(text_input));
+    keyboard_cb = NULL;
+    typed_count = 0;
     core = NULL;
 }
 
@@ -544,6 +580,22 @@ void host_set_fast_forward(bool on)
 bool host_shutdown_requested(void)
 {
     return shutdown_asked;
+}
+
+bool host_text_wanted(float *top, float *bottom)
+{
+    const bool wanted = loaded && keyboard_cb && text_input.wanted;
+    *top = wanted ? text_input.top : 0;
+    *bottom = wanted ? text_input.bottom : 0;
+    return wanted;
+}
+
+void host_type(unsigned retro_key, uint32_t character)
+{
+    if (!loaded || !keyboard_cb || typed_count == (int)(sizeof(typed) / sizeof(typed[0])))
+        return;
+    typed[typed_count].key = retro_key;
+    typed[typed_count++].character = character;
 }
 
 void host_reset(void)

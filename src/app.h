@@ -79,5 +79,14 @@ void settings_opened(void);
  * back_to (SCREEN_MENU or SCREEN_SETTINGS). */
 void keys_open(int index, enum Screen back_to);
 void keys_screen(uint32_t pressed);
+/* The on-screen keyboard (ui/keyboard.c), each frame of the game screen, while the game wants text typed (a Ren'Py
+ * game's name entry): pad is the controller, pressed its presses with the menus' repeats, options_tapped a short
+ * press of Options let go (Done; held, Options is still Dulcamara's menu). True while the keyboard has the
+ * controller: the game gets none of it meanwhile. Otherwise it takes out of game_pad what is still held from the
+ * keyboard (a button, the stick, a finger on the touchpad), which the game gets once that has been let go. */
+bool keyboard_frame(const PadState *pad, uint32_t pressed, bool options_tapped, PadState *game_pad);
+/* Over the game: the keyboard, at the other end of the screen from the game's input; or, put away with Circle while
+ * the game still wants text, a reminder that R3 brings it back. */
+void keyboard_draw(void);
 
 #endif

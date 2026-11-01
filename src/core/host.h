@@ -30,6 +30,13 @@ void host_set_fast_forward(bool on); /* what RETRO_ENVIRONMENT_GET_FASTFORWARDIN
 void host_set_option(const char *key, const char *value);
 /* The core asked to close (EasyRPG: Exit on the title screen). */
 bool host_shutdown_requested(void);
+/* Whether the game wants text typed now (a Ren'Py game's name entry: RETRO_ENVIRONMENT_DULCAMARA_TEXT_INPUT, from a
+ * core that takes typing), and where its own input is: its top and bottom, 0 to 1 down the picture (both 0 when the
+ * core does not say). */
+bool host_text_wanted(float *top, float *bottom);
+/* One press of a key (a RETROK_*: RETROK_BACKSPACE, RETROK_RETURN) or of a character (with RETROK_UNKNOWN), from the
+ * on-screen keyboard: down and up, given to the core's keyboard callback as it polls at its next frame. */
+void host_type(unsigned retro_key, uint32_t character);
 void host_reset(void);
 
 double host_fps(void);

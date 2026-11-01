@@ -216,6 +216,50 @@ def log_memory():
     _dulcamara.now("memory: " + ", ".join(parts))
 
 
+# Ren'Py's presplash, drawn into a window of its own while the game loads, which the console never shows: each time
+# Ren'Py draws it (as it starts, then as its progress bar moves), the window's picture, centred on black as it sits
+# on a computer's screen, is the core's picture until the game's own first one.
+shown_pump = [None]
+
+
+def show_presplash(presplash):
+    window = getattr(presplash, "window", None)
+    pygame = getattr(presplash, "pygame", None) or getattr(presplash, "pygame_sdl2", None)
+    if window is None or pygame is None:
+        return
+    try:
+        surface = window.get_surface()
+        w, h = surface.get_size()
+        cw, ch = max(1280, w), max(720, h)
+        canvas = pygame.Surface((cw, ch), 0, 32, (0xFF0000, 0xFF00, 0xFF, 0))
+        canvas.fill((0, 0, 0))
+        canvas.blit(surface, ((cw - w) // 2, (ch - h) // 2))
+        shown = _dulcamara.picture(canvas._pixels_address, cw, ch, canvas.get_pitch())
+        if shown_pump[0] is None:
+            _dulcamara.log(1, "renpy: the presplash, %dx%d, is the picture (%dx%d)%s" % (
+                w, h, cw, ch, "" if shown else ", but it could not be shown"))
+    except Exception as e:
+        if shown_pump[0] is None:
+            _dulcamara.log(2, "renpy: the presplash could not be shown: %s" % describe(e))
+    shown_pump[0] = getattr(presplash, "last_pump_time", 0)
+
+
+def presplash_start(basedir, gamedir):
+    rv = originals["presplash_start"](basedir, gamedir)
+    show_presplash(sys.modules["renpy.display.presplash"])
+    return rv
+
+
+def presplash_pump():
+    rv = originals["presplash_pump"]()
+    presplash = sys.modules["renpy.display.presplash"]
+    # the progress bar is drawn again at most 24 times a second, each time noted in last_pump_time
+    if getattr(presplash, "progress_bar", None) is not None and \
+            getattr(presplash, "last_pump_time", None) != shown_pump[0]:
+        show_presplash(presplash)
+    return rv
+
+
 last_focus = [None]
 
 
@@ -258,6 +302,11 @@ def wrap(module):
     elif module.__name__ == "renpy.display.focus" and "change_focus" not in originals:
         originals["change_focus"] = module.change_focus
         module.change_focus = change_focus
+    elif module.__name__ == "renpy.display.presplash" and "presplash_start" not in originals:
+        originals["presplash_start"] = module.start
+        originals["presplash_pump"] = module.pump_window
+        module.start = presplash_start
+        module.pump_window = presplash_pump
     elif module.__name__ == "renpy.display.im" and "image_get" not in originals:
         originals["image_get"] = module.Cache.get
         module.Cache.get = image_get
@@ -274,7 +323,8 @@ class Finder(object):
     """Python 2's import hook: the two modules are imported as they would be, then wrapped."""
 
     names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences", "renpy.log",
-             "renpy.audio.renpysound", "renpy.display.focus", "renpy.display.im", "renpy.config")
+             "renpy.audio.renpysound", "renpy.display.focus", "renpy.display.im", "renpy.display.presplash",
+             "renpy.config")
     busy = False
 
     def find_module(self, name, path=None):

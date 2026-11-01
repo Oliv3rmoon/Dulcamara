@@ -73,6 +73,11 @@ label start:
     scene expression Solid("#203040")
     show dulcamara at truecenter
     play music "audio/tone.wav"
+    # DULCAMARA_TEST_INPUT=1: a name asked for, as a game asks (renpy.input); the headless frontend types it through
+    # the core's keyboard callback, as Dulcamara's on-screen keyboard does
+    if os.environ.get("DULCAMARA_TEST_INPUT") == "1":
+        $ dulcamara_name = renpy.input("What is your name?", length=20)
+        $ dulcamara_test("name=" + dulcamara_name)
     "Hello from Dulcamara's test game."
     $ dulcamara_test("advanced")
     menu:

@@ -15,10 +15,16 @@
  *          fast-forward is off, and Down and Cross choose in the menu as in "play".
  *   keys   a game's own key on a button (renpy_key_l2=return, from the environment): L2 moves the dialogue on.
  *   cursor L3 turns the cursor on: it is drawn on the picture, the left stick moves it, and Cross clicks there.
+ *   text   the game asks for a name (DULCAMARA_TEST_INPUT=1): the core says it wants text and where its input is,
+ *          takes "Adz", a Backspace, "a" and Return through its keyboard callback as Dulcamara's on-screen keyboard
+ *          gives them (core/host.c), and says it has its text; a Return typed then goes nowhere, and Cross is the
+ *          game's again.
  *   error  the game has a script error: Ren'Py's error is logged and shown; it is then closed.
  *   --then a second game in the same process afterwards, as "start".
  */
 #include "libretro.h"
+
+#include "../../src/core/dulcamara_libretro.h"
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -40,6 +46,16 @@ static bool pointer_pressed; /* the pointer (the touchpad) pressed, at the middl
 static char log_text[1 << 18];
 static size_t log_used;
 static int ran;
+/* typing: what the core says of the text it wants, its keyboard callback, and the presses held until it polls */
+static struct retro_dulcamara_text_input text;
+static int text_changes;
+static retro_keyboard_event_t keyboard_cb;
+static struct
+{
+    unsigned key;
+    uint32_t character;
+} typed[32];
+static int typed_count;
 
 static void core_log(enum retro_log_level level, const char *fmt, ...)
 {
@@ -57,7 +73,7 @@ static void core_log(enum retro_log_level level, const char *fmt, ...)
     }
     if (getenv("RENPY_HEADLESS_VERBOSE") || strstr(line, "DULCAMARA-TEST: ") || strstr(line, "Ren'Py reported") ||
         strstr(line, ".rpy") || strstr(line, "Dulcamara starts") || strstr(line, "not stop") || strstr(line, "File \"") ||
-        strstr(line, "still running"))
+        strstr(line, "still running") || strstr(line, "keyboard"))
         printf("log: %s", line);
 }
 
@@ -97,6 +113,13 @@ static bool environment(unsigned cmd, void *data)
         return true;
     case RETRO_ENVIRONMENT_SHUTDOWN:
         shutdown_asked = true;
+        return true;
+    case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK:
+        keyboard_cb = ((const struct retro_keyboard_callback *)data)->callback;
+        return true;
+    case RETRO_ENVIRONMENT_DULCAMARA_TEXT_INPUT:
+        text = *(const struct retro_dulcamara_text_input *)data;
+        ++text_changes;
         return true;
     case RETRO_ENVIRONMENT_GET_FASTFORWARDING:
         *(bool *)data = fast_forward;
@@ -183,8 +206,30 @@ static size_t audio_batch(const int16_t *data, size_t frames)
     return frames;
 }
 
+/* as core/host.c gives the on-screen keyboard's presses: each down and up, as the core polls */
 static void input_poll(void)
 {
+    for (int i = 0; i < typed_count && keyboard_cb; ++i)
+    {
+        keyboard_cb(true, typed[i].key, typed[i].character, 0);
+        keyboard_cb(false, typed[i].key, 0, 0);
+    }
+    typed_count = 0;
+}
+
+static void type_key(unsigned key, uint32_t character)
+{
+    if (typed_count < (int)(sizeof(typed) / sizeof(typed[0])))
+    {
+        typed[typed_count].key = key;
+        typed[typed_count++].character = character;
+    }
+}
+
+static void type_text(const char *ascii)
+{
+    for (; *ascii; ++ascii)
+        type_key(RETROK_UNKNOWN, (unsigned char)*ascii);
 }
 
 static int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
@@ -245,6 +290,16 @@ static void frames(int n)
         frame();
 }
 
+/* until the core says it wants text typed (or no longer does) */
+static bool until_text(bool wanted)
+{
+    for (int i = 0; i < MAX_FRAMES && text.wanted != wanted && !shutdown_asked; ++i)
+        frame();
+    if (text.wanted != wanted)
+        printf("FAIL: the core never said it %s text\n", wanted ? "wants" : "no longer wants");
+    return text.wanted == wanted;
+}
+
 static void press(unsigned id)
 {
     buttons = (uint16_t)(1u << id);
@@ -260,6 +315,9 @@ static bool load(const char *game)
     log_used = 0;
     log_text[0] = '\0';
     ran = 0;
+    memset(&text, 0, sizeof(text));
+    text_changes = typed_count = 0;
+    keyboard_cb = NULL;
     struct retro_game_info info = {game, NULL, 0, NULL};
     if (!retro_load_game(&info))
     {
@@ -382,6 +440,38 @@ int main(int argc, char **argv)
         press(RETRO_DEVICE_ID_JOYPAD_B);
         ok = ok && drawn && until_logged("DULCAMARA-TEST: advanced");
         printf("cursor: the dialogue %s after a click with Cross\n", ok ? "moved on" : "did not move on");
+    }
+    else if (ok && !strcmp(mode, "text"))
+    {
+        ok = until_logged("DULCAMARA-TEST: started") && until_picture() && until_text(true);
+        if (!keyboard_cb)
+            ok = false, printf("FAIL: the core gave no keyboard callback\n");
+        printf("text: the core asked for text, its input %.0f-%.0f %% down the picture\n", text.top * 100.0f,
+               text.bottom * 100.0f);
+        frames(10);
+        type_text("Adz");
+        frames(5);
+        type_key(RETROK_BACKSPACE, 0);
+        frames(5);
+        type_text("a");
+        frames(5);
+        type_key(RETROK_RETURN, 0);
+        ok = ok && until_logged("DULCAMARA-TEST: name=") && until_text(false);
+        const bool named = logged("DULCAMARA-TEST: name=Ada\n");
+        printf("text: the game %s\n", named ? "got the name typed (Ada)" : "got another name");
+        /* typing once the game has its text: the core drops it (a Return here would be the next line's) */
+        frames(10);
+        type_key(RETROK_RETURN, 0);
+        frames(90);
+        const bool dropped = !logged("DULCAMARA-TEST: advanced");
+        printf("text: a Return typed after the input ended %s\n", dropped ? "went nowhere" : "reached the game");
+        press(RETRO_DEVICE_ID_JOYPAD_B);
+        const bool advanced = until_logged("DULCAMARA-TEST: advanced");
+        printf("text: Cross %s afterwards\n", advanced ? "moved the dialogue on" : "did not move the dialogue on");
+        /* told as it changes, not at every frame: on, off, and a move of the input at most */
+        ok = ok && named && dropped && advanced && text_changes < 10;
+        if (text_changes >= 10)
+            printf("FAIL: the core said what text it wants %d times\n", text_changes);
     }
     else if (ok && !strcmp(mode, "load"))
     {

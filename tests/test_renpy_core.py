@@ -192,6 +192,20 @@ class RenpyCoreTest(unittest.TestCase):
                 self.assertRegex(output, r"plays u?'audio/tone\.wav' on channel 0, " + source)
                 self.assertNotIn("could not read the sound", output)
 
+    def test_the_presplash(self):
+        # A game's presplash (game/presplash.png, or presplash_foreground and _background, a progress bar) is the
+        # picture while the game loads, centred on black: Ren'Py draws it into a window of its own the console never
+        # shows.
+        for files in (("presplash",), ("presplash_foreground", "presplash_background")):
+            with tempfile.TemporaryDirectory() as directory:
+                work = Path(directory)
+                game = make_game(work / "Presplash")
+                for name in files:
+                    write_png(game / "game" / f"{name}.png", 400, 250)
+                output = self.run_core("start", game, work / "data", env={"RENPY_HEADLESS_VERBOSE": "1"})
+                self.assertIn("the presplash, 400x250, is the picture (1280x720)", output)
+                self.assertNotIn("could not be shown", output)
+
     def test_the_memory_line(self):
         # Every few minutes (DULCAMARA_MEMORY_EVERY seconds; here, at each of Ren'Py's periodic calls) the log says what
         # the game holds; the heap and ps5-opengl's memory only on the console.
@@ -282,6 +296,23 @@ class RenpyCoreTest(unittest.TestCase):
             output = self.run_core("cursor", game, data)
             self.assertIn("cursor: drawn on the picture", output)
             self.assertIn("cursor: the dialogue moved on after a click with Cross", output)
+
+    def test_a_name_typed(self):
+        # A game asks for a name (renpy.input): the core tells the frontend it wants text and where its input is (here
+        # at the foot of the picture, so the on-screen keyboard goes at the top), takes what the keyboard types through
+        # its keyboard callback (characters, Backspace, Return), and tells it once Ren'Py has its text. Typing then
+        # goes nowhere, and the controller is the game's again.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("text", make_game(work / "Name"), work / "data", env={"DULCAMARA_TEST_INPUT": "1"})
+            self.assertRegex(output, r"text: the core asked for text, its input ([5-9]\d|100)-\d+ % down the picture")
+            self.assertRegex(output, r"Ren'Py asks for text, its input \d+-\d+ % down the picture: the frontend's "
+                                     r"keyboard opens")
+            self.assertIn("DULCAMARA-TEST: name=Ada", output)
+            self.assertIn("text: the game got the name typed (Ada)", output)
+            self.assertIn("Ren'Py has its text: the frontend's keyboard closes", output)
+            self.assertIn("text: a Return typed after the input ended went nowhere", output)
+            self.assertIn("text: Cross moved the dialogue on afterwards", output)
 
     def test_a_game_with_an_error(self):
         with tempfile.TemporaryDirectory() as directory:

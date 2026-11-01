@@ -32,6 +32,15 @@ struct SDL_Window;
 void input_pump(struct SDL_Window *window, int w, int h);
 /* The cursor to draw on a w x h picture, if it is shown (cursor mode, or the touchpad moved it lately). */
 bool input_cursor(int w, int h, int *x, int *y);
+/* Whether Ren'Py wants text typed (it shows an input), as its thread last looked (input_pump, once a frame:
+ * python_text_field), and where that input is: its top and bottom, 0 to 1 down the picture. */
+bool input_text_wanted(float *top, float *bottom);
+/* The frontend's typing (its on-screen keyboard, through core.c's keyboard callback): a character, which Ren'Py gets
+ * as a keyboard's text (pygame's TEXTINPUT: python_type_text), and a key (input_bind's names: "backspace", "return")
+ * down or up, in the order typed, as Ren'Py's thread next looks for events. Both are dropped while Ren'Py wants no
+ * text: a second Return must not go on to the next line once the first has ended the input. */
+void input_type_text(uint32_t character);
+void input_type_key(const char *name, bool down);
 void input_detach(void);
 
 #endif

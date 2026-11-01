@@ -14,6 +14,17 @@ sound, and the game played on past its menu.
   sound from the archive first, with Python's own file: up to 32 MB into memory, which Ren'Py then plays from; a larger
   one (a movie) is read through Python as it plays. Sounds in their own files are played as before. Not yet tried on
   a console: the build machine played archived sounds both ways.
+- **An on-screen keyboard for a Ren'Py game's text.** When a game asks for text (a name to enter), Dulcamara's own
+  keyboard comes up, away from the game's input, and goes away once the game has its text; the console's keyboard
+  cannot be used (a title that imports it does not start). The D-pad, the left stick or the touchpad move on it, Cross
+  types, Square erases, Triangle is a space, L1 or L2 shift (twice locks it), a short press of Options is Done, Circle
+  puts it away for a game with its own OK button and R3 brings it back. The core sees Ren'Py's input
+  (`interface.old_text_rect`), tells the frontend through Dulcamara's own environment call
+  (`src/core/dulcamara_libretro.h`), and takes what is typed through libretro's keyboard callback, as pygame's own
+  text events.
+- **A game's presplash is shown while it loads.** Ren'Py draws `presplash.png` (or `.jpg`, or the
+  `presplash_foreground` and `presplash_background` of a progress bar) into a window of its own, which the console
+  never shows: the core now makes that window's picture, centred on black, its own picture until the game's first.
 - **Each sound's source is logged.** Each sound Ren'Py plays or queues says, in `dulcamara.log`, where it comes from:
   the archive, the offset and the size, and how it is read, or its own file.
 - **Nothing runs while another app has the screen.** Switching from a running Ren'Py game to another app, back, and

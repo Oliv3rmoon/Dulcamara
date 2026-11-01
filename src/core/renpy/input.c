@@ -9,6 +9,7 @@
 #include "input.h"
 
 #include "log.h"
+#include "python.h"
 
 #include <SDL.h>
 #include <pthread.h>
@@ -78,6 +79,21 @@ static bool button_down, right_button_down;
 static bool cursor_on;
 static int touch_shown;
 static int picture_w = 1280, picture_h = 720;
+/* text: whether Ren'Py wants text typed and where its input is, as its thread last looked; the frontend's frames
+ * (input_set), so that it looks once in each */
+static bool text_wanted;
+static float text_top, text_bottom;
+static unsigned text_frame, text_looked;
+/* what the frontend typed, in its order, until Ren'Py's thread gives it to Ren'Py (input_pump): a character (UTF-8),
+ * which goes through pygame (python_type_text), or a key, which goes into SDL's events as the controller's do */
+typedef struct
+{
+    char text[8]; /* "" for a key */
+    Action key;
+    bool down;
+} Typed;
+static Typed typed[64];
+static int typed_count;
 
 static bool action_of(const char *value, Action *out)
 {
@@ -287,6 +303,7 @@ void input_set(uint16_t retropad, int16_t left_x, int16_t left_y)
     held = retropad;
     if (touch_shown)
         --touch_shown;
+    ++text_frame;
     pthread_mutex_unlock(&lock);
 }
 
@@ -348,6 +365,52 @@ static void push_button(SDL_Window *window, int x, int y, Uint8 button, bool dow
     SDL_PushEvent(&e);
 }
 
+/* Whether Ren'Py wants text now: Python is asked without the lock held, as it may wait for the GIL, and the
+ * frontend's thread never waits on Ren'Py's. */
+static void look_for_text(void)
+{
+    float top, bottom;
+    const bool wanted = python_text_field(&top, &bottom);
+    pthread_mutex_lock(&lock);
+    const bool changed = wanted != text_wanted;
+    text_wanted = wanted;
+    text_top = top;
+    text_bottom = bottom;
+    pthread_mutex_unlock(&lock);
+    if (changed && wanted)
+        log_queue(1, "renpy: Ren'Py asks for text, its input %d-%d %% down the picture: the frontend's keyboard opens",
+                  (int)(top * 100 + 0.5f), (int)(bottom * 100 + 0.5f));
+    else if (changed)
+        log_queue(1, "renpy: Ren'Py has its text: the frontend's keyboard closes");
+}
+
+/* What the frontend typed, to Ren'Py in its order; none once Ren'Py has stopped wanting text. */
+static void give_typed(void)
+{
+    Typed out[sizeof(typed) / sizeof(typed[0])];
+    pthread_mutex_lock(&lock);
+    const int n = text_wanted ? typed_count : 0;
+    memcpy(out, typed, (size_t)n * sizeof(Typed));
+    typed_count = 0;
+    pthread_mutex_unlock(&lock);
+    for (int i = 0; i < n; ++i)
+        if (out[i].text[0])
+        {
+            static bool told;
+            if (!python_type_text(out[i].text) && !told)
+            {
+                told = true;
+                log_queue(2, "renpy: the text typed could not be given to Ren'Py");
+            }
+        }
+        else
+        {
+            pthread_mutex_lock(&lock);
+            push_key(&out[i].key, out[i].down, false);
+            pthread_mutex_unlock(&lock);
+        }
+}
+
 void input_pump(SDL_Window *window, int w, int h)
 {
     pthread_mutex_lock(&lock);
@@ -356,7 +419,12 @@ void input_pump(SDL_Window *window, int w, int h)
     const bool moved = pointer_moved, left = touch_pressed || click_held, right = right_click_held;
     const int x = (int)(pointer_fx * (float)(w - 1) + 0.5f), y = (int)(pointer_fy * (float)(h - 1) + 0.5f);
     pointer_moved = false;
+    const bool look = text_frame != text_looked;
+    text_looked = text_frame;
     pthread_mutex_unlock(&lock);
+    if (look)
+        look_for_text();
+    give_typed();
     if (!window || w <= 0 || h <= 0)
         return;
     if (moved || (left && !button_down) || (right && !right_button_down))
@@ -383,6 +451,56 @@ bool input_cursor(int w, int h, int *x, int *y)
     return shown;
 }
 
+bool input_text_wanted(float *top, float *bottom)
+{
+    pthread_mutex_lock(&lock);
+    const bool wanted = text_wanted;
+    *top = text_top;
+    *bottom = text_bottom;
+    pthread_mutex_unlock(&lock);
+    return wanted;
+}
+
+/* one thing typed, after the others, while Ren'Py wants text */
+static void add_typed(const Typed *t)
+{
+    pthread_mutex_lock(&lock);
+    if (text_wanted && typed_count < (int)(sizeof(typed) / sizeof(typed[0])))
+        typed[typed_count++] = *t;
+    pthread_mutex_unlock(&lock);
+}
+
+void input_type_text(uint32_t c)
+{
+    Typed t;
+    memset(&t, 0, sizeof(t));
+    unsigned char *u = (unsigned char *)t.text; /* UTF-8 */
+    if (!c || (c >= 0xD800 && c < 0xE000) || c >= 0x110000)
+        return;
+    if (c < 0x80)
+        u[0] = (unsigned char)c;
+    else if (c < 0x800)
+        u[0] = (unsigned char)(0xC0 | c >> 6), u[1] = (unsigned char)(0x80 | (c & 0x3F));
+    else if (c < 0x10000)
+        u[0] = (unsigned char)(0xE0 | c >> 12), u[1] = (unsigned char)(0x80 | ((c >> 6) & 0x3F)),
+        u[2] = (unsigned char)(0x80 | (c & 0x3F));
+    else
+        u[0] = (unsigned char)(0xF0 | c >> 18), u[1] = (unsigned char)(0x80 | ((c >> 12) & 0x3F)),
+        u[2] = (unsigned char)(0x80 | ((c >> 6) & 0x3F)), u[3] = (unsigned char)(0x80 | (c & 0x3F));
+    add_typed(&t);
+}
+
+void input_type_key(const char *name, bool down)
+{
+    Typed t;
+    memset(&t, 0, sizeof(t));
+    if (!action_of(name, &t.key) || t.key.kind != DO_KEY)
+        return;
+    t.key.text = 0; /* the key alone: what is typed comes as text */
+    t.down = down;
+    add_typed(&t);
+}
+
 void input_detach(void)
 {
     pthread_mutex_lock(&lock);
@@ -396,5 +514,9 @@ void input_detach(void)
     button_down = right_button_down = false;
     cursor_on = false;
     touch_shown = 0;
+    text_wanted = false;
+    text_top = text_bottom = 0;
+    text_frame = text_looked = 0;
+    typed_count = 0;
     pthread_mutex_unlock(&lock);
 }

@@ -134,7 +134,7 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: >-
           python3 -m unittest tests.test_update_release tests.test_library tests.test_core tests.test_renpy_core
-          tests.test_renpy7_core -v
+          tests.test_renpy7_core tests.test_keyboard -v
 
       - name: Build
         env:
