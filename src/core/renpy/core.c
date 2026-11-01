@@ -18,6 +18,7 @@
 #include "python.h"
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -96,6 +97,35 @@ static bool make_folders(const char *path)
 }
 
 static void read_keys(void); /* below, with the controller */
+
+/* A tester's switches: each DULCAMARA_<NAME>=<value> line of <the data folder>/renpy-test.txt is set for the game
+ * (the core's own settings set after it still win), in the log as it is: graphics and sound choices the core makes
+ * on the console (DULCAMARA_GL_CPU_LOAD, DULCAMARA_GL_WRITE_BACK, DULCAMARA_GL_READ_DIRECT, DULCAMARA_MIPMAPS, ...)
+ * can be tried one by one on a console without a build of their own. */
+static void read_test_switches(const char *folder)
+{
+    char path[1100], line[512];
+    snprintf(path, sizeof(path), "%s/renpy-test.txt", folder);
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return;
+    for (int n = 0; n < 64 && fgets(line, sizeof(line), f); ++n)
+    {
+        line[strcspn(line, "\r\n")] = '\0';
+        char *equals = strchr(line, '=');
+        if (!equals || strncmp(line, "DULCAMARA_", 10))
+            continue;
+        *equals = '\0';
+        bool name_ok = true;
+        for (const char *c = line; *c && name_ok; ++c)
+            name_ok = (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '_';
+        if (!name_ok)
+            continue;
+        setenv(line, equals + 1, 1);
+        log_queue(1, "renpy: renpy-test.txt sets %s=%s", line, equals + 1);
+    }
+    fclose(f);
+}
 
 /* The frontend's on-screen keyboard (RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK), while Ren'Py wants text: a character
  * is Ren'Py's text; a key the input's own (Backspace, Return to confirm, the arrows, Home and End). */
@@ -266,6 +296,7 @@ bool retro_load_game(const struct retro_game_info *info)
 
     char error[256];
     log_step("the frontend's picture, clock and sound are set");
+    read_test_switches(save ? save : info->path);
     /* read by the engine's dulcamara_errors, which holds Ren'Py's preference to it */
     struct retro_variable skip_unseen = {"renpy_skip_unseen", NULL};
     const bool skip_all = environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &skip_unseen) && skip_unseen.value &&

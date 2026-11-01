@@ -678,6 +678,11 @@ def wrap(module):
         size = max_texture_size()
         if size:
             module.max_texture_size = module.fbo_size = (size, size)
+        # DULCAMARA_MIPMAPS=0 (renpy-test.txt, on a console): images without mipmaps, drawn smaller from their own
+        # pixels; the console's driver makes mipmaps partly on the GPU and partly on the CPU
+        if os.environ.get("DULCAMARA_MIPMAPS") == "0":
+            module.max_mipmap_level = 0
+            _dulcamara.log(1, "renpy: images have no mipmaps (DULCAMARA_MIPMAPS=0)")
         module.periodic_callbacks.append(log_memory)
         module.periodic_callbacks.append(list_sounds)
 

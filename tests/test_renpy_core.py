@@ -347,6 +347,21 @@ class RenpyCoreTest(unittest.TestCase):
             self.assertRegex(output, r"black flash 1, picture \d+, [1-5] pictures long: 160x120 at 320,240 of the "
                                      r"1280x720 picture")
 
+    def test_a_testers_switches(self):
+        # renpy-test.txt in the data folder sets the core's DULCAMARA_ switches for the game, so that a tester tries
+        # one on a console without a build of its own: here images without mipmaps; what is not a switch is left.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            data = work / "data"
+            data.mkdir()
+            (data / "renpy-test.txt").write_text("# the black flashes\nDULCAMARA_MIPMAPS=0\nPATH=/nowhere\n"
+                                                 "dulcamara_lower=1\n", encoding="utf-8")
+            output = self.run_core("start", make_game(work / "Switches"), data, env={"RENPY_HEADLESS_VERBOSE": "1"})
+            self.assertIn("renpy-test.txt sets DULCAMARA_MIPMAPS=0", output)
+            self.assertIn("images have no mipmaps (DULCAMARA_MIPMAPS=0)", output)
+            self.assertNotIn("sets PATH", output)
+            self.assertNotIn("dulcamara_lower", output)
+
     def test_the_presplash(self):
         # A game's presplash (game/presplash.png, or presplash_foreground and _background, a progress bar) is the
         # picture while the game loads, centred on black: Ren'Py draws it into a window of its own the console never

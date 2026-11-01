@@ -23,6 +23,14 @@ that only starting the app again cleared.
   black again within 6 pictures is in the log with its box and the OpenGL work of the picture it began in
   (`black flash N, picture P, ...`). A flash a tester sees that is not in the log happens after the core's pictures,
   as the frontend shows them; one that is says where. A host test shows a black box for a moment and finds it.
+- **A tester's switches: `renpy-test.txt`.** The tester found that the black flashes come only while the game's text
+  window shows (Square hides it, and they stop): Dulcamara draws nothing over a game but its FPS and fast-forward
+  badges. To try the core's graphics choices one by one on a console without a build each, each
+  `DULCAMARA_<NAME>=<value>` line of `/data/dulcamara/renpy-test.txt` is set for the game and logged
+  (`DULCAMARA_GL_CPU_LOAD=0`: images made ready as Ren'Py makes them; `DULCAMARA_GL_WRITE_BACK=0`: copies as they
+  are; `DULCAMARA_GL_READ_DIRECT=0`: pictures read back through pixel buffers; and new, `DULCAMARA_MIPMAPS=0`: images
+  without mipmaps, which the console's driver makes partly on the GPU and partly on the CPU). Host tests in both
+  cores.
 - The log's `OpenGL reported error 0x0502 after a texture's storage` lines are Ren'Py's own: after each upload it
   unmaps a pixel buffer it never mapped, and the error is reported at the next call the core checks. Harmless.
 - Not yet run on a console. The missing text in Ren'Py 7 is not in the log: a screenshot of it says what to look for.
