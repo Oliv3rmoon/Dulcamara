@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #ifndef DR_ENGINE_FOLDER
 #define DR_ENGINE_FOLDER "renpy8" /* in the core assets folder */
@@ -45,7 +46,11 @@ static void emit(int level, const char *line)
     if (log_cb)
         log_cb(level >= 2 ? RETRO_LOG_WARN : RETRO_LOG_INFO, "%s\n", line);
     else
-        fprintf(stderr, "%s\n", line);
+    {
+        /* straight to the descriptor: on the PS5 the core's fprintf is ps5_console.c's, which logs through here */
+        (void)!write(STDERR_FILENO, line, strlen(line));
+        (void)!write(STDERR_FILENO, "\n", 1);
+    }
 }
 
 static void frame_time(retro_usec_t usec)
