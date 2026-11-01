@@ -12,6 +12,7 @@ read-back."""
 import math
 import os
 import pickle
+import re
 import shutil
 import struct
 import subprocess
@@ -37,6 +38,23 @@ def write_png(path, width, height):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
 
     header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(bytes(rows)))
+                     + chunk(b"IEND", b""))
+
+
+def write_png_rgba(path, width, height):
+    """A picture partly clear: its colours vary across it and its alpha down it, from clear (its colours kept, as
+    a game's images often keep them) to opaque, so that premultiplying them wrongly shows."""
+    rows = bytearray()
+    for y in range(height):
+        rows.append(0)
+        for x in range(width):
+            rows += bytes(((x * 7) & 255, (y * 11 + x) & 255, (200 - x) & 255, min(255, y * 255 // (height - 1))))
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(bytes(rows)))
                      + chunk(b"IEND", b""))
 
@@ -261,6 +279,26 @@ class RenpyCoreTest(unittest.TestCase):
             output = self.run_core("start", make_game(work / "Movie"), work / "data",
                                    env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_MOVIE_MASK": "1"})
             self.assertIn("DULCAMARA-TEST: movie mask: new [True, False, True, False] alpha [0, 0, 255]", output)
+
+    def test_images_made_ready_on_the_cpu(self):
+        # On the console some images lost their alpha (a black box around a small cup, black at boxes' borders) as
+        # Ren'Py made them ready, drawing them premultiplied and copying that. The core makes them ready on the CPU
+        # instead there (gl.c, DULCAMARA_GL_CPU_LOAD): the picture of images partly clear, a large and a small one,
+        # is the same either way, to the pixel.
+        hashes = {}
+        for cpu in ("0", "1"):
+            with tempfile.TemporaryDirectory() as directory:
+                work = Path(directory)
+                game = make_game(work / "Alpha")
+                write_png_rgba(game / "game/images/dulcamara_glass.png", 96, 80)
+                write_png_rgba(game / "game/images/dulcamara_dot.png", 24, 30)
+                output = self.run_core("start", game, work / "data", env={
+                    "RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_ALPHA": "1", "DULCAMARA_GL_CPU_LOAD": cpu})
+                self.assertIn("DULCAMARA-TEST: alpha shown", output)
+                made = "an image made ready on the CPU, the first" in output
+                self.assertEqual(made, cpu == "1", output[-2000:])
+                hashes[cpu] = re.search(r"picture: 1280x720, XRGB8888, hash ([0-9a-f]{16})", output).group(1)
+        self.assertEqual(hashes["0"], hashes["1"])
 
     def test_the_presplash(self):
         # A game's presplash (game/presplash.png, or presplash_foreground and _background, a progress bar) is the

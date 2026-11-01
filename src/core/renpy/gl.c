@@ -56,6 +56,9 @@ typedef intptr_t GLsizeiptr, GLintptr;
 #define GL_UNSIGNED_INT_8_8_8_8_REV 0x8367
 #define GL_RENDERER 0x1F01
 #define GL_VERSION 0x1F02
+#define GL_ZERO 0
+#define GL_ONE 1
+#define GL_SRC_ALPHA 0x0302
 
 static struct
 {
@@ -93,6 +96,8 @@ static struct
     void (*GetTexLevelParameteriv)(GLenum, GLint, GLenum, GLint *);
     void (*FramebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint);
     void (*DrawElements)(GLenum, GLsizei, GLenum, const void *);
+    void (*BlendFunc)(GLenum, GLenum);
+    void (*BlendFuncSeparate)(GLenum, GLenum, GLenum, GLenum);
 } gl;
 
 static bool made;
@@ -133,6 +138,31 @@ static size_t upside_down_size; /* in pixels */
 static bool write_back_copies;
 #define COPY_CHECKS 4 /* the first copies of 64x64 or more compared with what they were copied from */
 static int copy_checks;
+
+/* Ren'Py makes each image it loads ready in three steps (load_gltexture): it uploads the image's pixels as they are,
+ * draws them into its framebuffer premultiplied (its blend, GL_SRC_ALPHA and GL_ZERO for the colours, GL_ONE and
+ * GL_ZERO for alpha), and copies that into the image's texture. On the console some images came out with their colours
+ * right and alpha 1 all over, a black box around a small cup on a table, a black strip beside a name tag, black at
+ * boxes' borders: the draw or the copy (ps5-opengl copies under 64x64 on the CPU, larger ones with the GPU) loses the
+ * alpha. With images made ready on the CPU (on the PS5; DULCAMARA_GL_CPU_LOAD=1 or 0 chooses anywhere), the copy that
+ * follows such a draw is not made: the pixels Ren'Py uploaded, which the core noted, are premultiplied here, as the
+ * draw would (the same rounding), and uploaded whole into the image's texture, the way its pixels came in the first
+ * place. A picture Ren'Py draws into a texture of its own (a transition's) is copied as before. */
+static bool cpu_loads;
+static struct
+{
+    const uint8_t *data; /* the bytes Ren'Py last gave the pixel-unpack buffer (its surface's), and how many */
+    size_t size;
+    GLint buffer;
+} unpacked;
+static struct
+{
+    const uint8_t *pixels; /* the image Ren'Py last uploaded, RGBA as its surface has them, row texels apart */
+    GLsizei w, h, row;
+    bool drawn; /* and it is being drawn premultiplied, for the copy next */
+} uploaded;
+static uint8_t *premultiplied;
+static size_t premultiplied_size; /* in texels */
 
 static const char *load(void)
 {
@@ -186,12 +216,13 @@ static void choose_reading(void)
 {
     direct = setting("DULCAMARA_GL_READ_DIRECT", ON_PS5);
     write_back_copies = setting("DULCAMARA_GL_WRITE_BACK", ON_PS5);
+    cpu_loads = setting("DULCAMARA_GL_CPU_LOAD", ON_PS5);
     copy_checks = 0;
     if (!direct)
     {
         log_queue(1, "renpy: pictures are read back through two pixel-pack buffers; copied textures are%s written "
-                     "back first",
-                  write_back_copies ? "" : " not");
+                     "back first; images are made ready %s",
+                  write_back_copies ? "" : " not", cpu_loads ? "on the CPU" : "as Ren'Py makes them");
         return;
     }
     /* the framebuffer's own order, which Mesa copies as it is (GL_RGBA unless it is BGRA); OpenGL 2.1 has no such
@@ -211,9 +242,10 @@ static void choose_reading(void)
         gl.PixelStorei(GL_PACK_INVERT_MESA, 0);
     clear_errors();
     log_queue(1, "renpy: pictures are read back straight into the frame, as %s%s, %s; copied textures are%s "
-                 "written back first",
+                 "written back first; images are made ready %s",
               bgra ? "BGRA" : "RGBA", bgra ? "" : " (red and blue swapped after)",
-              inverted ? "top row first" : "turned over after", write_back_copies ? "" : " not");
+              inverted ? "top row first" : "turned over after", write_back_copies ? "" : " not",
+              cpu_loads ? "on the CPU" : "as Ren'Py makes them");
 }
 
 bool gl_create(int w, int h, int depth_bits, char *error, size_t size)
@@ -271,8 +303,8 @@ static int64_t now_usec(void)
 /* What Ren'Py's OpenGL calls cost: this picture's, and the report's so far (timed below) */
 typedef struct
 {
-    int draws, timed_draws, uploads, storages, copies, errors;
-    int64_t draw_usec, upload_usec, upload_pixels, storage_usec, copy_usec, write_back_usec;
+    int draws, timed_draws, uploads, storages, copies, errors, cpu_loads;
+    int64_t draw_usec, upload_usec, upload_pixels, storage_usec, copy_usec, write_back_usec, cpu_load_usec;
 } Work;
 
 static Work work, reported;
@@ -307,12 +339,47 @@ static void watched_draw_elements(GLenum mode, GLsizei count, GLenum type, const
     ++work.timed_draws;
 }
 
+/* An image's pixels as Ren'Py uploads them, from its surface or through a pixel-unpack buffer it just filled from it:
+ * noted (not copied) for its copy, if it is drawn premultiplied next (above). Anything else forgets them. */
+static void note_upload(GLenum target, GLint level, GLsizei w, GLsizei h, GLenum format, GLenum type,
+                        const void *pixels, GLint unpack)
+{
+    uploaded.pixels = NULL;
+    uploaded.drawn = false;
+    if (!cpu_loads || target != GL_TEXTURE_2D || level || format != GL_RGBA || type != GL_UNSIGNED_BYTE || w <= 0 ||
+        h <= 0 || (!pixels && !unpack))
+        return;
+    GLint row = 0, skip_rows = 0, skip_pixels = 0, alignment = 4;
+    gl.GetIntegerv(GL_UNPACK_ROW_LENGTH, &row);
+    gl.GetIntegerv(GL_UNPACK_SKIP_ROWS, &skip_rows);
+    gl.GetIntegerv(GL_UNPACK_SKIP_PIXELS, &skip_pixels);
+    gl.GetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
+    row = row > 0 ? row : w;
+    if (skip_rows || skip_pixels || row < w)
+        return;
+    const size_t need = ((size_t)(h - 1) * (size_t)row + (size_t)w) * 4;
+    const uint8_t *from = pixels;
+    if (unpack)
+    {
+        const size_t offset = (size_t)(uintptr_t)pixels;
+        if (unpack != unpacked.buffer || !unpacked.data || offset > unpacked.size || unpacked.size - offset < need)
+            return;
+        from = unpacked.data + offset;
+    }
+    uploaded.pixels = from;
+    uploaded.w = w;
+    uploaded.h = h;
+    uploaded.row = row;
+}
+
 static void watched_tex_image_2d(GLenum target, GLint level, GLint internal, GLsizei w, GLsizei h, GLint border,
                                  GLenum format, GLenum type, const void *pixels)
 {
     GLint unpack = 0;
     if (!pixels)
         gl.GetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack);
+    if (pixels || unpack)
+        note_upload(target, level, w, h, format, type, pixels, unpack);
     const int64_t start = now_usec();
     gl.TexImage2D(target, level, internal, w, h, border, format, type, pixels);
     const int64_t spent = now_usec() - start;
@@ -467,12 +534,88 @@ static void check_after(CopyCheck *c, GLsizei w, GLsizei h)
     free(c->rows);
 }
 
+/* The image drawn premultiplied for this copy, premultiplied here instead from the pixels Ren'Py uploaded (above),
+ * into the texture bound for the copy: 1 when it was, 0 when the image is opaque all over (the copy has nothing to
+ * lose: a movie's frames, but for a masked movie's), -1 when it could not be. As the draw, each colour is c * a / 255
+ * rounded to the nearest (never a half), and alpha is kept. */
+static int made_ready_on_cpu(const uint8_t *pixels, GLsizei row, GLsizei w, GLsizei h)
+{
+    bool clear = false;
+    for (GLsizei y = 0; y < h && !clear; ++y)
+    {
+        const uint8_t *from = pixels + (size_t)y * (size_t)row * 4 + 3;
+        for (GLsizei x = 0; x < w && !clear; ++x, from += 4)
+            clear = *from != 255;
+    }
+    if (!clear)
+        return 0;
+    const size_t n = (size_t)w * (size_t)h;
+    if (premultiplied_size < n)
+    {
+        uint8_t *grown = realloc(premultiplied, n * 4);
+        if (!grown)
+            return -1;
+        premultiplied = grown;
+        premultiplied_size = n;
+    }
+    for (GLsizei y = 0; y < h; ++y)
+    {
+        const uint8_t *from = pixels + (size_t)y * (size_t)row * 4;
+        uint8_t *to = premultiplied + (size_t)y * (size_t)w * 4;
+        for (GLsizei x = 0; x < w; ++x, from += 4, to += 4)
+        {
+            const unsigned a = from[3];
+            to[0] = (uint8_t)((from[0] * a + 127) / 255);
+            to[1] = (uint8_t)((from[1] * a + 127) / 255);
+            to[2] = (uint8_t)((from[2] * a + 127) / 255);
+            to[3] = (uint8_t)a;
+        }
+    }
+    note_call_errors("an image's draw", w, h); /* Ren'Py's own, before these */
+    GLint have_w = 0, have_h = 0;
+    gl.GetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &have_w);
+    gl.GetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &have_h);
+    const Unpacking u = plain_unpacking();
+    /* the texture Ren'Py has just given this size (allocate_texture): written whole, else made with it */
+    if (have_w == w && have_h == h)
+        gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, premultiplied);
+    else
+        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, premultiplied);
+    restore_unpacking(u);
+    return gl.GetError() == 0 ? 1 : -1;
+}
+
 static void watched_copy_tex_image_2d(GLenum target, GLint level, GLenum internal, GLint x, GLint y, GLsizei w,
                                       GLsizei h, GLint border)
 {
     const bool ours = target == GL_TEXTURE_2D && !border && w > 0 && h > 0 &&
                       (internal == GL_RGBA || internal == GL_RGBA8) && gl.TexImage2D && gl.TexSubImage2D &&
                       gl.CopyTexSubImage2D && gl.GetTexLevelParameteriv;
+    const bool image = ours && uploaded.drawn && uploaded.pixels && !level && !x && !y && w == uploaded.w &&
+                       h == uploaded.h;
+    const uint8_t *pixels = uploaded.pixels;
+    const GLsizei row = uploaded.row;
+    uploaded.pixels = NULL; /* each copy ends what was noted: the next image's upload notes its own */
+    uploaded.drawn = false;
+    if (image)
+    {
+        const int64_t start = now_usec();
+        const int made = made_ready_on_cpu(pixels, row, w, h);
+        if (made > 0)
+        {
+            static bool noted;
+            if (!noted)
+            {
+                noted = true;
+                log_queue(1, "renpy: an image made ready on the CPU, the first (%dx%d), not drawn and copied", w, h);
+            }
+            ++work.cpu_loads;
+            work.cpu_load_usec += now_usec() - start;
+            return;
+        }
+        if (made < 0)
+            log_queue(2, "renpy: an image (%dx%d) could not be made ready on the CPU; copied as Ren'Py does", w, h);
+    }
     CopyCheck check = {0};
     const bool checked = ours && !level && copy_checks < COPY_CHECKS && (int64_t)w * h >= 64 * 64 && h > 1 &&
                          gl.GenTextures && gl.DeleteTextures && gl.BindTexture && gl.FramebufferTexture2D &&
@@ -492,7 +635,34 @@ static void watched_copy_tex_image_2d(GLenum target, GLint level, GLenum interna
         check_after(&check, w, h);
 }
 
-/* Ren'Py's OpenGL functions; three of them watched (above), passing every call on */
+/* The bytes Ren'Py gives a pixel-unpack buffer, its surface's (an image it uploads through it next, above) */
+static void watched_buffer_data(GLenum target, GLsizeiptr size, const void *data, GLenum usage)
+{
+    if (target == GL_PIXEL_UNPACK_BUFFER)
+    {
+        unpacked.buffer = 0;
+        gl.GetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpacked.buffer);
+        unpacked.data = data;
+        unpacked.size = data && size > 0 ? (size_t)size : 0;
+    }
+    gl.BufferData(target, size, data, usage);
+}
+
+/* Ren'Py's premultiplying blend (load_gltexture) after an image's upload: that image is drawn for a copy next */
+static void watched_blend_func_separate(GLenum src_rgb, GLenum dst_rgb, GLenum src_alpha, GLenum dst_alpha)
+{
+    uploaded.drawn = uploaded.pixels && src_rgb == GL_SRC_ALPHA && dst_rgb == GL_ZERO && src_alpha == GL_ONE &&
+                     dst_alpha == GL_ZERO;
+    gl.BlendFuncSeparate(src_rgb, dst_rgb, src_alpha, dst_alpha);
+}
+
+static void watched_blend_func(GLenum src, GLenum dst)
+{
+    uploaded.drawn = false;
+    gl.BlendFunc(src, dst);
+}
+
+/* Ren'Py's OpenGL functions; some of them watched (above), passing every call on */
 void *gl_proc(const char *name)
 {
     if (!name)
@@ -509,6 +679,9 @@ void *gl_proc(const char *name)
     WATCH("glDrawElements", DrawElements, watched_draw_elements)
     WATCH("glTexImage2D", TexImage2D, watched_tex_image_2d)
     WATCH("glCopyTexImage2D", CopyTexImage2D, watched_copy_tex_image_2d)
+    WATCH("glBufferData", BufferData, watched_buffer_data)
+    WATCH("glBlendFuncSeparate", BlendFuncSeparate, watched_blend_func_separate)
+    WATCH("glBlendFunc", BlendFunc, watched_blend_func)
 #undef WATCH
     return real;
 }
@@ -693,6 +866,8 @@ static void timed(int64_t present_usec, int64_t read_usec, int64_t present_start
     reported.copies += work.copies;
     reported.copy_usec += work.copy_usec;
     reported.write_back_usec += work.write_back_usec;
+    reported.cpu_loads += work.cpu_loads;
+    reported.cpu_load_usec += work.cpu_load_usec;
     reported.errors += work.errors;
     memset(&work, 0, sizeof(work));
     if (++count < 600)
@@ -709,15 +884,17 @@ static void timed(int64_t present_usec, int64_t read_usec, int64_t present_start
     log_queue(1,
               "renpy: Ren'Py's OpenGL work, %d pictures in %.1f s: %.1f draws a picture (%.3f ms each), %.2f "
               "uploads (%.2f ms each, %.0f kilopixels), %.2f new textures (%.2f ms each), %.2f copies (%.2f ms "
-              "each, %.2f of it writing back), %.1f ms the most a picture took, %d over 50 ms, %d OpenGL errors",
+              "each, %.2f of it writing back), %.2f images made ready on the CPU (%.2f ms each), %.1f ms the most a "
+              "picture took, %d over 50 ms, %d OpenGL errors",
               count, (double)(now_usec() - first_start) / 1e6, r->draws / n,
               r->timed_draws ? (double)r->draw_usec / r->timed_draws / ms : 0.0, r->uploads / n,
               r->uploads ? (double)r->upload_usec / r->uploads / ms : 0.0,
               r->uploads ? (double)r->upload_pixels / r->uploads / 1000.0 : 0.0, r->storages / n,
               r->storages ? (double)r->storage_usec / r->storages / ms : 0.0, r->copies / n,
               r->copies ? (double)r->copy_usec / r->copies / ms : 0.0,
-              r->copies ? (double)r->write_back_usec / r->copies / ms : 0.0, (double)gl_slowest / ms, slow_pictures,
-              r->errors);
+              r->copies ? (double)r->write_back_usec / r->copies / ms : 0.0, r->cpu_loads / n,
+              r->cpu_loads ? (double)r->cpu_load_usec / r->cpu_loads / ms : 0.0, (double)gl_slowest / ms,
+              slow_pictures, r->errors);
     total = slowest = read_total = gl_slowest = 0;
     count = slow_pictures = 0;
     memset(&reported, 0, sizeof(reported));

@@ -102,6 +102,16 @@ label main_menu:
 
 label start:
     $ dulcamara_test("started")
+    # DULCAMARA_TEST_ALPHA=1: two images partly clear (images/dulcamara_glass.png, 96x80, and dulcamara_dot.png,
+    # 24x30, written by the test) over the picture, and nothing else moves: the picture made with Ren'Py's own way of
+    # making images ready and with the core's on the CPU must be the same
+    if os.environ.get("DULCAMARA_TEST_ALPHA") == "1":
+        scene expression Solid("#203040")
+        show dulcamara at truecenter
+        show dulcamara_glass at Position(xpos=200, ypos=150, xanchor=0, yanchor=0)
+        show dulcamara_dot at Position(xpos=900, ypos=200, xanchor=0, yanchor=0)
+        $ dulcamara_test("alpha shown")
+        $ renpy.pause(hard=True)
     $ dulcamara_report()
     if os.environ.get("DULCAMARA_TEST_LOAD") == "1" and renpy.can_load("1-1"):
         $ renpy.load("1-1")

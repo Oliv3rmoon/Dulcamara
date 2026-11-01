@@ -356,7 +356,8 @@ static void report(void)
 {
     printf("frames: %d run, %llu with a new picture, %llu the same picture again, %llu different pictures\n", ran,
            (unsigned long long)with_picture, (unsigned long long)dupes, (unsigned long long)distinct);
-    printf("picture: %ux%u, %s\n", picture_w, picture_h, xrgb ? "XRGB8888" : "another pixel format");
+    printf("picture: %ux%u, %s, hash %016llx\n", picture_w, picture_h, xrgb ? "XRGB8888" : "another pixel format",
+           (unsigned long long)picture_hash);
     printf("sound: %s (%llu frames, %llu batches with sound in them)\n", sound_loud > 10 ? "playing" : "silent",
            (unsigned long long)sound_frames, (unsigned long long)sound_loud);
 }
