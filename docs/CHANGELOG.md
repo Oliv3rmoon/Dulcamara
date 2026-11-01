@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.9
+
+A test build after 0.2.8's console log, which ended at the same step in both of a tester's runs: the menu's MP3 and
+its WebM movie, both read from the game's archives into memory, decoded; then the hover sound's OGG, read the same
+way, opened its Vorbis decoder and took its first packet, and the app ended with no crash report. So the archive was
+not it.
+
+- **FFmpeg's FFT keeps its dispatch tables out of the code (PS5).** The app's code is mapped execute-only on the
+  console (the executable's text segment has no read permission). FFmpeg 4.3.1's x86 FFT (`libavcodec/x86/fft.asm`)
+  calls each transform size through a table of offsets kept in `.text` itself, so the IMDCT of a Vorbis packet (or
+  an Opus one, through `mdct15`) read the app's own code and ended it; MP3 and the video codecs use no FFT. A patch
+  (`tools/patches/ffmpeg-4.3.1-fft-tables.diff`) moves the four tables to `.rodata`, as offsets from a label at the
+  start of the code, and the PS5 build fails if `fft.o` keeps them in its code. Each entry names the same function as
+  before; an x86-64 build of the patched FFmpeg decodes a Vorbis file through the SSE FFT to the same samples as the
+  unpatched one and FFmpeg's C code. The host tests play an OGG from a game's archive in both Ren'Py cores (the host
+  build uses FFmpeg's C code). Not yet tried on a console.
+- **A codec gets 4 threads at most (PS5).** Ren'Py opens each codec with FFmpeg's `threads=auto`, 16 threads for a
+  movie on the console, each with a core thread's 2 MB stack. When the menu's movie was opened a second time (its
+  next loop, it seems) while the first still decoded, its VP8 decoder got 6 of them and the console refused the rest
+  (`EAGAIN`), so that decoder never opened. Each codec now gets 4
+  (`DULCAMARA_CODEC_THREADS` sets another number). Not yet tried on a console.
+- 0.2.8's presplash showed on the console as its game loaded.
+
 ## 0.2.8
 
 A test build for Ren'Py on the console. 0.2.7 got the controller into Ren'Py (the D-pad moved the focus on the
