@@ -180,6 +180,10 @@ build_generate() {
     mkdir -p "$psrc" "$rsrc" "$deps/lib" "$out/gen"
     git -C "$pygame" archive HEAD | tar -x -C "$psrc"
     git -C "$renpy" archive HEAD | tar -x -C "$rsrc"
+    # Ren'Py 8's fixes to Ren'Py's C (tools/build-renpy.sh), the same code here
+    patch -s "$rsrc/module/ffmedia.c" <"$root/tools/patches/renpy-ffmedia-no-thread.diff" >>"$log/generate.log" 2>&1 &&
+        patch -s "$rsrc/module/renpysound_core.c" <"$root/tools/patches/renpy-renpysound-channels.diff" \
+            >>"$log/generate.log" 2>&1 || fail generate
     # what Ren'Py's own distribution writes (Ren'Py's setup.py imports Ren'Py, which reads it)
     printf "branch = 'fix'\nnightly = False\nofficial = False\nversion = '%s'\nversion_name = '%s'\n" \
         "$renpy_version" "$renpy_version_name" >"$rsrc/renpy/vc_version.py"
@@ -301,7 +305,7 @@ PY
 }
 
 generate_key="generate-3 $(git -C "$renpy" rev-parse HEAD) $(git -C "$pygame" rev-parse HEAD) $python_key $(
-    recipe build_generate)"
+    recipe build_generate) $(digest "$root"/tools/patches/renpy-*.diff)"
 if ! fresh generate "$generate_key"; then
     build_generate
     stamp generate "$generate_key"

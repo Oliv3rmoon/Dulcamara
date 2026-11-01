@@ -235,6 +235,11 @@ build_generate() {
     rm -rf "$src" "$out/gen"
     mkdir -p "$src" "$out/gen"
     git -C "$renpy" archive HEAD | tar -x -C "$src"
+    # Dulcamara's fixes to Ren'Py's C: a movie or sound the system gives no thread for is ready with nothing in it,
+    # not waited for forever; a new sound channel is made while the mixer waits
+    patch -s "$src/src/ffmedia.c" <"$root/tools/patches/renpy-ffmedia-no-thread.diff" >>"$log/generate.log" 2>&1 &&
+        patch -s "$src/src/renpysound_core.c" <"$root/tools/patches/renpy-renpysound-channels.diff" \
+            >>"$log/generate.log" 2>&1 || fail generate
     (cd "$src" && RENPY_STATIC=1 RENPY_REGENERATE_CYTHON=1 RENPY_CYTHON="$out/bin/cython" PYTHONPATH="$out/tools" \
         CC="$cc" CXX="$cxx" CFLAGS="-O2" "$py" setup.py generate) >"$log/generate.log" 2>&1 || fail generate
     generated="$src/tmp/gen3-static"
@@ -326,7 +331,8 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as z, tempfile.Temporary
 PY
 }
 
-generate_key="generate-2 $(git -C "$renpy" rev-parse HEAD) $python_key $(recipe build_generate)"
+generate_key="generate-2 $(git -C "$renpy" rev-parse HEAD) $python_key $(recipe build_generate) $(
+    digest "$root"/tools/patches/renpy-*.diff)"
 if ! fresh generate "$generate_key"; then
     build_generate
     stamp generate "$generate_key"
