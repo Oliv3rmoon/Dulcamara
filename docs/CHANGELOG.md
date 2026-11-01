@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.11
+
+A test build after 0.2.10's console run. Ren'Py 7 games start and play: the tester played one in game. Left were
+black flashes, quicker now and in Ren'Py 7 games too, some text missing in Ren'Py 7, and once an error screen (white)
+that only starting the app again cleared.
+
+- **A long session no longer ends in Ren'Py's error screen for want of a thread (PS5).** The tester's log has it at
+  a choice late in a session: Ren'Py starts a thread for each autosave, and the console refused it (`EAGAIN`) with
+  only 6 of the core's threads running, where 0.2.8's refused at about 31. A thread's stack is made in the console's
+  small system memory (its flexible memory), and so is what `mmap` gives, and Python's object allocator takes its
+  arenas with `mmap`: the more objects a session made, the less room was left for a thread. Both Pythons now take
+  their arenas from `malloc`, the app's heap of direct memory (`tools/patches/python-2.7.18-arenas-heap.diff` and
+  `python-3.12.8-arenas-heap.diff`; each core's build fails if its Python still takes them with `mmap`). And an
+  autosave the console gives no thread for is made at once on Ren'Py's own thread, as a blocking autosave is, its
+  flag and its thread put right first (a host test refuses the thread, in both Ren'Py cores). The memory line every
+  3 minutes and each refused thread now say how much of that system memory is free.
+- **The log finds black flashes in the core's pictures.** A part of the picture that turns pure black and is not
+  black again within 6 pictures is in the log with its box and the OpenGL work of the picture it began in
+  (`black flash N, picture P, ...`). A flash a tester sees that is not in the log happens after the core's pictures,
+  as the frontend shows them; one that is says where. A host test shows a black box for a moment and finds it.
+- The log's `OpenGL reported error 0x0502 after a texture's storage` lines are Ren'Py's own: after each upload it
+  unmaps a pixel buffer it never mapped, and the error is reported at the next call the core checks. Harmless.
+- Not yet run on a console. The missing text in Ren'Py 7 is not in the log: a screenshot of it says what to look for.
+
 ## 0.2.10
 
 A test build after 0.2.9's console runs. The OGG crash is gone: the tester's title screen plays, she loaded a save
