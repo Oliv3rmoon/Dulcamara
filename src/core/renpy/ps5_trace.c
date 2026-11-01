@@ -5,7 +5,8 @@
  * relocatable link (--wrap, tools/renpy/ps5.sh and tools/renpy7/ps5.sh) sends here:
  *  - abort, exit, _exit and _Exit: the call is logged, with where it came from, before it ends the app;
  *  - FFmpeg's steps for each stream Ren'Py opens: opening it, reading its streams, opening its codec, and the first
- *    packet, frame and conversion of each, logged before and after, so the log ends at the step that never returned.
+ *    packet, frame and conversion of each, logged before and after, so the log ends at the step that never returned;
+ *  - the threads FFmpeg asks for a codec, fewer of them (each codec's opening goes through here already).
  * Each line is written at once (log_now). The FFmpeg types are left opaque: an AVCodec's first field is its name.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -16,6 +17,8 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdnoreturn.h>
 
 #define TRACE_LINES 600
@@ -139,8 +142,38 @@ int __wrap_avformat_find_stream_info(void *context, void **options)
     return rc;
 }
 
+/* Ren'Py opens each codec with "threads" "auto": a thread for each of the console's cores, 16 for each movie, each
+ * with a core thread's 2 MB of stack (ps5_threads.c). 0.2.8's log had the console refuse them (EAGAIN) for a menu's
+ * movie opened a second time while the first still decoded: its picture's codec never opened. A codec gets
+ * DULCAMARA_CODEC_THREADS threads (4 unless that is set) at most. */
+typedef struct
+{
+    char *key, *value;
+} Entry;
+Entry *av_dict_get(const void *dictionary, const char *key, const Entry *previous, int flags);
+int av_dict_set(void **dictionary, const char *key, const char *value, int flags);
+
+static void fewer_threads(void **options)
+{
+    const char *setting = getenv("DULCAMARA_CODEC_THREADS");
+    const int most = setting && atoi(setting) > 0 ? atoi(setting) : 4;
+    const Entry *threads = options && *options ? av_dict_get(*options, "threads", NULL, 0) : NULL;
+    if (!threads || (atoi(threads->value) > 0 && atoi(threads->value) <= most))
+        return;
+    static bool noted;
+    if (!noted)
+    {
+        noted = true;
+        log_queue(1, "renpy: FFmpeg asked for %s threads for a codec; it gets %d", threads->value, most);
+    }
+    char value[12];
+    snprintf(value, sizeof value, "%d", most);
+    av_dict_set(options, "threads", value, 0);
+}
+
 int __wrap_avcodec_open2(void *codec_context, const void *codec, void **options)
 {
+    fewer_threads(options);
     TRACE("renpy: trace: opening the %s codec (%p)", codec_name(codec), codec_context);
     const int rc = __real_avcodec_open2(codec_context, codec, options);
     TRACE("renpy: trace: opened the %s codec (%d)", codec_name(codec), rc);
