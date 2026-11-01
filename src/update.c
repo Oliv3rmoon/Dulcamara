@@ -35,9 +35,14 @@
 
 static SDL_atomic_t state;
 static char version[32], zip_url[256], zip_sha256[65], message[256];
+static bool test_build; /* what is offered is a test build (a pre-release) */
 
 int update_state(void)
 {
+    /* a test build found while Test builds was on is no longer offered once it is off: not installed, not shown */
+    if (SDL_AtomicGet(&state) == UPDATE_AVAILABLE && test_build && !app.settings.update_test_builds &&
+        SDL_AtomicCAS(&state, UPDATE_AVAILABLE, UPDATE_NONE))
+        np_log("update: %s is a test build and Test builds is off now; not offered", version);
     return SDL_AtomicGet(&state);
 }
 
@@ -116,6 +121,7 @@ static int check_thread(void *test_builds_on)
     str_copy(version, sizeof(version), release.version);
     str_copy(zip_url, sizeof(zip_url), release.zip_url);
     str_copy(zip_sha256, sizeof(zip_sha256), sha);
+    test_build = release.prerelease;
     np_log("update: %s%s available, " UPDATE_ZIP " sha256 %s", version, release.prerelease ? " (a test build)" : "",
            zip_sha256);
     SDL_AtomicSet(&state, UPDATE_AVAILABLE);

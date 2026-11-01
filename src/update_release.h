@@ -8,9 +8,11 @@
  * answer to release_evaluate(). With Settings > System > Test builds on (update_test_builds), it
  * asks UPDATE_LIST_URL instead, the repository's 20 most recent releases, so that testers are
  * offered its test builds (pre-releases) too, and hands that list to release_evaluate_list(): the
- * newest of them by version that passes every check below is offered, and one that fails a check is
- * passed over for an older one. A release is offered only when it is not a draft (nor a pre-release,
- * unless Test builds is on) and:
+ * newest of them by version that passes checks 1 and 2 below is offered, and one that fails them is
+ * passed over for an older one; check 3 (update.c, once SHA256SUMS is fetched) is the chosen one's
+ * alone, and when it fails nothing is offered. A test build already offered is withdrawn once Test
+ * builds is off (update_state()). A release is offered only when it is not a draft (nor a
+ * pre-release, unless Test builds is on) and:
  *   1. its tag is a version, X.Y.Z (or vX.Y.Z), newer than the running one;
  *   2. it carries both UPDATE_ZIP ("PPSA99010.zip") and UPDATE_SUMS ("SHA256SUMS"), uploaded,
  *      and both download addresses are this repository's own release files for that tag;

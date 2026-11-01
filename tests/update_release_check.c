@@ -401,6 +401,34 @@ static void test_list_order(void)
     /* not newer: the newest of them is named */
     CHECK(evaluate_list(json, "0.10.0", true, &r) == RELEASE_NOT_NEWER && !strcmp(r.version, "0.10.0"));
     discard(other, 4, json);
+    /* the same version twice (v0.2.10 and 0.2.10): the one listed first, the most recent, is offered */
+    char *twice[] = {ours("v0.2.10", PRERELEASE), ours("0.2.10", PRERELEASE)};
+    json = list(twice, 2);
+    CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_OFFER);
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/v0.2.10/PPSA99010.zip"));
+    discard(twice, 2, json);
+}
+
+static void test_sums_of_another_tag(void)
+{
+    Release r;
+    /* the ZIP is the tag's own but SHA256SUMS another tag's, or another host's: never offered, alone or listed */
+    char files[4096], zip[1024], sums[1024];
+    asset(zip, sizeof(zip), OURS, "0.2.10", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(sums, sizeof(sums), OURS, "0.2.9", "SHA256SUMS", "uploaded", NULL);
+    snprintf(files, sizeof(files), "%s,%s", zip, sums);
+    char *json = release("0.2.10", PUBLISHED, files, "");
+    CHECK(evaluate(json, "0.2.8", &r) == RELEASE_FOREIGN_FILE && r.sums_url[0] == '\0');
+    char *rel[] = {release("0.2.10", PRERELEASE, files, "")};
+    char *listed = list(rel, 1);
+    CHECK(evaluate_list(listed, "0.2.8", true, &r) == RELEASE_FOREIGN_FILE && r.zip_url[0] == '\0');
+    discard(rel, 1, listed);
+    free(json);
+    asset(sums, sizeof(sums), "Oliv3rmoon/Dulcamara.evil.example/x", "0.2.10", "SHA256SUMS", "uploaded", NULL);
+    snprintf(files, sizeof(files), "%s,%s", zip, sums);
+    json = release("0.2.10", PUBLISHED, files, "");
+    CHECK(evaluate(json, "0.2.8", &r) == RELEASE_FOREIGN_FILE);
+    free(json);
 }
 
 static void test_list_unreadable(void)
@@ -511,6 +539,7 @@ int main(int argc, char **argv)
     test_list_passes_over();
     test_list_drafts();
     test_list_order();
+    test_sums_of_another_tag();
     test_list_unreadable();
     test_sums();
     test_file_sha256(argc > 1 ? argv[1] : ".");
