@@ -251,6 +251,17 @@ class RenpyCoreTest(unittest.TestCase):
             self.assertRegex(output, r"plays nothing for 'audio/tone\.wav' on channel \d+")
             self.assertIn("sound: silent", output)
 
+    def test_a_movie_waits_for_its_mask(self):
+        # A movie with a mask of its own is two streams: Ren'Py drew a colour frame whose mask frame came late as it
+        # was, black wherever the mask makes it clear (a box's animated border, flashing black on the console). Fed
+        # frames as the console's late masks come, each colour frame drawn has its mask, and one whose mask has not
+        # come waits: the second is drawn a tick late, with its mask, and the last not yet.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("start", make_game(work / "Movie"), work / "data",
+                                   env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_MOVIE_MASK": "1"})
+            self.assertIn("DULCAMARA-TEST: movie mask: new [True, False, True, False] alpha [0, 0, 255]", output)
+
     def test_the_presplash(self):
         # A game's presplash (game/presplash.png, or presplash_foreground and _background, a progress bar) is the
         # picture while the game loads, centred on black: Ren'Py draws it into a window of its own the console never

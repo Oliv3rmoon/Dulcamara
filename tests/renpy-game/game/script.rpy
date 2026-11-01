@@ -34,6 +34,41 @@ init python:
     if os.environ.get("DULCAMARA_TEST_HOLD") == "1":
         config.periodic_callbacks.append(dulcamara_hold_on)
 
+    # DULCAMARA_TEST_MOVIE_MASK=1: a movie's colour and mask frames as get_movie_texture reads them, the mask's a tick
+    # late in turn: whether each colour frame drawn had its mask's transparency (each tick's "new picture", then each
+    # colour frame's alpha: 0 once its mask, clear all over, is applied)
+    def dulcamara_movie_mask():
+        import renpy.display.video as video
+        frames = {"colour": [], "mask": []}
+
+        class Channel(object):
+            def __init__(self, name):
+                self.name = name
+
+            def read_video(self):
+                return frames[self.name].pop(0) if frames[self.name] else None
+
+        def surface(red):
+            s = renpy.display.pgrender.surface((4, 4), True)
+            s.fill((red, 0, 0, 255))
+            return s
+
+        music = renpy.audio.music
+        playing, channel = music.get_playing, music.get_channel
+        music.get_playing = lambda name=None: True
+        music.get_channel = lambda name: Channel(name)
+        try:
+            colours = [surface(255), surface(255), surface(255)]
+            ticks = [(colours[0], surface(0)), (colours[1], None), (None, surface(0)), (colours[2], None)]
+            news = []
+            for colour, mask in ticks:
+                frames["colour"] = [colour] if colour is not None else []
+                frames["mask"] = [mask] if mask is not None else []
+                news.append(video.get_movie_texture("colour", "mask")[1])
+        finally:
+            music.get_playing, music.get_channel = playing, channel
+        return "new %s alpha %s" % (news, [s.get_at((0, 0))[3] for s in colours])
+
     # DULCAMARA_TEST_THREAD=1: a thread of the game's own that is still running when the game is closed
     def dulcamara_forever():
         import time
@@ -74,6 +109,8 @@ label start:
     if os.environ.get("DULCAMARA_TEST_FULLSCREEN") == "1":
         $ _preferences.fullscreen = True
         $ dulcamara_test("fullscreen=" + str(_preferences.fullscreen))
+    if os.environ.get("DULCAMARA_TEST_MOVIE_MASK") == "1":
+        $ dulcamara_test("movie mask: " + dulcamara_movie_mask())
     scene expression Solid("#203040")
     show dulcamara at truecenter
     # DULCAMARA_TEST_MUSIC: another of the game's sounds than its tone (audio/tone.ogg, say)

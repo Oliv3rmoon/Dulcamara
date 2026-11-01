@@ -464,6 +464,47 @@ def image_get(cache, image, *args, **kwargs):
     return loaded
 
 
+# A movie with a mask of its own (Movie(play=..., mask=...)) is two streams, each decoded on its own thread. Ren'Py
+# uploads a colour frame whose mask frame has not come yet as it is (get_movie_texture): such a movie's colour frames
+# are black wherever its mask makes it clear, so a box's animated border flashed black each time the mask's frame came
+# late on the console, and stayed black when the mask's stream did not open. Here a colour frame waits for its mask's
+# (the movie keeps its last picture meanwhile), and is drawn with it when it comes.
+movie_waiting = {}  # channel: its colour frame that waits for the mask's
+movie_waits = [0]
+
+
+def movie_texture(channel, mask_channel=None, side_mask=False, mipmap=None):
+    import renpy
+
+    video = sys.modules["renpy.display.video"]
+    if not mask_channel or side_mask or renpy.emscripten:
+        return originals["get_movie_texture"](channel, mask_channel, side_mask, mipmap)
+    if not renpy.audio.music.get_playing(channel):
+        movie_waiting.pop(channel, None)
+        return None, False
+    if mipmap is None:
+        mipmap = renpy.config.mipmap_movies
+    surf = renpy.audio.music.get_channel(channel).read_video()
+    mask_surf = renpy.audio.music.get_channel(mask_channel).read_video()
+    if surf is None and mask_surf is not None:
+        surf = movie_waiting.pop(channel, None)
+    elif surf is not None and mask_surf is None:
+        movie_waiting[channel] = surf
+        surf = None
+        movie_waits[0] += 1
+        if movie_waits[0] <= 20 or movie_waits[0] % 600 == 0:
+            _dulcamara.log(1, "renpy: movie %s: a picture waits for its mask's (%d so far)" % (channel, movie_waits[0]))
+    elif surf is not None:
+        movie_waiting.pop(channel, None)
+    if surf is not None and mask_surf is not None:
+        renpy.display.module.alpha_munge(mask_surf, surf, renpy.display.im.identity)
+        renpy.display.render.mutated_surface(surf)
+        tex = renpy.display.draw.load_texture(surf, True, {"mipmap": mipmap})
+        video.texture[channel] = tex
+        return tex, True
+    return video.texture.get(channel, None), False
+
+
 def wrap(module):
     if module.__name__ == "renpy.error":
         originals["report_exception"] = module.report_exception
@@ -500,6 +541,10 @@ def wrap(module):
     elif module.__name__ == "renpy.display.core" and "quit_event" not in originals:
         originals["quit_event"] = module.Interface.quit_event
         module.Interface.quit_event = quit_event
+    elif module.__name__ == "renpy.display.video":
+        # each time Ren'Py loads it (again as it reloads): a movie's picture waits for its mask's
+        originals["get_movie_texture"] = module.get_movie_texture
+        module.get_movie_texture = movie_texture
     elif module.__name__ == "renpy.preferences":
         # Fullscreen (a game's Options > Display, or its key) reads as off: Ren'Py would make its window the
         # display's size (3840x2160 on the console, by SDL's account) and the picture with it, and the screen went
@@ -529,7 +574,7 @@ class Finder(importlib.abc.MetaPathFinder):
 
     names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences", "renpy.log",
              "renpy.config", "renpy.audio.renpysound", "renpy.display.focus", "renpy.display.im",
-             "renpy.display.presplash")
+             "renpy.display.presplash", "renpy.display.video")
 
     def find_spec(self, name, path, target=None):
         if name not in self.names:
