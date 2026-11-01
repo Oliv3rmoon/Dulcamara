@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.8
+
+A test build for Ren'Py on the console. 0.2.7 got the controller into Ren'Py (the D-pad moved the focus on the
+menu), and showed that a thread's stack on the console is 64 KB unless asked for (the core's now get 2 MB). But the
+game still ended without a crash report, even with a signal stack on every thread, at the same moment: as Ren'Py
+played its first OGG, the hover sound, beside an MP3 (the music) and a WebM (the menu's movie). The build machine
+plays the same three in both Ren'Py cores.
+
+- **What ends the app is logged.** `abort`, `exit`, `_exit` and `_Exit`, called anywhere in a core, write where they
+  were called from to `dulcamara.log` before they end the app (`ps5_trace.c`).
+- **FFmpeg's steps are logged.** For each stream Ren'Py opens: opening it, reading its streams, opening its codec,
+  and its first packet, frame, read and conversion, each before and after, so the log ends at the step that did not
+  come back. Each thread's start and end are logged too (Ren'Py starts one for each sound).
+
 ## 0.2.7
 
 A test build for Ren'Py on the console: 0.2.6 showed a game's menu and its cursor, but the game ended at once, with
