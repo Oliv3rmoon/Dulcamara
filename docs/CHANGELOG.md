@@ -7,23 +7,25 @@ into the game, and 0.2.8's transparent menu is back. Left were black flashes at 
 (the dialogue box, the title screen's), its animations stopping, and fast cursor movement over its title menu
 hanging the app for a while and losing the menu's background.
 
-- **Images are made ready on the CPU (PS5).** A tester's shots showed images drawn with their colours right and black
-  where they should be clear, changing from one picture to the next: a box around a small cup on a table, the title
-  screen's whole logo, a strip beside a name tag, black at the borders of boxes. Ren'Py makes each image ready by
-  drawing it premultiplied into its framebuffer (a blend of its own) and copying that into the image's texture, a
-  movie's frame each other picture; the console took what was clear for black in the draws around them. Now none of
-  it but the upload reaches the driver: as Ren'Py sets that blend after an upload, the core makes the pixels ready
-  itself, premultiplied as the draw would to the bit (or as they are, opaque all over), and the blend, the draw and
-  the copy are not made; the copy is an upload of them, whole, into the texture. On the build machine the picture of
-  two images partly clear, one large and one under 64x64, is the same to the pixel made either way, and differs when
-  the premultiplying is wrong (`DULCAMARA_GL_CPU_LOAD` chooses either).
+- **Images partly clear are made ready on the CPU (PS5).** A tester's shots showed images drawn with their colours
+  right and black where they should be clear, changing from one picture to the next: a box around a small cup on a
+  table, the title screen's whole logo, a strip beside a name tag, black at the borders of boxes. Ren'Py makes each
+  image ready by drawing it premultiplied into its framebuffer (a blend of its own) and copying that into the image's
+  texture. For an image partly clear none of that but the upload now reaches the driver: as Ren'Py sets that blend
+  after an upload, the core premultiplies the pixels itself, as the draw would to the bit, and the blend, the draw and
+  the copy are not made; the copy is an upload of them, whole, into the texture. An image opaque all over has nothing
+  clear to lose and is made ready as before: a title screen's movie frames (1280x720, each other picture) take 12.5
+  ms to upload on the console and 0.15 ms to copy. On the build machine the picture of two images partly clear, one
+  large and one under 64x64, is the same to the pixel made either way, and differs when the premultiplying is wrong
+  (`DULCAMARA_GL_CPU_LOAD` chooses either).
 - **A movie's picture waits for its mask's.** A movie with a mask of its own (`Movie(play=..., mask=...)`, as a
   box's animated border is) is two streams, each decoded on its own thread. Ren'Py uploaded a colour frame whose
   mask frame had not come yet as it was (`get_movie_texture`), and a masked movie's colour frames are black wherever
   its mask makes it clear: the borders flashed black each time the mask's frame came late on the console, and
-  stayed black when the mask's stream did not open. Dulcamara's hook now keeps such a frame until its mask's comes
-  (the movie keeps its last picture meanwhile), and the log counts the waits. The test game feeds Ren'Py's own
-  function frames as the console's late masks come, in both Ren'Py cores.
+  stayed black when the mask's stream did not open. Dulcamara's hook now keeps each stream's frames until the
+  other's come and draws the oldest of each together, whichever stream is ahead (the movie keeps its last picture
+  meanwhile; one whose mask never comes is not drawn), and the log counts the waits. The test game feeds Ren'Py's
+  own function frames as the console's late masks come, in both Ren'Py cores.
 - **FFmpeg starts no threads of its own (PS5).** 0.2.9's 4 threads a codec brought the menu back, but a screen
   can play several movies at once, each with its mask's stream and its next loop opened early, and 0.2.8's log had
   the console refuse threads at about 31 of the core's. Each stream now decodes on Ren'Py's own thread for it
@@ -43,13 +45,20 @@ hanging the app for a while and losing the menu's background.
   border (`config.max_texture_size` and `fbo_size`; `DULCAMARA_MAX_TEXTURE_SIZE` chooses another). The tester thought
   her game ran out of graphics memory as she moved the cursor fast: the log now says at once when the console refuses
   OpenGL memory, and each time what it holds passes another 64 MB.
+- **A sound plays on two channels at once at most.** A tester's 0.2.9 log: moving the cursor fast over a title
+  menu played its hover sound on 35 channels at once (Ren'Py's audio channel opens another while the others play),
+  each copy a decode thread of its own, until the console refused threads and the game stopped answering. Another
+  copy of a sound now stops its oldest (`DULCAMARA_SAME_SOUND_AT_ONCE` sets another number), and the host tests play
+  one six times at once in both Ren'Py cores.
 - **The log names what does not open.** Whatever the trace's count: each movie file the first time it opens, each
   file and codec that does not open (with its file), each thread the console refuses, and the most of the core's
   threads that have run at once.
 - **Sounds for this game.** A Ren'Py game's sounds, from its archives and its own files, are listed as it runs;
   Dulcamara's menu in game (or **Settings > Ren'Py > Sounds for a game**) turns any one off or on again. One that is
   off plays as a second of silence from memory, so the game's sound goes on as if it played, and its archive is not
-  touched; a change counts from the next play. Asked for by a tester, for a game's hover sound.
+  touched; a change counts from the next play (a looping sound's next loop is already queued as one starts). Names
+  match whatever case the game gives them in, as Ren'Py's loader finds them. Asked for by a tester, for a game's
+  hover sound.
 - **Settings > System > Test builds.** With it on, the update offers test builds (pre-releases) too: the newest of
   the 20 newest releases, with the same checks as a release (this repository's own `PPSA99010.zip` and `SHA256SUMS`
   for its tag, the ZIP checked against them), so testers need not install each by hand. Turned off, a test build
