@@ -40,15 +40,24 @@ class UpdateReleaseTest(unittest.TestCase):
         header = (ROOT / "src/update_release.h").read_text(encoding="utf-8")
         self.assertIn('#define UPDATE_REPO "Oliv3rmoon/Dulcamara"', header)
         self.assertIn('#define UPDATE_ZIP "PPSA99010.zip"', header)
+        self.assertIn('#define UPDATE_LIST_URL "https://api.github.com/repos/" UPDATE_REPO '
+                      '"/releases?per_page=20"', header)
         update = (ROOT / "src/update.c").read_text(encoding="utf-8")
         self.assertIn("net_request(UPDATE_LATEST_URL", update)
         self.assertIn("release_evaluate(", update)
         self.assertIn("release_file_sha256(zip, got)", update)
-        # darkxex's repository is never asked, and no other release list is read.
+        # With Settings > System > Test builds on, Dulcamara's own list (UPDATE_LIST_URL), read by
+        # release_evaluate_list() with the same checks.
+        self.assertIn("net_request(UPDATE_LIST_URL", update)
+        self.assertIn("release_evaluate_list(", update)
+        # darkxex's repository is never asked, and no other release list is read: the only one is
+        # UPDATE_LIST_URL, spelled out in update_release.h alone.
         for source in sorted((ROOT / "src").rglob("*.[ch]")):
             text = source.read_text(encoding="utf-8", errors="replace")
             self.assertNotIn("api.github.com/repos/darkxex", text, source)
-        self.assertIsNone(re.search(r"/releases\?per_page", update))
+            lists = re.findall(r"/releases\?[^\"]*", text)
+            self.assertEqual(lists, ["/releases?per_page=20"] if source.name == "update_release.h" else [],
+                             source)
 
 
 if __name__ == "__main__":

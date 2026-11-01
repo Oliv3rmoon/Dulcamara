@@ -5,7 +5,12 @@
  *
  * update.c asks https://api.github.com/repos/<UPDATE_REPO>/releases/latest, the newest release
  * of Oliv3rmoon/Dulcamara that is neither a draft nor a pre-release, and hands the
- * answer to release_evaluate(). A release is offered only when:
+ * answer to release_evaluate(). With Settings > System > Test builds on (update_test_builds), it
+ * asks UPDATE_LIST_URL instead, the repository's 20 most recent releases, so that testers are
+ * offered its test builds (pre-releases) too, and hands that list to release_evaluate_list(): the
+ * newest of them by version that passes every check below is offered, and one that fails a check is
+ * passed over for an older one. A release is offered only when it is not a draft (nor a pre-release,
+ * unless Test builds is on) and:
  *   1. its tag is a version, X.Y.Z (or vX.Y.Z), newer than the running one;
  *   2. it carries both UPDATE_ZIP ("PPSA99010.zip") and UPDATE_SUMS ("SHA256SUMS"), uploaded,
  *      and both download addresses are this repository's own release files for that tag;
@@ -28,6 +33,7 @@
 #define UPDATE_ZIP "PPSA99010.zip"
 #define UPDATE_SUMS "SHA256SUMS"
 #define UPDATE_LATEST_URL "https://api.github.com/repos/" UPDATE_REPO "/releases/latest"
+#define UPDATE_LIST_URL "https://api.github.com/repos/" UPDATE_REPO "/releases?per_page=20" /* Test builds on */
 #define UPDATE_DOWNLOAD_PREFIX "https://github.com/" UPDATE_REPO "/releases/download/"
 
 typedef enum
@@ -35,7 +41,7 @@ typedef enum
     RELEASE_OFFER = 0,     /* newer, with both files: fetch SHA256SUMS next */
     RELEASE_NOT_NEWER,     /* this version or older */
     RELEASE_UNREADABLE,    /* not the JSON GitHub sends */
-    RELEASE_NOT_PUBLISHED, /* a draft or a pre-release */
+    RELEASE_NOT_PUBLISHED, /* a draft, or a pre-release where they are not offered */
     RELEASE_BAD_TAG,       /* the tag is not X.Y.Z */
     RELEASE_NO_ZIP,        /* no uploaded PPSA99010.zip */
     RELEASE_NO_SUMS,       /* no uploaded SHA256SUMS */
@@ -49,6 +55,7 @@ typedef struct
     char sums_url[256];  /* the same for SHA256SUMS */
     char zip_digest[65]; /* the ZIP's SHA-256 as GitHub reports it (lowercase hex), or "" */
     uint64_t zip_size;
+    bool prerelease; /* a test build: only release_evaluate_list() offers one */
 } Release;
 
 /* X.Y.Z (each part 0..99999) into out; false for anything else. */
@@ -58,6 +65,13 @@ int release_version_compare(const char *a, const char *b);
 
 /* Reads releases/latest's answer (json, length bytes) against the running version. */
 ReleaseVerdict release_evaluate(const char *json, size_t length, const char *installed, Release *out);
+/* Reads UPDATE_LIST_URL's answer, an array of releases each read as release_evaluate() reads one, a
+ * pre-release passing when allow_prerelease: RELEASE_OFFER and out for the newest by version of those
+ * it would offer. When there is none, the verdict (and out->version) of the newest by version of the
+ * others, one without a version counting as older than any; RELEASE_NOT_NEWER for an empty array.
+ * RELEASE_UNREADABLE, and nothing offered, when any of it can't be read. */
+ReleaseVerdict release_evaluate_list(const char *json, size_t length, const char *installed, bool allow_prerelease,
+                                     Release *out);
 
 /* The SHA-256 SHA256SUMS gives `file` ("<64 hex>  <file>" or "<64 hex> *<file>", as sha256sum
  * writes them): 1 and sha256 (lowercase) when there is exactly one well-formed line for it, 0 when

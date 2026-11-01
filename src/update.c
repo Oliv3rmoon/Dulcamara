@@ -3,9 +3,12 @@
  * Mandrake (and SwanStationPS5 before it) updates itself.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Checks api.github.com for the repository's latest release (not a draft or a pre-release);
- * update_release.c decides whether it is offered: a newer X.Y.Z tag carrying PPSA99010.zip and
- * SHA256SUMS, both this repository's own files. Installing downloads the ZIP, checks it against
+ * Checks api.github.com for the repository's latest release (not a draft or a pre-release), or,
+ * with Settings > System > Test builds on, for its 20 most recent releases, test builds
+ * (pre-releases) among them, so that testers needn't install each test build by hand;
+ * update_release.c decides which is offered: a newer X.Y.Z tag carrying PPSA99010.zip and
+ * SHA256SUMS, both this repository's own files, the newest such of the list with Test builds on
+ * (never a draft). Either way, the same checks. Installing downloads the ZIP, checks it against
  * the SHA-256 that SHA256SUMS gives it, and writes the PPSA99010 folder inside it over the
  * installed app. Each file goes to <name>.new and is renamed into place: a running eboot.bin
  * can't be overwritten, but it can be replaced by name, and the new one runs from the next start.
@@ -55,13 +58,16 @@ static void fail(const char *why)
     SDL_AtomicSet(&state, UPDATE_FAILED);
 }
 
-static int check_thread(void *unused)
+/* test_builds_on: not 0 when Settings > System > Test builds was on as the check started */
+static int check_thread(void *test_builds_on)
 {
-    (void)unused;
+    const bool test_builds = (uintptr_t)test_builds_on != 0;
     char *body = NULL;
     size_t len = 0;
-    /* releases/latest: the newest release that is neither a draft nor a pre-release */
-    int status = net_request(UPDATE_LATEST_URL, NULL, NULL, NP_NAME "/" NP_VERSION, &body, &len);
+    /* releases/latest: the newest release that is neither a draft nor a pre-release. With Test builds on, the
+     * 20 most recent releases, pre-releases among them, as a list. */
+    int status = test_builds ? net_request(UPDATE_LIST_URL, NULL, NULL, NP_NAME "/" NP_VERSION, &body, &len)
+                             : net_request(UPDATE_LATEST_URL, NULL, NULL, NP_NAME "/" NP_VERSION, &body, &len);
     if (status == 404)
     {
         free(body);
@@ -75,11 +81,13 @@ static int check_thread(void *unused)
         return 0;
     }
     Release release;
-    ReleaseVerdict verdict = release_evaluate(body, len, NP_VERSION, &release);
+    ReleaseVerdict verdict = test_builds ? release_evaluate_list(body, len, NP_VERSION, true, &release)
+                                         : release_evaluate(body, len, NP_VERSION, &release);
     free(body);
     version[0] = zip_url[0] = zip_sha256[0] = '\0';
-    np_log("update: " UPDATE_REPO " latest %s, this %s: %s", release.version[0] ? release.version : "?",
-                       NP_VERSION, release_verdict_text(verdict));
+    /* which was asked: "latest", or "releases (test builds on)" */
+    np_log("update: " UPDATE_REPO " %s %s, this %s: %s", test_builds ? "releases (test builds on)" : "latest",
+           release.version[0] ? release.version : "?", NP_VERSION, release_verdict_text(verdict));
     if (verdict != RELEASE_OFFER)
     {
         SDL_AtomicSet(&state, UPDATE_NONE);
@@ -108,7 +116,8 @@ static int check_thread(void *unused)
     str_copy(version, sizeof(version), release.version);
     str_copy(zip_url, sizeof(zip_url), release.zip_url);
     str_copy(zip_sha256, sizeof(zip_sha256), sha);
-    np_log("update: %s available, " UPDATE_ZIP " sha256 %s", version, zip_sha256);
+    np_log("update: %s%s available, " UPDATE_ZIP " sha256 %s", version, release.prerelease ? " (a test build)" : "",
+           zip_sha256);
     SDL_AtomicSet(&state, UPDATE_AVAILABLE);
     return 0;
 }
@@ -119,7 +128,8 @@ void update_check(void)
     if (s == UPDATE_CHECKING || s == UPDATE_INSTALLING || s == UPDATE_INSTALLED)
         return;
     SDL_AtomicSet(&state, UPDATE_CHECKING);
-    SDL_Thread *t = SDL_CreateThread(check_thread, "update", NULL);
+    /* Test builds goes with the thread, as it is now: Settings can change it while the check runs */
+    SDL_Thread *t = SDL_CreateThread(check_thread, "update", (void *)(uintptr_t)app.settings.update_test_builds);
     if (t)
         SDL_DetachThread(t);
     else

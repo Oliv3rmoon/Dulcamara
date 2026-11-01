@@ -279,48 +279,50 @@ static void digest_hex(const char *digest, char out[65])
     out[64] = '\0';
 }
 
-ReleaseVerdict release_evaluate(const char *json, size_t length, const char *installed, Release *out)
+/* One release object, read at j (and j left after it) and judged as update_release.h lists, a pre-release passing
+ * when allow_prerelease. parts is its X.Y.Z when it has one, else 0.0.0: in full, where out->version may be cut. */
+static ReleaseVerdict read_release(Json *j, const char *installed, bool allow_prerelease, Release *out, int parts[3])
 {
     memset(out, 0, sizeof(*out));
-    Json j = {json, json + length};
+    parts[0] = parts[1] = parts[2] = 0;
     char tag[40] = "";
     bool tag_fits = true, draft = false, prerelease = false;
     Asset zip = {0}, sums = {0};
-    if (!json_take(&j, '{'))
+    if (!json_take(j, '{'))
         return RELEASE_UNREADABLE;
-    if (!json_take(&j, '}'))
+    if (!json_take(j, '}'))
     {
         do
         {
             char key[32];
             bool fits = true;
-            if (!json_string(&j, key, sizeof(key), &fits) || !json_take(&j, ':'))
+            if (!json_string(j, key, sizeof(key), &fits) || !json_take(j, ':'))
                 return RELEASE_UNREADABLE;
             if (fits && !strcmp(key, "tag_name"))
             {
-                if (!json_string(&j, tag, sizeof(tag), &tag_fits))
+                if (!json_string(j, tag, sizeof(tag), &tag_fits))
                     return RELEASE_UNREADABLE;
             }
             else if (fits && !strcmp(key, "draft"))
             {
-                if (!json_bool(&j, &draft))
+                if (!json_bool(j, &draft))
                     return RELEASE_UNREADABLE;
             }
             else if (fits && !strcmp(key, "prerelease"))
             {
-                if (!json_bool(&j, &prerelease))
+                if (!json_bool(j, &prerelease))
                     return RELEASE_UNREADABLE;
             }
             else if (fits && !strcmp(key, "assets"))
             {
-                if (!json_take(&j, '['))
+                if (!json_take(j, '['))
                     return RELEASE_UNREADABLE;
-                if (!json_take(&j, ']'))
+                if (!json_take(j, ']'))
                 {
                     do
                     {
                         Asset a;
-                        if (!read_asset(&j, &a))
+                        if (!read_asset(j, &a))
                             return RELEASE_UNREADABLE;
                         Asset *slot = !strcmp(a.name, UPDATE_ZIP) ? &zip : !strcmp(a.name, UPDATE_SUMS) ? &sums : NULL;
                         if (slot && !slot->found && !strcmp(a.state, "uploaded"))
@@ -328,24 +330,27 @@ ReleaseVerdict release_evaluate(const char *json, size_t length, const char *ins
                             *slot = a;
                             slot->found = true;
                         }
-                    } while (json_take(&j, ','));
-                    if (!json_take(&j, ']'))
+                    } while (json_take(j, ','));
+                    if (!json_take(j, ']'))
                         return RELEASE_UNREADABLE;
                 }
             }
-            else if (!json_skip(&j, 1))
+            else if (!json_skip(j, 1))
                 return RELEASE_UNREADABLE;
-        } while (json_take(&j, ','));
-        if (!json_take(&j, '}'))
+        } while (json_take(j, ','));
+        if (!json_take(j, '}'))
             return RELEASE_UNREADABLE;
     }
-    if (draft || prerelease)
+    if (draft || (prerelease && !allow_prerelease))
         return RELEASE_NOT_PUBLISHED;
     const char *version = tag[0] == 'v' ? tag + 1 : tag;
-    int parts[3];
     if (!tag_fits || !release_version_parse(version, parts))
+    {
+        parts[0] = parts[1] = parts[2] = 0;
         return RELEASE_BAD_TAG;
+    }
     snprintf(out->version, sizeof(out->version), "%s", version);
+    out->prerelease = prerelease;
     if (release_version_compare(version, installed) <= 0)
         return RELEASE_NOT_NEWER;
     if (!zip.found)
@@ -363,6 +368,68 @@ ReleaseVerdict release_evaluate(const char *json, size_t length, const char *ins
     digest_hex(zip.digest, out->zip_digest);
     out->zip_size = zip.size;
     return RELEASE_OFFER;
+}
+
+ReleaseVerdict release_evaluate(const char *json, size_t length, const char *installed, Release *out)
+{
+    Json j = {json, json + length};
+    int parts[3];
+    return read_release(&j, installed, false, out, parts);
+}
+
+/* <0, 0 or >0 as X.Y.Z a is older than, the same as or newer than b */
+static int parts_compare(const int a[3], const int b[3])
+{
+    for (int i = 0; i < 3; ++i)
+        if (a[i] != b[i])
+            return a[i] < b[i] ? -1 : 1;
+    return 0;
+}
+
+ReleaseVerdict release_evaluate_list(const char *json, size_t length, const char *installed, bool allow_prerelease,
+                                     Release *out)
+{
+    memset(out, 0, sizeof(*out));
+    Json j = {json, json + length};
+    /* the newest offered so far, and while there is none, the newest of the others (for the log) */
+    Release offer = {0}, other = {0};
+    int offer_parts[3] = {0}, other_parts[3] = {0};
+    bool offered = false, any = false;
+    ReleaseVerdict other_verdict = RELEASE_NOT_NEWER;
+    if (!json_take(&j, '['))
+        return RELEASE_UNREADABLE;
+    if (!json_take(&j, ']'))
+    {
+        do
+        {
+            Release r;
+            int parts[3];
+            const ReleaseVerdict verdict = read_release(&j, installed, allow_prerelease, &r, parts);
+            if (verdict == RELEASE_UNREADABLE)
+                return RELEASE_UNREADABLE;
+            if (verdict == RELEASE_OFFER)
+            {
+                /* the first of two with the same version: GitHub lists the most recent first */
+                if (!offered || parts_compare(parts, offer_parts) > 0)
+                {
+                    offer = r;
+                    memcpy(offer_parts, parts, sizeof(offer_parts));
+                }
+                offered = true;
+            }
+            else if (!any || (r.version[0] && (!other.version[0] || parts_compare(parts, other_parts) > 0)))
+            {
+                other = r;
+                memcpy(other_parts, parts, sizeof(other_parts));
+                other_verdict = verdict;
+                any = true;
+            }
+        } while (json_take(&j, ','));
+        if (!json_take(&j, ']'))
+            return RELEASE_UNREADABLE;
+    }
+    *out = offered ? offer : other;
+    return offered ? RELEASE_OFFER : other_verdict;
 }
 
 /* ---------------------------------------------------------------- SHA256SUMS */

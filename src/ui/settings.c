@@ -195,6 +195,8 @@ static const Row SYSTEM[] = {
     {"Check for updates at start", "Asks github.com/Oliv3rmoon/Dulcamara for a newer release when the app "
                                    "opens, and installs it (checked against its SHA256SUMS) for the next start.",
      K_TOGGLE, FIELD(update_check), NULL, 0, NULL, A_NONE, -1},
+    {"Test builds", "Also offers test builds (GitHub's pre-releases) when they are newer; they may break things.",
+     K_TOGGLE, FIELD(update_test_builds), NULL, 0, NULL, A_NONE, -1},
     {"Check for updates now", "Asks GitHub now.", K_ACTION, 0, NULL, 0, NULL, A_CHECK_UPDATE, -1},
     {"Close Dulcamara", "Closes the app. Save in the game first.", K_ACTION, 0, NULL, 0, NULL, A_CLOSE_APP, -1},
 };

@@ -120,6 +120,7 @@ typedef struct
     int ui_volume;      /* 0..3 = 25/50/75/100 % */
     int game_volume;    /* 0..10, tenths of the game's sound */
     bool update_check;  /* look for a newer release at start */
+    bool update_test_builds; /* the update offers test builds (pre-releases) too (update.c) */
     bool community_seen; /* the empty library has shown nightly's line (community.h, ui/shelf.c): not again */
     int sort_mode;      /* the library's order: 0 title, 1 last played */
     int last_game;      /* the library's cursor, by position */
