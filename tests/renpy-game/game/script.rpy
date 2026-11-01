@@ -86,6 +86,26 @@ init python:
                 playing += 1
         return str(playing)
 
+    # DULCAMARA_TEST_AUTOSAVE=1: an autosave the console gives no thread for (threading's start raising as Python's does
+    # then): whether its file is written, and whether Ren'Py takes the next autosave as one that may run
+    def dulcamara_autosave():
+        import threading
+        start = threading.Thread.start
+
+        def refused(self):
+            raise RuntimeError("can't start new thread")
+
+        threading.Thread.start = refused
+        config.has_autosave = True  # the test game's are off (options.rpy)
+        try:
+            renpy.force_autosave()
+        finally:
+            threading.Thread.start = start
+            config.has_autosave = False
+        loadsave = renpy.loadsave
+        return "autosave %s, another may run: %s" % ("made" if renpy.can_load("auto-1") else "missing",
+                                                    loadsave.autosave_not_running.is_set())
+
     # DULCAMARA_TEST_THREAD=1: a thread of the game's own that is still running when the game is closed
     def dulcamara_forever():
         import time
@@ -142,6 +162,19 @@ label start:
         $ dulcamara_test("copies playing: " + dulcamara_copies())
     if os.environ.get("DULCAMARA_TEST_MOVIE_MASK") == "1":
         $ dulcamara_test("movie mask: " + dulcamara_movie_mask())
+    if os.environ.get("DULCAMARA_TEST_AUTOSAVE") == "1":
+        $ dulcamara_test(dulcamara_autosave())
+    # DULCAMARA_TEST_FLASH=1: a black box, 160x120 at 320,240, over the picture for a moment, as a tester's boxes
+    # flash black: the core's log finds it in its pictures
+    if os.environ.get("DULCAMARA_TEST_FLASH") == "1":
+        scene expression Solid("#203040")
+        $ renpy.pause(0.3, hard=True)
+        show expression Solid("#000000", xysize=(160, 120)) as dulcamara_flash:
+            xpos 320 ypos 240
+        $ renpy.pause(0.05, hard=True)
+        hide dulcamara_flash
+        $ renpy.pause(0.5, hard=True)
+        $ dulcamara_test("flash shown")
     scene expression Solid("#203040")
     show dulcamara at truecenter
     # DULCAMARA_TEST_MUSIC: another of the game's sounds than its tone (audio/tone.ogg, say)

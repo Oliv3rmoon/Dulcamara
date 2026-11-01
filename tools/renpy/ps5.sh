@@ -70,8 +70,10 @@ build_python_ps5() {
     unpack "Python-$python_version.tar.xz" "$out/work/python"
     rm -rf "$out/python"
     local src="$out/work/python/Python-$python_version"
-    patch -d "$src" -p1 <"$root/tools/patches/python-3.12.8-cross-freebsd.diff" >"$log/python.log" 2>&1 ||
-        fail python
+    : >"$log/python.log"
+    for p in "$root"/tools/patches/python-3.12.8-*.diff; do
+        patch -d "$src" -p1 <"$p" >>"$log/python.log" 2>&1 || fail python
+    done
     cp "$root/tools/renpy/Setup.local" "$src/Modules/Setup.local"
     # cross answers: no pseudo-terminals; getaddrinfo is the console's (the core stands in for it, ps5_libc.c)
     printf 'ac_cv_file__dev_ptmx=no\nac_cv_file__dev_ptc=no\nac_cv_buggy_getaddrinfo=no\n' >"$src/config.site"
@@ -172,8 +174,14 @@ fetch_opengl() {
 }
 
 python_key="python-ps5-2 $python_version $toolchain_key $(recipe build_python_ps5) $(
-    digest "$root/tools/renpy/Setup.local" "$root/tools/patches/python-3.12.8-cross-freebsd.diff")"
+    digest "$root/tools/renpy/Setup.local" "$root"/tools/patches/python-3.12.8-*.diff)"
 fresh python "$python_key" || { build_python_ps5; stamp python "$python_key"; }
+# Python's arenas come from the app's heap (tools/patches/python-3.12.8-arenas-heap.diff): mmap takes the console's
+# small system memory, where threads' stacks are made too
+if "$nm" -A "$out/python/lib/libpython3.12.a" 2>/dev/null | grep -qE 'obmalloc\.o:[[:space:]]+U mmap$'; then
+    echo "CPython 3.12 for the PS5 takes its arenas with mmap" >&2
+    exit 1
+fi
 ffmpeg_key="ffmpeg-ps5-2 $ffmpeg_version $toolchain_key $(recipe build_ffmpeg_ps5) $(command -v nasm >/dev/null && echo asm) $(
     digest "$root"/tools/patches/ffmpeg-4.3.1-*.diff)"
 fresh ffmpeg "$ffmpeg_key" || { build_ffmpeg_ps5; stamp ffmpeg "$ffmpeg_key"; }

@@ -89,6 +89,12 @@ if "$nm" -u "$out/python/lib/libpython2.7.a" | grep -qwE '__srget|__swbuf'; then
     echo "CPython 2.7 for the PS5 calls FreeBSD's stdio internals, which end the app on the console" >&2
     exit 1
 fi
+# and its arenas come from the app's heap (tools/patches/python-2.7.18-arenas-heap.diff): mmap takes the console's
+# small system memory, where threads' stacks are made too, and 0.2.10's Ren'Py 7 could not start its autosave's
+if "$nm" -A "$out/python/lib/libpython2.7.a" 2>/dev/null | grep -qE 'obmalloc\.o:[[:space:]]+U mmap$'; then
+    echo "CPython 2.7 for the PS5 takes its arenas with mmap" >&2
+    exit 1
+fi
 
 # ---- Ren'Py's and pygame_sdl2's modules: the host build's generated C, compiled for the PS5 with the renamed SDL
 # calls.

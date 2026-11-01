@@ -19,6 +19,7 @@
 int __real_sceKernelAllocateDirectMemory(int64_t search_start, int64_t search_end, size_t length, size_t alignment,
                                          int memory_type, int64_t *physical_address);
 int __real_sceKernelReleaseDirectMemory(int64_t start, size_t length);
+int sceKernelAvailableFlexibleMemorySize(size_t *size);
 
 static int64_t held_bytes, held_blocks, most_steps;
 
@@ -71,6 +72,14 @@ int64_t ps5_memory_direct_bytes(void)
 int64_t ps5_memory_direct_blocks(void)
 {
     return __atomic_load_n(&held_blocks, __ATOMIC_RELAXED);
+}
+
+/* The console's flexible memory still free, or -1: its small system memory, where a thread's stack is made and what
+ * mmap gives comes from (0.2.10's Ren'Py 7 could not start a thread with 6 of the core's running) */
+int64_t ps5_memory_flexible_free(void)
+{
+    size_t size = 0;
+    return sceKernelAvailableFlexibleMemorySize(&size) == 0 ? (int64_t)size : -1;
 }
 
 #endif

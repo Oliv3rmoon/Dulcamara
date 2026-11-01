@@ -125,16 +125,17 @@ static PyObject *py_now(PyObject *self, PyObject *args)
 size_t ps5_heap_mapped_bytes(void); /* the app's heap, src/platform/ps5_heap.c */
 int64_t ps5_memory_direct_bytes(void);
 int64_t ps5_memory_direct_blocks(void);
+int64_t ps5_memory_flexible_free(void);
 #endif
 
-/* (the app's heap, the direct memory the core's libraries hold, in how many allocations), in bytes; None off the
- * console: dulcamara_errors logs it every few minutes */
+/* (the app's heap, the direct memory the core's libraries hold, in how many allocations, the console's system memory
+ * still free or -1), in bytes; None off the console: dulcamara_errors logs it every few minutes */
 static PyObject *py_memory(PyObject *self, PyObject *unused)
 {
     (void)self, (void)unused;
 #if defined(__PROSPERO__)
-    return Py_BuildValue("(LLL)", (long long)ps5_heap_mapped_bytes(), (long long)ps5_memory_direct_bytes(),
-                         (long long)ps5_memory_direct_blocks());
+    return Py_BuildValue("(LLLL)", (long long)ps5_heap_mapped_bytes(), (long long)ps5_memory_direct_bytes(),
+                         (long long)ps5_memory_direct_blocks(), (long long)ps5_memory_flexible_free());
 #else
     Py_RETURN_NONE;
 #endif

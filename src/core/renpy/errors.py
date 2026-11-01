@@ -413,6 +413,8 @@ def log_memory():
         if counts:
             parts.append("the heap %d MB, OpenGL's memory %d MB in %d blocks" % (counts[0] >> 20, counts[1] >> 20,
                                                                                  counts[2]))
+            if len(counts) > 3 and counts[3] >= 0:
+                parts.append("the console's system memory %d MB free" % (counts[3] >> 20))
         loader = getattr(sys.modules["renpy.display"].draw, "texture_loader", None)
         if loader is not None:
             size, count = loader.get_texture_size()
@@ -569,6 +571,29 @@ def max_texture_size():
     return 2048 if _dulcamara.memory() is not None else 0
 
 
+# A background autosave the console gives no thread for (Ren'Py's force_autosave raised "can't start new thread" and
+# showed its error screen: 0.2.10's Ren'Py 7, at a choice, late in a session) is made at once on Ren'Py's own thread,
+# as Ren'Py makes a blocking one. Its flag still said an autosave ran, and its thread, never started, could not be
+# joined: both are put right first.
+autosaves_inline = [0]
+
+
+def force_autosave(take_screenshot=False, block=False):
+    try:
+        return originals["force_autosave"](take_screenshot, block)
+    except Exception as e:
+        if block or "can't start new thread" not in str(e):
+            raise
+    loadsave = sys.modules["renpy.loadsave"]
+    loadsave.autosave_thread = None
+    loadsave.autosave_not_running.set()
+    autosaves_inline[0] += 1
+    if autosaves_inline[0] <= 20 or autosaves_inline[0] % 100 == 0:
+        _dulcamara.log(2, "renpy: the console gave the autosave no thread: it is made on Ren'Py's own (%d so far)"
+                       % autosaves_inline[0])
+    return originals["force_autosave"](take_screenshot, True)
+
+
 def wrap(module):
     if module.__name__ == "renpy.error":
         originals["report_exception"] = module.report_exception
@@ -617,6 +642,10 @@ def wrap(module):
         # each time Ren'Py loads it (again as it reloads): a movie's picture waits for its mask's
         originals["get_movie_texture"] = module.get_movie_texture
         module.get_movie_texture = movie_texture
+    elif module.__name__ == "renpy.loadsave":
+        # each time Ren'Py loads it: an autosave the console gives no thread for is made on Ren'Py's own
+        originals["force_autosave"] = module.force_autosave
+        module.force_autosave = force_autosave
     elif module.__name__ == "renpy.preferences":
         # Fullscreen (a game's Options > Display, or its key) reads as off: Ren'Py would make its window the
         # display's size (3840x2160 on the console, by SDL's account) and the picture with it, and the screen went
@@ -646,7 +675,7 @@ class Finder(importlib.abc.MetaPathFinder):
 
     names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences", "renpy.log",
              "renpy.config", "renpy.audio.renpysound", "renpy.display.focus", "renpy.display.im",
-             "renpy.display.presplash", "renpy.display.video")
+             "renpy.display.presplash", "renpy.display.video", "renpy.loadsave")
 
     def find_spec(self, name, path, target=None):
         if name not in self.names:

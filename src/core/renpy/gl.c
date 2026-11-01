@@ -724,9 +724,97 @@ void gl_resize(int w, int h)
     storage();
 }
 
+/* Black flashes: testers see boxes flash black for a moment, in both Ren'Py cores. A part of the picture that turns
+ * pure black and is not black again within FLASH_PICTURES pictures is one: in the log with its box and what Ren'Py's
+ * OpenGL did for the picture it began in (the first 40, then every 100th). One pixel in 8x8 is looked at. A flash a
+ * tester sees that is not in the log comes after the core's pictures, as the frontend shows them. */
+#define FLASH_STEP 8
+#define FLASH_PICTURES 6
+#define FLASH_LEAST 6 /* pixels looked at that turned black: some 20x20 of the picture */
+static uint8_t *black_before; /* each pixel looked at in the last picture: 1 if it was black */
+static size_t black_capacity;
+static int black_w, black_h, flashes;
+static struct
+{
+    bool open;
+    int start, x0, y0, x1, y1, black; /* the picture it began in, its box (pixels looked at), how many were black */
+    Work work;
+} flash;
+
+static void watch_flashes(const uint32_t *pixels, int w, int h, int count)
+{
+    const int cols = (w + FLASH_STEP - 1) / FLASH_STEP, rows = (h + FLASH_STEP - 1) / FLASH_STEP;
+    const size_t n = (size_t)cols * (size_t)rows;
+    if (n > black_capacity)
+    {
+        uint8_t *grown = realloc(black_before, n);
+        if (!grown)
+        {
+            black_w = black_h = 0;
+            return;
+        }
+        black_before = grown;
+        black_capacity = n;
+    }
+    const bool same = w == black_w && h == black_h;
+    int turned = 0, x0 = cols, y0 = rows, x1 = -1, y1 = -1, in_box = 0;
+    for (int r = 0; r < rows; ++r)
+        for (int c = 0; c < cols; ++c)
+        {
+            const bool black = !(pixels[(size_t)r * FLASH_STEP * (size_t)w + (size_t)c * FLASH_STEP] & 0xFFFFFFu);
+            uint8_t *before = &black_before[(size_t)r * (size_t)cols + (size_t)c];
+            if (same && black && !*before)
+            {
+                ++turned;
+                x0 = c < x0 ? c : x0;
+                y0 = r < y0 ? r : y0;
+                x1 = c > x1 ? c : x1;
+                y1 = r > y1 ? r : y1;
+            }
+            in_box += flash.open && black && c >= flash.x0 && c <= flash.x1 && r >= flash.y0 && r <= flash.y1;
+            *before = black;
+        }
+    black_w = w;
+    black_h = h;
+    if (!same)
+    {
+        flash.open = false;
+        return;
+    }
+    if (flash.open && in_box * 4 <= flash.black)
+    {
+        flash.open = false;
+        if (++flashes <= 40 || flashes % 100 == 0)
+            log_queue(2,
+                      "renpy: black flash %d, picture %d, %d pictures long: %dx%d at %d,%d of the %dx%d picture; the "
+                      "picture it began in had %d draws, %d uploads, %d new textures, %d copies and %d images made "
+                      "ready on the CPU",
+                      flashes, flash.start, count - flash.start, (flash.x1 - flash.x0 + 1) * FLASH_STEP,
+                      (flash.y1 - flash.y0 + 1) * FLASH_STEP, flash.x0 * FLASH_STEP, flash.y0 * FLASH_STEP, w, h,
+                      flash.work.draws, flash.work.uploads, flash.work.storages, flash.work.copies,
+                      flash.work.cpu_loads);
+    }
+    else if (flash.open && count - flash.start >= FLASH_PICTURES)
+        flash.open = false; /* still black: the picture changed */
+    if (flash.open || turned < FLASH_LEAST)
+        return;
+    int black = 0;
+    for (int r = y0; r <= y1; ++r)
+        for (int c = x0; c <= x1; ++c)
+            black += black_before[(size_t)r * (size_t)cols + (size_t)c];
+    flash.open = true;
+    flash.start = count;
+    flash.x0 = x0;
+    flash.y0 = y0;
+    flash.x1 = x1;
+    flash.y1 = y1;
+    flash.black = black;
+    flash.work = work;
+}
+
 /* How much of a picture is not black (one pixel in seven looked at), in the log for the first one read back, the
  * first one that is not black, the 60th, the 300th and every 600th: with Ren'Py running and the screen black, it
- * says whether the pictures it draws are black (its first ones are, as it starts). */
+ * says whether the pictures it draws are black (its first ones are, as it starts). And its black flashes (above). */
 static void note_picture(const uint32_t *pixels, int w, int h)
 {
     static int count;
@@ -742,6 +830,7 @@ static void note_picture(const uint32_t *pixels, int w, int h)
         log_queue(1, "renpy: picture %d, %dx%d: %.1f%% of it not black%s", count, w, h,
                   looked ? 100.0 * (double)lit / (double)looked : 0.0,
                   first_lit ? " (the first that is not)" : lit_seen ? "" : " (none has been yet)");
+    watch_flashes(pixels, w, h, count);
 }
 
 /* OpenGL's errors (Ren'Py's or the read-back's) as the first pictures are read back: it reports them no other way */

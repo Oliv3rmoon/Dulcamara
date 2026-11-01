@@ -15,12 +15,14 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #define LEAST_STACK ((size_t)2 << 20)
 #define SIGNAL_STACK ((size_t)128 << 10)
 
 int __real_pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start)(void *), void *arg);
+int64_t ps5_memory_flexible_free(void); /* ps5_memory.c */
 
 typedef struct
 {
@@ -128,8 +130,11 @@ int __wrap_pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(
         rc = __real_pthread_create(thread, use, start, arg);
     static int refused;
     if (rc && __atomic_fetch_add(&refused, 1, __ATOMIC_RELAXED) < 100)
-        log_now(2, "renpy: threads: the console refused a thread (%d), with %d of the core's running (the most yet %d)",
-                rc, __atomic_load_n(&running, __ATOMIC_RELAXED), __atomic_load_n(&most, __ATOMIC_RELAXED));
+        log_now(2,
+                "renpy: threads: the console refused a thread (%d), with %d of the core's running (the most yet %d) and "
+                "%lld KB of its system memory free",
+                rc, __atomic_load_n(&running, __ATOMIC_RELAXED), __atomic_load_n(&most, __ATOMIC_RELAXED),
+                (long long)(ps5_memory_flexible_free() >> 10));
     if (made)
         pthread_attr_destroy(&own);
     return rc;

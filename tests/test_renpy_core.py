@@ -325,6 +325,28 @@ class RenpyCoreTest(unittest.TestCase):
             self.assertIn("DULCAMARA-TEST: copies playing: 2", output)
             self.assertRegex(output, r"plays on 3 channels at once: the copy on channel \S+ stopped \(4 so far\)")
 
+    def test_an_autosave_without_a_thread(self):
+        # 0.2.10's Ren'Py 7 showed its error screen at a choice late in a session: the console refused the thread for
+        # its autosave. The autosave is made on Ren'Py's own thread instead, and the next one may still run.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("start", make_game(work / "Autosave"), work / "data",
+                                   env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_AUTOSAVE": "1"})
+            self.assertIn("DULCAMARA-TEST: autosave made, another may run: True", output)
+            self.assertIn("the console gave the autosave no thread: it is made on Ren'Py's own (1 so far)", output)
+            self.assertNotIn("Ren'Py reported an error", output)
+
+    def test_a_black_flash_is_logged(self):
+        # Testers see boxes flash black for a moment: the core's log finds each in the pictures Ren'Py draws, with its
+        # box, so that one not found there is the frontend's. A black box shown for a moment is one, where it was.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("start", make_game(work / "Flash"), work / "data",
+                                   env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_FLASH": "1"})
+            self.assertIn("DULCAMARA-TEST: flash shown", output)
+            self.assertRegex(output, r"black flash 1, picture \d+, [1-5] pictures long: 160x120 at 320,240 of the "
+                                     r"1280x720 picture")
+
     def test_the_presplash(self):
         # A game's presplash (game/presplash.png, or presplash_foreground and _background, a progress bar) is the
         # picture while the game loads, centred on black: Ren'Py draws it into a window of its own the console never
