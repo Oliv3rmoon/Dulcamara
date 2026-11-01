@@ -143,13 +143,13 @@ static int copy_checks;
  * draws them into its framebuffer premultiplied (its blend, GL_SRC_ALPHA and GL_ZERO for the colours, GL_ONE and
  * GL_ZERO for alpha), and copies that into the image's texture. On the console images were drawn with their colours
  * right and black where they should be clear, a box around a small cup on a table, a strip beside a name tag, a game's
- * whole logo, black at boxes' borders, changing from one picture to the next: the draws of a picture whose images
- * Ren'Py had just made ready (a movie's frame each other picture) took what was clear for black. With images made ready
- * on the CPU (on the PS5; DULCAMARA_GL_CPU_LOAD=1 or 0 chooses anywhere), none of those three steps but the upload
- * reaches the driver: as Ren'Py sets its premultiplying blend after an upload the core noted, the pixels are made
- * ready here, premultiplied as the draw would (to the bit) or as they are when opaque all over; that blend and its draw
- * are not made, and the copy is an upload of them, whole, into the image's texture. A picture Ren'Py draws into a
- * texture of its own (a transition's) is copied as before. */
+ * whole logo, black at boxes' borders, changing from one picture to the next. With images made ready on the CPU (on
+ * the PS5; DULCAMARA_GL_CPU_LOAD=1 or 0 chooses anywhere), none of those three steps but the upload reaches the driver
+ * for an image partly clear: as Ren'Py sets its premultiplying blend after an upload the core noted, the pixels are
+ * premultiplied here, as the draw would (to the bit); that blend and its draw are not made, and the copy is an upload
+ * of them, whole, into the image's texture. An image opaque all over has nothing clear to lose, and a movie's frame
+ * (most are opaque, 1280x720 each other picture on a title screen) is uploaded in 12.5 ms on the console and copied in
+ * 0.15: those are made ready as Ren'Py makes them. So is a picture Ren'Py draws into a texture of its own. */
 static bool cpu_loads;
 static struct
 {
@@ -164,9 +164,8 @@ static struct
 } uploaded;
 static struct
 {
-    const uint8_t *pixels; /* the texels its copy uploads instead: premultiplied (below), or the image's as they are */
-    GLsizei w, h, row;
-    bool ready, skip_draw, clear; /* its copy is an upload; the premultiplying draw next is not made; partly clear */
+    GLsizei w, h;
+    bool ready, skip_draw; /* its copy is an upload of premultiplied (below); the premultiplying draw next is not made */
     int64_t usec;
 } cpu_image;
 static uint8_t *premultiplied;
@@ -548,9 +547,8 @@ static void check_after(CopyCheck *c, GLsizei w, GLsizei h)
 }
 
 /* The image Ren'Py uploaded, about to be drawn premultiplied for a copy, made ready here instead: premultiplied, each
- * colour c * a / 255 rounded to the nearest as the draw makes it (never a half) and alpha kept, or as it is when it is
- * opaque all over (a movie's frame, but for a masked movie's). False when it cannot be (no memory): Ren'Py then draws
- * and copies it. */
+ * colour c * a / 255 rounded to the nearest as the draw makes it (never a half) and alpha kept. False when it is opaque
+ * all over (a movie's frame, but for a masked movie's) or cannot be (no memory): Ren'Py then draws and copies it. */
 static bool prepare_cpu_image(void)
 {
     const int64_t start = now_usec();
@@ -563,36 +561,32 @@ static bool prepare_cpu_image(void)
         for (GLsizei x = 0; x < w && !clear; ++x, from += 4)
             clear = *from != 255;
     }
-    if (clear)
+    const size_t n = (size_t)w * (size_t)h;
+    if (!clear)
+        return false;
+    if (premultiplied_size < n)
     {
-        const size_t n = (size_t)w * (size_t)h;
-        if (premultiplied_size < n)
+        uint8_t *grown = realloc(premultiplied, n * 4);
+        if (!grown)
+            return false;
+        premultiplied = grown;
+        premultiplied_size = n;
+    }
+    for (GLsizei y = 0; y < h; ++y)
+    {
+        const uint8_t *from = pixels + (size_t)y * (size_t)row * 4;
+        uint8_t *to = premultiplied + (size_t)y * (size_t)w * 4;
+        for (GLsizei x = 0; x < w; ++x, from += 4, to += 4)
         {
-            uint8_t *grown = realloc(premultiplied, n * 4);
-            if (!grown)
-                return false;
-            premultiplied = grown;
-            premultiplied_size = n;
-        }
-        for (GLsizei y = 0; y < h; ++y)
-        {
-            const uint8_t *from = pixels + (size_t)y * (size_t)row * 4;
-            uint8_t *to = premultiplied + (size_t)y * (size_t)w * 4;
-            for (GLsizei x = 0; x < w; ++x, from += 4, to += 4)
-            {
-                const unsigned a = from[3];
-                to[0] = (uint8_t)((from[0] * a + 127) / 255);
-                to[1] = (uint8_t)((from[1] * a + 127) / 255);
-                to[2] = (uint8_t)((from[2] * a + 127) / 255);
-                to[3] = (uint8_t)a;
-            }
+            const unsigned a = from[3];
+            to[0] = (uint8_t)((from[0] * a + 127) / 255);
+            to[1] = (uint8_t)((from[1] * a + 127) / 255);
+            to[2] = (uint8_t)((from[2] * a + 127) / 255);
+            to[3] = (uint8_t)a;
         }
     }
-    cpu_image.pixels = clear ? premultiplied : pixels;
-    cpu_image.row = clear ? w : row;
     cpu_image.w = w;
     cpu_image.h = h;
-    cpu_image.clear = clear;
     cpu_image.ready = cpu_image.skip_draw = true;
     cpu_image.usec = now_usec() - start;
     return true;
@@ -606,13 +600,11 @@ static bool upload_cpu_image(GLsizei w, GLsizei h)
     gl.GetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &have_w);
     gl.GetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &have_h);
     const Unpacking u = plain_unpacking();
-    if (cpu_image.row != w)
-        gl.PixelStorei(GL_UNPACK_ROW_LENGTH, cpu_image.row);
     /* the texture Ren'Py has just given this size (allocate_texture): written whole, else made with it */
     if (have_w == w && have_h == h)
-        gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, cpu_image.pixels);
+        gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, premultiplied);
     else
-        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, cpu_image.pixels);
+        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, premultiplied);
     restore_unpacking(u);
     return gl.GetError() == 0;
 }
@@ -630,12 +622,11 @@ static void watched_copy_tex_image_2d(GLenum target, GLint level, GLenum interna
         const int64_t start = now_usec();
         if (ours && !level && !x && !y && w == cpu_image.w && h == cpu_image.h && upload_cpu_image(w, h))
         {
-            static bool noted[2];
-            if (!noted[cpu_image.clear])
+            static bool noted;
+            if (!noted)
             {
-                noted[cpu_image.clear] = true;
-                log_queue(1, "renpy: an image made ready on the CPU, the first %s (%dx%d), not drawn and copied",
-                          cpu_image.clear ? "partly clear" : "opaque", w, h);
+                noted = true;
+                log_queue(1, "renpy: an image made ready on the CPU, the first (%dx%d), not drawn and copied", w, h);
             }
             ++work.cpu_loads;
             work.cpu_load_usec += cpu_image.usec + now_usec() - start;
