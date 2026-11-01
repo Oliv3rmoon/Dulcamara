@@ -57,6 +57,7 @@ static int16_t pointer_x, pointer_y;
 static bool pointer_pressed, finger_was_down;
 static uint64_t finger_down_us;
 static int finger_down_x, finger_down_y, tap_frames;
+static bool clicked_this_touch; /* the touchpad pressed down during this touch: its click, and no tap after it */
 static int volume = 10;
 
 /* ---------------------------------------------------------------- options */
@@ -350,7 +351,7 @@ bool host_load(const Game *g, const char *system, char *error, size_t error_size
     pad_bits = 0;
     pad_lx = pad_ly = 0;
     pointer_x = pointer_y = 0;
-    pointer_pressed = finger_was_down = false;
+    pointer_pressed = finger_was_down = clicked_this_touch = false;
     tap_frames = 0;
     plat_pad_touch(core->pointer);
 
@@ -427,8 +428,13 @@ bool host_core_skips(void)
     return core && core->own_skip;
 }
 
+/* The touchpad as the pointer: a touch moves it, a tap clicks; with a core that has the touchpad's click (a Ren'Py
+ * game's: main.c passes BTN_MENU on), pressing the touchpad down clicks too, for as long as it is down. */
 static void set_pointer(const PadState *pad)
 {
+    const bool clicking = (pad->buttons & BIT(BTN_MENU)) != 0;
+    if (clicking)
+        clicked_this_touch = true;
     if (pad->touching)
     {
         pointer_x = (int16_t)((int)pad->touch_x * 65534 / 1919 - 32767);
@@ -440,11 +446,13 @@ static void set_pointer(const PadState *pad)
             finger_down_y = pad->touch_y;
         }
     }
-    else if (finger_was_down && plat_ticks_us() - finger_down_us < 250000 && abs(finger_down_x - (int)pad->touch_x) < 60 &&
-             abs(finger_down_y - (int)pad->touch_y) < 60)
+    else if (finger_was_down && !clicked_this_touch && plat_ticks_us() - finger_down_us < 250000 &&
+             abs(finger_down_x - (int)pad->touch_x) < 60 && abs(finger_down_y - (int)pad->touch_y) < 60)
         tap_frames = 3;
+    if (!pad->touching && !clicking)
+        clicked_this_touch = false;
     finger_was_down = pad->touching;
-    pointer_pressed = tap_frames > 0;
+    pointer_pressed = tap_frames > 0 || clicking;
     if (tap_frames)
         --tap_frames;
 }
