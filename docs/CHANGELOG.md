@@ -15,6 +15,18 @@ loads its buttons' hover pictures and asks whether the pointer is over a picture
 - **The log says what Ren'Py was doing, at once.** Each sound Ren'Py plays or queues, each new focus and the first
   use of each picture go to `dulcamara.log` as they happen (`_dulcamara.now`), so a crash that leaves no report ends
   the log on the last of them.
+- **In a Ren'Py game the touchpad is the pointer, and Options held opens Dulcamara's menu.** In 0.2.6 the touchpad's
+  click did nothing in a Ren'Py game ("Touchpad isn't a button!": the app took it from SDL's joystick button 4, which
+  is not the touchpad on every pad), so the menu with Keys for this game could not be reached, and the tester asked to
+  keep the touchpad for the cursor. While a Ren'Py game runs, the app reads the click from the pad itself too, and it
+  is a click where the pointer is; a touch moves the pointer. Dulcamara's menu opens with Options held for 0.6 s; a
+  short press of Options is still the game's (its menu), given to it as Options is let go.
+- **Ren'Py in Settings, outside a game too.** The tester found no Ren'Py settings in the Settings tab. Settings >
+  Controls has "Buttons of" at its top, outside a game: RPG Maker, Ren'Py 8 or Ren'Py 7 / 6, each with its own buttons
+  (a running game's are shown, fixed), and Ren'Py's rows say what they do in Ren'Py ("Pick and go on", "Game menu and
+  back", "Free for a key"). Settings > Ren'Py is Ren'Py's page: fast-forward, **Keys for a game** (any of the
+  library's Ren'Py games, Left and Right, Cross opens its keys page, which saves to that game's file and applies them
+  at its next start), what each button does by default, the cursor, and Dulcamara's menu.
 - **The core's last lines.** With no log callback left (as the core is being closed), the core wrote its lines with
   `fprintf`, which on the console is now the core's own and logs through the same place: they go to the descriptor
   itself.
