@@ -206,6 +206,17 @@ class RenpyCoreTest(unittest.TestCase):
                 self.assertIn("the presplash, 400x250, is the picture (1280x720)", output)
                 self.assertNotIn("could not be shown", output)
 
+    def test_fullscreen_stays_off(self):
+        # A game's Fullscreen made Ren'Py's window the display's size and the console's screen black: it reads as off,
+        # the game's own value kept, and the picture stays the game's size.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("play", make_game(work / "Fullscreen"), work / "data",
+                                   env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_FULLSCREEN": "1"})
+            self.assertIn("the game asked for fullscreen: its picture stays its own size", output)
+            self.assertIn("DULCAMARA-TEST: fullscreen=False", output)
+            self.assertIn("picture: 1280x720", output)
+
     def test_the_memory_line(self):
         # Every few minutes (DULCAMARA_MEMORY_EVERY seconds; here, at each of Ren'Py's periodic calls) the log says what
         # the game holds; the heap and ps5-opengl's memory only on the console.

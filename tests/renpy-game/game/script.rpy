@@ -70,6 +70,10 @@ label start:
     $ dulcamara_report()
     if os.environ.get("DULCAMARA_TEST_LOAD") == "1" and renpy.can_load("1-1"):
         $ renpy.load("1-1")
+    # DULCAMARA_TEST_FULLSCREEN=1: the game turns fullscreen on, as its own Options can; it stays off on the console
+    if os.environ.get("DULCAMARA_TEST_FULLSCREEN") == "1":
+        $ _preferences.fullscreen = True
+        $ dulcamara_test("fullscreen=" + str(_preferences.fullscreen))
     scene expression Solid("#203040")
     show dulcamara at truecenter
     play music "audio/tone.wav"

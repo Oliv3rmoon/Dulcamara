@@ -46,6 +46,17 @@ def skip_unseen_set(preferences, value):
     preferences.__dict__["skip_unseen"] = value
 
 
+def fullscreen_get(preferences):
+    return False
+
+
+def fullscreen_set(preferences, value):
+    # the game's own value, kept for a computer; noted the first time it turns on
+    if value and not preferences.__dict__.get("fullscreen"):
+        _dulcamara.log(1, "renpy: the game asked for fullscreen: its picture stays its own size")
+    preferences.__dict__["fullscreen"] = value
+
+
 def quit_event(interface):
     # the frontend closing the game: quit, without the "are you sure" Ren'Py asks a player
     if _dulcamara.stopping():
@@ -332,8 +343,13 @@ def wrap(module):
     elif module.__name__ == "renpy.log" and "log_write" not in originals:
         originals["log_write"] = module.LogFile.write
         module.LogFile.write = log_write
-    elif module.__name__ == "renpy.preferences" and os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
-        module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
+    elif module.__name__ == "renpy.preferences":
+        # Fullscreen (a game's Options > Display, or its key) reads as off: Ren'Py would make its window the
+        # display's size (3840x2160 on the console, by SDL's account) and the picture with it, and the screen went
+        # black. The console's picture is the game's own size, scaled by the app.
+        module.Preferences.fullscreen = property(fullscreen_get, fullscreen_set)
+        if os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
+            module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
     elif module.__name__ == "renpy.config":
         module.periodic_callbacks.append(log_memory)
 

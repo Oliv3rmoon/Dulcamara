@@ -26,6 +26,10 @@ sound, and the game played on past its menu.
   and a copy. Every 600 frames the log now also gives what Ren'Py's OpenGL work costs (draws, uploads, new textures,
   copies, the slowest picture), and a picture whose OpenGL work took over 50 ms gets a line of its own; each image's
   size as Ren'Py loads it is logged too (the first 200).
+- **A game's Fullscreen no longer blacks out the screen.** Picking Fullscreen in a game's own Options had Ren'Py
+  make its window the display's size (3840x2160, as SDL reports the console's) and the picture with it; the screen
+  went black. Fullscreen now reads as off in Ren'Py's games (the game's own value is kept), and the picture stays the
+  game's own size, which the app scales to the screen.
 - **An on-screen keyboard for a Ren'Py game's text.** When a game asks for text (a name to enter), Dulcamara's own
   keyboard comes up, away from the game's input, and goes away once the game has its text; the console's keyboard
   cannot be used (a title that imports it does not start). The D-pad, the left stick or the touchpad move on it, Cross
