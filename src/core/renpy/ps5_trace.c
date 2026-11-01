@@ -6,7 +6,9 @@
  *  - abort, exit, _exit and _Exit: the call is logged, with where it came from, before it ends the app;
  *  - FFmpeg's steps for each stream Ren'Py opens: opening it, reading its streams, opening its codec, and the first
  *    packet, frame and conversion of each, logged before and after, so the log ends at the step that never returned;
- *  - the threads FFmpeg asks for a codec, fewer of them (each codec's opening goes through here already).
+ *  - the threads FFmpeg asks for a codec, fewer of them (each codec's opening goes through here already);
+ *  - whatever the trace's count: each movie file the first time it is opened, and each file or codec that does not
+ *    open, with its file (a movie whose mask did not open is drawn black where it should be clear).
  * Each line is written at once (log_now). The FFmpeg types are left opaque: an AVCodec's first field is its name.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -20,6 +22,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdnoreturn.h>
+#include <string.h>
+#include <strings.h>
 
 #define TRACE_LINES 600
 
@@ -126,11 +130,80 @@ void __real_avcodec_free_context(void **codec_context);
 void __real_avformat_close_input(void **context);
 void __real_swr_free(void **resampler);
 
+/* ---------------------------------------------------------------- what does not open, whatever the trace's count */
+
+/* the file each thread opened last: a decode thread (ffmedia.c) opens its file, then that file's codecs */
+static pthread_once_t file_once = PTHREAD_ONCE_INIT;
+static pthread_key_t file_key;
+static bool file_key_made;
+
+static void make_file_key(void)
+{
+    file_key_made = pthread_key_create(&file_key, free) == 0;
+}
+
+static void note_file(const char *url)
+{
+    pthread_once(&file_once, make_file_key);
+    if (!file_key_made)
+        return;
+    free(pthread_getspecific(file_key));
+    pthread_setspecific(file_key, url ? strdup(url) : NULL);
+}
+
+static const char *thread_file(void)
+{
+    const char *url = file_key_made ? pthread_getspecific(file_key) : NULL;
+    return url ? url : "a stream of Ren'Py's";
+}
+
+/* a movie's file, by its name (Ren'Py's own as the game names it) */
+static bool is_movie(const char *url)
+{
+    static const char *const KINDS[] = {".webm", ".mkv", ".mp4", ".m4v", ".ogv", ".avi", ".mov", ".mpg", ".mpeg"};
+    const char *dot = url ? strrchr(url, '.') : NULL;
+    for (size_t i = 0; dot && i < sizeof(KINDS) / sizeof(KINDS[0]); ++i)
+        if (!strcasecmp(dot, KINDS[i]))
+            return true;
+    return false;
+}
+
+/* true the first time a file's name comes (FNV-1a, the first 256 files): a looping movie opens its file each loop */
+static bool first_time(const char *url)
+{
+    static uint32_t seen_files[256];
+    static int count;
+    uint32_t hash = 2166136261u;
+    for (const char *c = url; *c; ++c)
+        hash = (hash ^ (uint8_t)*c) * 16777619u;
+    bool is_first = true;
+    pthread_mutex_lock(&trace_lock);
+    for (int i = 0; i < count && is_first; ++i)
+        is_first = seen_files[i] != hash;
+    if (is_first && count < 256)
+        seen_files[count++] = hash;
+    else if (is_first)
+        is_first = false;
+    pthread_mutex_unlock(&trace_lock);
+    return is_first;
+}
+
+static bool may_log_failure(void)
+{
+    static int failures;
+    return __atomic_fetch_add(&failures, 1, __ATOMIC_RELAXED) < 200;
+}
+
 int __wrap_avformat_open_input(void **context, const char *url, const void *format, void **options)
 {
+    note_file(url);
+    if (is_movie(url) && first_time(url))
+        log_now(1, "renpy: movie: %s, opened the first time", url);
     TRACE("renpy: trace: opening %s", url ? url : "a stream of Ren'Py's");
     const int rc = __real_avformat_open_input(context, url, format, options);
     TRACE("renpy: trace: opened (%d)", rc);
+    if (rc < 0 && may_log_failure())
+        log_now(2, "renpy: FFmpeg could not open %s (%d)", thread_file(), rc);
     return rc;
 }
 
@@ -177,6 +250,8 @@ int __wrap_avcodec_open2(void *codec_context, const void *codec, void **options)
     TRACE("renpy: trace: opening the %s codec (%p)", codec_name(codec), codec_context);
     const int rc = __real_avcodec_open2(codec_context, codec, options);
     TRACE("renpy: trace: opened the %s codec (%d)", codec_name(codec), rc);
+    if (rc < 0 && may_log_failure())
+        log_now(2, "renpy: FFmpeg could not open the %s codec of %s (%d)", codec_name(codec), thread_file(), rc);
     return rc;
 }
 
