@@ -7,16 +7,16 @@ into the game, and 0.2.8's transparent menu is back. Left were black flashes at 
 (the dialogue box, the title screen's), its animations stopping, and fast cursor movement over its title menu
 hanging the app for a while and losing the menu's background.
 
-- **Images are made ready on the CPU (PS5).** A tester's shots showed images with their colours right and their alpha
-  lost, opaque black where they should be clear: a box around a small cup on a table, a strip beside a name tag,
-  black at the borders of boxes. Ren'Py makes each image ready by drawing it premultiplied into its framebuffer and
-  copying that into the image's texture, and on the console that draw or copy loses the alpha (ps5-opengl copies
-  under 64x64 on the CPU, larger ones with the GPU). The core now notes the pixels Ren'Py uploads, and when Ren'Py
-  then draws them premultiplied for a copy, it premultiplies them itself, as the draw would to the bit, and uploads
-  them whole into the texture: no draw read back, no copy (an image opaque all over, as most movie frames, is still
-  copied: it has no alpha to lose). On the build machine the picture of two images partly clear, one large and one
-  under 64x64, is the same to the pixel made either way, and differs when the premultiplying is wrong
-  (`DULCAMARA_GL_CPU_LOAD` chooses either).
+- **Images are made ready on the CPU (PS5).** A tester's shots showed images drawn with their colours right and black
+  where they should be clear, changing from one picture to the next: a box around a small cup on a table, the title
+  screen's whole logo, a strip beside a name tag, black at the borders of boxes. Ren'Py makes each image ready by
+  drawing it premultiplied into its framebuffer (a blend of its own) and copying that into the image's texture, a
+  movie's frame each other picture; the console took what was clear for black in the draws around them. Now none of
+  it but the upload reaches the driver: as Ren'Py sets that blend after an upload, the core makes the pixels ready
+  itself, premultiplied as the draw would to the bit (or as they are, opaque all over), and the blend, the draw and
+  the copy are not made; the copy is an upload of them, whole, into the texture. On the build machine the picture of
+  two images partly clear, one large and one under 64x64, is the same to the pixel made either way, and differs when
+  the premultiplying is wrong (`DULCAMARA_GL_CPU_LOAD` chooses either).
 - **A movie's picture waits for its mask's.** A movie with a mask of its own (`Movie(play=..., mask=...)`, as a
   box's animated border is) is two streams, each decoded on its own thread. Ren'Py uploaded a colour frame whose
   mask frame had not come yet as it was (`get_movie_texture`), and a masked movie's colour frames are black wherever
