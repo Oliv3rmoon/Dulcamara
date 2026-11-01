@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.7
+
+A test build for Ren'Py on the console: 0.2.6 showed a game's menu and its cursor, but the game ended at once, with
+no crash report, on the first thing the controller did to it: the first move of the cursor, or the first arrow
+(from the stick). Both are a game's first hover, and a hover is where a game first plays a sound after its music,
+loads its buttons' hover pictures and asks whether the pointer is over a picture's opaque part.
+
+- **The core's threads get room, and a stack for signals.** Ren'Py starts a thread to decode each sound it plays (with
+  SDL's default stack), Python and ps5-opengl their own: each core's relocatable link now sends their
+  `pthread_create` to `ps5_threads.c`. Each thread gets a stack of 2 MB at least, where the console's default may be
+  far smaller, and a stack of its own for signals, so that a thread that overflows its stack is reported by the crash
+  handler instead of ending the app without a word, as 0.2.6 ended. The log says once what stack a thread asked for.
+- **The log says what Ren'Py was doing, at once.** Each sound Ren'Py plays or queues, each new focus and the first
+  use of each picture go to `dulcamara.log` as they happen (`_dulcamara.now`), so a crash that leaves no report ends
+  the log on the last of them.
+- **The core's last lines.** With no log callback left (as the core is being closed), the core wrote its lines with
+  `fprintf`, which on the console is now the core's own and logs through the same place: they go to the descriptor
+  itself.
+
 ## 0.2.6
 
 A test build for Ren'Py on the console, with what its first tester asked for. 0.2.5 showed Ren'Py's picture (its
