@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.13
+
+A test build for the tester's two requests: the in-app update said "The download failed" every time, and she asked for
+the update to be offered in a popup, as the other apps do.
+
+- **The update's download no longer gives up after 25 seconds.** The download had 25 seconds all told, a limit meant
+  for small files, and `PPSA99010.zip` is 75.8 MB: any connection slower than 3 MB/s (24 Mbit/s) failed, every time
+  (curl's error 28). Checking for the update worked, because `SHA256SUMS` comes the same way but is 80 bytes. Now a
+  download takes as long as it needs and is given up only when nothing arrives for 30 seconds. A failure says why
+  ("The download failed: nothing arrived for 30 seconds") and can be tried again at once; the log has curl's error,
+  and each download's time and speed. A host test downloads past the old limit from a slow local server, follows a
+  redirect as GitHub's, and gives a stalled download up.
+- **Updates are offered in a popup.** When the app opens and finds a newer release, "Update available" (or "Test
+  build available") shows the version and the download's size, with Update now and Later, where 0.2.12 and before
+  installed it without asking. It shows how far the download has got (Circle hides it and the download goes on;
+  Settings > System shows the progress too), then Close Dulcamara or Later once it is installed, or the reason and Try
+  again or Later when it fails.
+- The fix is in the new version's own updater, so 0.2.13 itself has to be installed by hand once.
+- Not yet run on a console.
+
 ## 0.2.12
 
 A test build after the tester's runs of 0.2.10 (0.2.11 came out later). Four hours in a game with no crash; left were
