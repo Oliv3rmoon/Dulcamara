@@ -30,21 +30,52 @@ bool net_available(void)
     return state == 1;
 }
 
-NetResult net_download(const char *url, const char *dest)
+typedef struct
 {
+    NetProgress progress;
+    void *user;
+} Progress;
+
+static int progress_cb(void *user, curl_off_t total, curl_off_t done, curl_off_t up_total, curl_off_t up_done)
+{
+    (void)up_total;
+    (void)up_done;
+    const Progress *p = user;
+    p->progress(p->user, done > 0 ? (uint64_t)done : 0, total > 0 ? (uint64_t)total : 0);
+    return 0;
+}
+
+static void say(char *why, size_t why_size, const char *text)
+{
+    if (why && why_size)
+        snprintf(why, why_size, "%s", text);
+}
+
+NetResult net_download(const char *url, const char *dest, NetProgress progress, void *user, char *why,
+                       size_t why_size)
+{
+    say(why, why_size, "");
     if (!net_available())
+    {
+        say(why, why_size, "no network library");
         return NET_UNAVAILABLE;
+    }
     char part[NP_PATH_MAX];
     snprintf(part, sizeof(part), "%s.part", dest);
     FILE *f = fopen(part, "wb");
     if (!f)
+    {
+        np_log("net: can't write %s", part);
+        say(why, why_size, "couldn't write the file");
         return NET_UNAVAILABLE;
+    }
 
     CURL *easy = curl_easy_init();
     if (!easy)
     {
         fclose(f);
         remove(part);
+        say(why, why_size, "no network library");
         return NET_UNAVAILABLE;
     }
 #if defined(__PROSPERO__)
@@ -52,26 +83,54 @@ NetResult net_download(const char *url, const char *dest)
 #else
     curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
 #endif
+    char error[CURL_ERROR_SIZE] = "";
+    Progress p = {progress, user};
     curl_easy_setopt(easy, CURLOPT_URL, url);
     curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 8L);
-    curl_easy_setopt(easy, CURLOPT_TIMEOUT, 25L);
+    /* no limit on the whole download, which can take minutes: it is given up only when nothing arrives for
+     * NET_STALL_SECONDS (as Nightshade's own update) */
+    curl_easy_setopt(easy, CURLOPT_LOW_SPEED_LIMIT, 1L);
+    curl_easy_setopt(easy, CURLOPT_LOW_SPEED_TIME, (long)NET_STALL_SECONDS);
+    curl_easy_setopt(easy, CURLOPT_BUFFERSIZE, 256L * 1024L);
+    curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, error);
     curl_easy_setopt(easy, CURLOPT_USERAGENT, NP_NAME "/" NP_VERSION);
     curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, write_cb);
     curl_easy_setopt(easy, CURLOPT_WRITEDATA, f);
+    if (progress)
+    {
+        curl_easy_setopt(easy, CURLOPT_XFERINFOFUNCTION, progress_cb);
+        curl_easy_setopt(easy, CURLOPT_XFERINFODATA, &p);
+        curl_easy_setopt(easy, CURLOPT_NOPROGRESS, 0L);
+    }
 
     CURLcode rc = curl_easy_perform(easy);
     long status = 0;
+    curl_off_t received = 0;
     curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_getinfo(easy, CURLINFO_SIZE_DOWNLOAD_T, &received);
     curl_easy_cleanup(easy);
     bool written = fclose(f) == 0;
 
     if (rc == CURLE_OK && status == 200 && written && rename(part, dest) == 0)
         return NET_OK;
     remove(part);
+    np_log("net: %s -> curl %d (%s), http %ld, %lld bytes received", url, (int)rc,
+           error[0] ? error : curl_easy_strerror(rc), status, (long long)received);
+    char text[96];
+    if (rc == CURLE_OPERATION_TIMEDOUT && received > 0)
+        snprintf(text, sizeof(text), "nothing arrived for %d seconds", NET_STALL_SECONDS);
+    else if (rc == CURLE_OPERATION_TIMEDOUT)
+        snprintf(text, sizeof(text), "the server didn't answer in time");
+    else if (rc == CURLE_WRITE_ERROR || (rc == CURLE_OK && status == 200))
+        snprintf(text, sizeof(text), "couldn't write the file (is the storage full?)");
+    else if (rc == CURLE_OK)
+        snprintf(text, sizeof(text), "the server answered %ld", status);
+    else
+        snprintf(text, sizeof(text), "%s", curl_easy_strerror(rc));
+    say(why, why_size, text);
     if (rc == CURLE_OK && status == 404)
         return NET_NOT_FOUND;
-    np_log("net: %s -> curl %d, http %ld", url, (int)rc, status);
     return rc == CURLE_OK ? NET_NOT_FOUND : NET_UNAVAILABLE;
 }
 
@@ -158,10 +217,15 @@ bool net_available(void)
     return false;
 }
 
-NetResult net_download(const char *url, const char *dest)
+NetResult net_download(const char *url, const char *dest, NetProgress progress, void *user, char *why,
+                       size_t why_size)
 {
     (void)url;
     (void)dest;
+    (void)progress;
+    (void)user;
+    if (why && why_size)
+        snprintf(why, why_size, "%s", "built without a network library");
     return NET_UNAVAILABLE;
 }
 

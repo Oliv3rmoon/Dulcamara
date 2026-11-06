@@ -66,9 +66,12 @@ When it starts (and from **Settings > System > Check for updates now**) Dulcamar
 the newest release of [Oliv3rmoon/Dulcamara](https://github.com/Oliv3rmoon/Dulcamara/releases)
 that is not a pre-release. With **Settings > System > Test builds** on, it asks for the 20 newest releases
 instead, test builds (pre-releases) among them, and the newest of those is offered. When its tag is a newer
-version and it carries `PPSA99010.zip` and `SHA256SUMS`, both this repository's own files, the ZIP is checked
-against `SHA256SUMS` and installed into the folder the app runs from; the new version runs from the next start.
-Your games and saves are not touched. A release built by this repository's workflow can be checked with
+version and it carries `PPSA99010.zip` and `SHA256SUMS`, both this repository's own files, a popup offers it when
+the app opens (**Update now** or **Later**; Cross on **Check for updates now** installs it too). The ZIP downloads with
+its progress shown (Circle hides the popup and the download goes on), is checked against `SHA256SUMS` and is installed
+into the folder the app runs from; a download that fails says why and can be tried again. The new version runs from
+the next start: the popup's **Close Dulcamara** closes the app so you can open it again. Your games and saves are not
+touched. A release built by this repository's workflow can be checked with
 `gh attestation verify PPSA99010.zip -R Oliv3rmoon/Dulcamara`.
 ## Building from source
 

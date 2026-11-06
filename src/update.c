@@ -19,6 +19,7 @@
 #include "app.h"
 #include "i18n.h"
 #include "net.h"
+#include "platform/platform.h"
 #include "update_release.h"
 
 #define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
@@ -36,6 +37,10 @@
 static SDL_atomic_t state;
 static char version[32], zip_url[256], zip_sha256[65], message[256];
 static bool test_build; /* what is offered is a test build (a pre-release) */
+static uint64_t zip_size;
+static bool install_failed; /* UPDATE_FAILED came from install_thread: update_install() may try again */
+/* the download's progress in KiB, written by install_thread and read by the interface */
+static SDL_atomic_t done_kib, total_kib;
 
 int update_state(void)
 {
@@ -56,6 +61,27 @@ const char *update_message(void)
     return message;
 }
 
+bool update_test_build(void)
+{
+    return test_build;
+}
+
+uint64_t update_size(void)
+{
+    return zip_size;
+}
+
+bool update_can_retry(void)
+{
+    return SDL_AtomicGet(&state) == UPDATE_FAILED && install_failed && zip_url[0];
+}
+
+void update_progress(uint64_t *done, uint64_t *total)
+{
+    *done = (uint64_t)(uint32_t)SDL_AtomicGet(&done_kib) * 1024u;
+    *total = (uint64_t)(uint32_t)SDL_AtomicGet(&total_kib) * 1024u;
+}
+
 static void fail(const char *why)
 {
     str_copy(message, sizeof(message), why);
@@ -67,6 +93,9 @@ static void fail(const char *why)
 static int check_thread(void *test_builds_on)
 {
     const bool test_builds = (uintptr_t)test_builds_on != 0;
+    version[0] = zip_url[0] = zip_sha256[0] = '\0';
+    zip_size = 0;
+    install_failed = false;
     char *body = NULL;
     size_t len = 0;
     /* releases/latest: the newest release that is neither a draft nor a pre-release. With Test builds on, the
@@ -89,7 +118,6 @@ static int check_thread(void *test_builds_on)
     ReleaseVerdict verdict = test_builds ? release_evaluate_list(body, len, NP_VERSION, true, &release)
                                          : release_evaluate(body, len, NP_VERSION, &release);
     free(body);
-    version[0] = zip_url[0] = zip_sha256[0] = '\0';
     /* which was asked: "latest", or "releases (test builds on)" */
     np_log("update: " UPDATE_REPO " %s %s, this %s: %s", test_builds ? "releases (test builds on)" : "latest",
            release.version[0] ? release.version : "?", NP_VERSION, release_verdict_text(verdict));
@@ -122,6 +150,7 @@ static int check_thread(void *test_builds_on)
     str_copy(zip_url, sizeof(zip_url), release.zip_url);
     str_copy(zip_sha256, sizeof(zip_sha256), sha);
     test_build = release.prerelease;
+    zip_size = release.zip_size;
     np_log("update: %s%s available, " UPDATE_ZIP " sha256 %s", version, release.prerelease ? " (a test build)" : "",
            zip_sha256);
     SDL_AtomicSet(&state, UPDATE_AVAILABLE);
@@ -211,6 +240,13 @@ static const char *app_dir(void)
     return found;
 }
 
+static void on_progress(void *unused, uint64_t done, uint64_t total)
+{
+    (void)unused;
+    SDL_AtomicSet(&done_kib, (int)(done / 1024u));
+    SDL_AtomicSet(&total_kib, (int)(total / 1024u));
+}
+
 static int install_thread(void *unused)
 {
     (void)unused;
@@ -219,11 +255,18 @@ static int install_thread(void *unused)
     char dir[NP_PATH_MAX];
     path_join(dir, sizeof(dir), app.paths.root, "cache");
     make_dirs(dir);
-    if (net_download(zip_url, zip) != NET_OK)
+    np_log("update: downloading %s (%llu bytes)", zip_url, (unsigned long long)zip_size);
+    const uint64_t started = plat_ticks_us();
+    char why[96];
+    if (net_download(zip_url, zip, on_progress, NULL, why, sizeof(why)) != NET_OK)
     {
-        fail(tr("The download failed"));
+        char text[160];
+        snprintf(text, sizeof(text), tr("The download failed: %s"), why[0] ? why : tr("no reason given"));
+        fail(text);
         return 0;
     }
+    const double took = (double)(plat_ticks_us() - started) / 1e6;
+    np_log("update: downloaded in %.1f s (%.2f MB/s)", took, took > 0 ? (double)zip_size / 1048576.0 / took : 0.0);
     /* nothing is unpacked unless the ZIP is the one SHA256SUMS names */
     char got[65] = "";
     if (!release_file_sha256(zip, got) || strcmp(got, zip_sha256) != 0)
@@ -286,8 +329,11 @@ static int install_thread(void *unused)
 
 void update_install(void)
 {
-    if (update_state() != UPDATE_AVAILABLE)
+    if (update_state() != UPDATE_AVAILABLE && !update_can_retry())
         return;
+    install_failed = true; /* until it is installed: a failure from here on can be tried again */
+    SDL_AtomicSet(&done_kib, 0);
+    SDL_AtomicSet(&total_kib, (int)(zip_size / 1024u));
     SDL_AtomicSet(&state, UPDATE_INSTALLING);
     SDL_Thread *t = SDL_CreateThread(install_thread, "update", NULL);
     if (t)

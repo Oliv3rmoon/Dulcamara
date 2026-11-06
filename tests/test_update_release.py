@@ -59,6 +59,21 @@ class UpdateReleaseTest(unittest.TestCase):
             self.assertEqual(lists, ["/releases?per_page=20"] if source.name == "update_release.h" else [],
                              source)
 
+    def test_an_update_found_at_start_is_offered_in_a_popup(self):
+        # Until 0.2.12 an update found at start installed by itself, with a toast; testers asked for the popup the
+        # other apps have. main.c opens it, and only the popup or Settings start the install.
+        main = (ROOT / "src/main.c").read_text(encoding="utf-8")
+        self.assertIn("update_popup_open();", main)
+        self.assertNotIn("update_install()", main)
+        popup = (ROOT / "src/ui/update_popup.c").read_text(encoding="utf-8")
+        for text in ("Update available", "Test build available", "Update now", "Later", "Try again",
+                     "Close Dulcamara", "Download size: %s"):
+            self.assertIn(f'"{text}"', popup)
+        # a failed download says why, and can be tried again
+        update = (ROOT / "src/update.c").read_text(encoding="utf-8")
+        self.assertIn('tr("The download failed: %s")', update)
+        self.assertIn("update_can_retry()", update)
+
 
 if __name__ == "__main__":
     unittest.main()

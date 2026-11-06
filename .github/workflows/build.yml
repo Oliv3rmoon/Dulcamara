@@ -77,7 +77,7 @@ jobs:
             libfmt-dev libpng-dev zlib1g-dev libfreetype-dev libharfbuzz-dev libvorbis-dev libmpg123-dev \
             libpixman-1-dev libssl-dev libbz2-dev liblzma-dev nasm patch \
             libsdl2-dev libsdl2-image-dev libfribidi-dev libjpeg-dev libwebp-dev libegl-dev libegl-mesa0 libgl1-mesa-dri \
-            libffi-dev
+            libffi-dev libcurl4-openssl-dev
 
       # nightly's invitation on Settings > About: its QR code, made by the app's own encoder, read back to exactly
       # https://discord.gg/pSqgRU3YP9, and its texts (tests/test_community.py). Seconds, before the long builds.
@@ -123,7 +123,8 @@ jobs:
           key: renpy-ps5-${{ hashFiles('build-core-sources.txt', 'tools/build-renpy*.sh', 'tools/renpy/*', 'tools/renpy7/*', 'tools/renpy7/include/*', 'tools/patches/*', 'tooling/ps5-stubs/*', 'src/core/renpy/*') }}
           restore-keys: renpy-ps5-
 
-      # On the build machine: the update's release decision, the library's game detection, EasyRPG Player's core
+      # On the build machine: the update's release decision and its download (tests/test_net_download.py, the host's
+      # libcurl against a local server), the library's game detection, EasyRPG Player's core
       # (the same revisions and patch as the PS5's) run headless on EasyRPG's TestGame, and Ren'Py's two cores (the
       # same Ren'Py, CPython, FFmpeg and Assimp as the PS5's) on tests/renpy-game, drawing through Mesa's EGL without
       # a screen. Each Ren'Py host build is also where its PS5 build starts (its Python, its generated C, its engine).
@@ -133,8 +134,8 @@ jobs:
           CXX: clang++-18
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: >-
-          python3 -m unittest tests.test_update_release tests.test_library tests.test_core tests.test_renpy_core
-          tests.test_renpy7_core tests.test_keyboard -v
+          python3 -m unittest tests.test_update_release tests.test_net_download tests.test_library tests.test_core
+          tests.test_renpy_core tests.test_renpy7_core tests.test_keyboard -v
 
       - name: Build
         env:

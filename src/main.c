@@ -22,6 +22,7 @@
 #include "ui/sfx.h"
 #include "ui/text.h"
 #include "ui/theme.h"
+#include "ui/update_popup.h"
 #include "update.h"
 
 #include <SDL2/SDL.h>
@@ -756,12 +757,13 @@ int main(int argc, char **argv)
             last = plat_ticks_us();
         }
 
-        /* an update found at start installs by itself, once, a second after the app opened (as Mandrake) */
-        if (!update_offered && update_state() == UPDATE_AVAILABLE && now - opened >= 1000000 && app.game < 0)
+        /* an update found at start is offered in a popup, once, a second after the app opened, on the library and
+         * with no message box up (as Nightshade offers its own; until 0.2.12 it installed by itself, with a toast) */
+        if (!update_offered && update_state() == UPDATE_AVAILABLE && now - opened >= 1000000 && app.game < 0 &&
+            app.screen == SCREEN_LIBRARY && !box_open)
         {
             update_offered = true;
-            app_toast_for("An update is available and will be installed on your next restart.", 4.0f);
-            update_install();
+            update_popup_open();
         }
 
         plat_poll(pads, &quit);
@@ -769,7 +771,8 @@ int main(int argc, char **argv)
             quit = true;
         memcpy(app.pads, pads, sizeof(app.pads));
         uint32_t pressed = nav_pressed(pads);
-        message_box_input(&pressed);
+        if (!message_box_input(&pressed))
+            update_popup_input(&pressed);
         const bool backdrop = app.screen == SCREEN_LIBRARY || (app.screen == SCREEN_SETTINGS && app.game < 0);
         plat_begin_frame(backdrop ? 0 : 0xff000000u);
         static const char *const names[SCREEN_COUNT] = {"library", "game", "menu", "settings", "keys", "sounds"};
@@ -785,6 +788,7 @@ int main(int argc, char **argv)
         default: break;
         }
         covers_update(app.game >= 0 ? app.game : app.settings.last_game);
+        update_popup_draw();
         message_box_draw();
         toast_render();
         const uint64_t drawn = plat_ticks_us();

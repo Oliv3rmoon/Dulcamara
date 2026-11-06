@@ -99,9 +99,10 @@ test: host-checks test-unit test-integration test-elevation test-update-check te
 
 # Dulcamara's own host checks: the library's game detection (tests/test_library.py), EasyRPG Player's core run
 # headless on EasyRPG's TestGame (tests/test_core.py) and Ren'Py's two on tests/renpy-game (tests/test_renpy_core.py,
-# tests/test_renpy7_core.py), and the on-screen keyboard's logic (tests/test_keyboard.py). None needs the PS5 SDK.
-.PHONY: host-checks test-library test-core test-renpy-core test-renpy7-core test-keyboard
-host-checks: test-library test-core test-renpy-core test-renpy7-core test-keyboard
+# tests/test_renpy7_core.py), the on-screen keyboard's logic (tests/test_keyboard.py) and the update's download
+# (tests/test_net_download.py, which needs libcurl's headers). None needs the PS5 SDK.
+.PHONY: host-checks test-library test-core test-renpy-core test-renpy7-core test-keyboard test-net-download
+host-checks: test-library test-core test-renpy-core test-renpy7-core test-keyboard test-net-download
 test-library:
 	@python3 -m unittest tests.test_library -v
 test-core:
@@ -112,6 +113,8 @@ test-renpy7-core:
 	@python3 -m unittest tests.test_renpy7_core -v
 test-keyboard:
 	@python3 -m unittest tests.test_keyboard -v
+test-net-download:
+	@python3 -m unittest tests.test_net_download -v
 
 .PHONY: test-elevation
 test-elevation:

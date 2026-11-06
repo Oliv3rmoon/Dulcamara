@@ -198,7 +198,7 @@ static const Row LIBRARY_ROWS[] = {
 
 static const Row SYSTEM[] = {
     {"Check for updates at start", "Asks github.com/Oliv3rmoon/Dulcamara for a newer release when the app "
-                                   "opens, and installs it (checked against its SHA256SUMS) for the next start.",
+                                   "opens, and offers it in a popup (checked against its SHA256SUMS).",
      K_TOGGLE, FIELD(update_check), NULL, 0, NULL, A_NONE, -1},
     {"Test builds", "Also offers test builds (GitHub's pre-releases) when they are newer; they may break things.",
      K_TOGGLE, FIELD(update_test_builds), NULL, 0, NULL, A_NONE, -1},
@@ -452,9 +452,22 @@ static const char *update_text(void)
     case UPDATE_AVAILABLE:
         snprintf(text, sizeof(text), tr("%s is available: Cross installs it"), update_version());
         return text;
-    case UPDATE_INSTALLING: return tr("Installing...");
+    case UPDATE_INSTALLING:
+    {
+        uint64_t done, total;
+        update_progress(&done, &total);
+        if (total == 0)
+            return tr("Installing...");
+        snprintf(text, sizeof(text), tr("Downloading... %d%% (%.1f of %.1f MB)"), (int)(done * 100 / total),
+                 (double)done / 1048576.0, (double)total / 1048576.0);
+        return text;
+    }
     case UPDATE_INSTALLED: return tr("Installed: restart to use it");
-    case UPDATE_FAILED: return update_message();
+    case UPDATE_FAILED:
+        if (!update_can_retry())
+            return update_message();
+        snprintf(text, sizeof(text), tr("%s: Cross tries again"), update_message());
+        return text;
     default: return "";
     }
 }
@@ -630,7 +643,7 @@ void settings_screen(uint32_t pressed)
         }
         else if (r->kind == K_ACTION && (pressed & BIT(BTN_CROSS)))
         {
-            if (r->action == A_CHECK_UPDATE && update_state() == UPDATE_AVAILABLE)
+            if (r->action == A_CHECK_UPDATE && (update_state() == UPDATE_AVAILABLE || update_can_retry()))
                 update_install();
             else
                 run_action(r->action);
