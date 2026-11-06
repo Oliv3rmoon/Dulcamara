@@ -362,6 +362,16 @@ class RenpyCoreTest(unittest.TestCase):
             self.assertNotIn("sets PATH", output)
             self.assertNotIn("dulcamara_lower", output)
 
+    def test_sound_plays_at_the_games_own_level(self):
+        # The core neither raises nor lowers a game's sound: the test tone (a peak of 12000) comes out at 8485, the
+        # 3 dB Ren'Py's own mixer takes off a sound in the middle of the two speakers. (A tester heard nothing at half
+        # of a game's music slider: Ren'Py puts half at -20 dB, a tenth of full, on every platform.)
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("play", make_game(work / "Level"), work / "data")
+            peak = int(re.search(r"the loudest sample (\d+)", output).group(1))
+            self.assertTrue(12000 * 0.69 <= peak <= 12000 * 0.73, peak)
+
     def test_music_loops(self):
         # A game's music loops (Ren'Py queues it again after itself): a second of it still plays after three, for each
         # kind a game's music comes in, from its own file and from an archive

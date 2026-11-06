@@ -28,6 +28,9 @@ that played once and did not loop.
   harmless OpenGL error used up the log's count of errors as a game started. It is dropped now, and each time OpenGL
   has no memory for a texture is logged (the first 20, then every 100th), with the memory line every 3 minutes.
 - Ren'Py 7's import hook skipped every module it wraps while it loaded another: now only the one it is loading.
+- A game's sound at half of its slider: the tester heard nothing there in a game. The core plays a game's sound at its
+  own level (a host test measures the test tone: Ren'Py's mixer takes 3 dB off a sound in the middle, as on a
+  computer); Ren'Py puts half of a volume slider at -20 dB, a tenth of full, on every platform.
 - Not yet run on a console.
 
 ## 0.2.11

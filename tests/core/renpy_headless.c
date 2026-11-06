@@ -48,6 +48,7 @@ static struct retro_frame_time_callback frame_time_cb;
 static bool audio_cb_set, frame_time_set, shutdown_asked, xrgb, fast_forward;
 static unsigned picture_w, picture_h, geometry_w, geometry_h;
 static uint64_t picture_hash, with_picture, dupes, distinct, sound_frames, sound_loud, refreshes;
+static int sound_peak; /* the loudest sample, against the game's own (its volume as the core plays it) */
 static uint16_t buttons;
 static bool pointer_pressed; /* the pointer (the touchpad) pressed, at the middle of the picture */
 static char log_text[1 << 18];
@@ -219,12 +220,14 @@ static void audio_sample(int16_t left, int16_t right)
 
 static size_t audio_batch(const int16_t *data, size_t frames)
 {
+    bool loud = false;
     for (size_t i = 0; i < frames * 2; ++i)
-        if (data[i] > 256 || data[i] < -256)
-        {
-            ++sound_loud;
-            break;
-        }
+    {
+        const int level = data[i] < 0 ? -data[i] : data[i];
+        sound_peak = level > sound_peak ? level : sound_peak;
+        loud = loud || level > 256;
+    }
+    sound_loud += loud;
     sound_frames += frames;
     return frames;
 }
@@ -349,6 +352,7 @@ static void press(unsigned id)
 static bool load(const char *game)
 {
     with_picture = dupes = distinct = refreshes = sound_frames = sound_loud = 0;
+    sound_peak = 0;
     picture_hash = 0;
     shutdown_asked = false;
     log_used = 0;
@@ -374,8 +378,9 @@ static void report(void)
            (unsigned long long)with_picture, (unsigned long long)dupes, (unsigned long long)distinct);
     printf("picture: %ux%u, %s, hash %016llx\n", picture_w, picture_h, xrgb ? "XRGB8888" : "another pixel format",
            (unsigned long long)picture_hash);
-    printf("sound: %s (%llu frames, %llu batches with sound in them)\n", sound_loud > 10 ? "playing" : "silent",
-           (unsigned long long)sound_frames, (unsigned long long)sound_loud);
+    printf("sound: %s (%llu frames, %llu batches with sound in them, the loudest sample %d)\n",
+           sound_loud > 10 ? "playing" : "silent", (unsigned long long)sound_frames, (unsigned long long)sound_loud,
+           sound_peak);
     const char *keep = getenv("RENPY_HEADLESS_PICTURE");
     FILE *f = keep && kept ? fopen(keep, "wb") : NULL;
     if (f)
@@ -538,6 +543,7 @@ int main(int argc, char **argv)
             ok = f && until_logged_in_time("plays nothing for", 10);
             frames(90); /* what Ren'Py queued before plays out */
             sound_frames = sound_loud = 0;
+            sound_peak = 0;
             frames(120);
         }
     }
