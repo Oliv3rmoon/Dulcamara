@@ -43,5 +43,9 @@ NetResult net_download(const char *url, const char *dest, NetProgress progress, 
  * when the request could not be made at all. Blocking. */
 int net_request(const char *url, const char *post_data, const char *content_type,
                 const char *user_agent, char **body, size_t *body_length);
+/* The same, given up after `seconds` all told (net_request's limit is 30): a small request that must not hold up what
+ * waits on it, such as the insider service's answer (insider.h). */
+int net_request_within(const char *url, const char *post_data, const char *content_type, const char *user_agent,
+                       long seconds, char **body, size_t *body_length);
 
 #endif

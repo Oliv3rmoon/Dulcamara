@@ -195,6 +195,12 @@ static size_t buffer_cb(void *data, size_t size, size_t count, void *user)
 int net_request(const char *url, const char *post_data, const char *content_type,
                 const char *user_agent, char **body, size_t *body_length)
 {
+    return net_request_within(url, post_data, content_type, user_agent, 30, body, body_length);
+}
+
+int net_request_within(const char *url, const char *post_data, const char *content_type, const char *user_agent,
+                       long seconds, char **body, size_t *body_length)
+{
     *body = NULL;
     *body_length = 0;
     if (!net_available())
@@ -212,7 +218,7 @@ int net_request(const char *url, const char *post_data, const char *content_type
     curl_easy_setopt(easy, CURLOPT_URL, url);
     curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 8L);
-    curl_easy_setopt(easy, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(easy, CURLOPT_TIMEOUT, seconds);
     curl_easy_setopt(easy, CURLOPT_USERAGENT, user_agent ? user_agent : NP_NAME "/" NP_VERSION);
     curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, buffer_cb);
     curl_easy_setopt(easy, CURLOPT_WRITEDATA, &b);
@@ -272,6 +278,13 @@ int net_request(const char *url, const char *post_data, const char *content_type
     *body = NULL;
     *body_length = 0;
     return -1;
+}
+
+int net_request_within(const char *url, const char *post_data, const char *content_type, const char *user_agent,
+                       long seconds, char **body, size_t *body_length)
+{
+    (void)seconds;
+    return net_request(url, post_data, content_type, user_agent, body, body_length);
 }
 
 #endif
