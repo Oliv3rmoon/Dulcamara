@@ -376,6 +376,7 @@ class UpdateWithInsiderBuildTest(unittest.TestCase):
         self.assertEqual(headers.get("User-Agent"), "Dulcamara/" + np_version())
         # the hint: Test builds on and no code; a code, and none
         self.assertIn("enabled 1 hint before 1", lines, out)
+        self.assertIn("refused 2 has 0", lines, out)  # "abcd0efgh": refused, nothing stored, not repaired
         self.assertIn("code 0 has 1 hint 0", lines, out)
 
     def test_a_tampered_download_is_refused(self):

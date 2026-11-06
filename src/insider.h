@@ -34,10 +34,11 @@ typedef enum
 {
     INSIDER_CODE_SAVED,
     INSIDER_CODE_CLEARED,   /* nothing typed: no code */
-    INSIDER_CODE_NOT_A_CODE, /* not 8 of INSIDER_ALPHABET once normalized: nothing stored */
+    INSIDER_CODE_NOT_A_CODE, /* not exactly 8 of INSIDER_ALPHABET once normalized: nothing stored */
     INSIDER_CODE_NOT_WRITTEN, /* the data folder can't be written */
 } InsiderCodeResult;
-/* A code as typed: normalized and stored, or the stored one removed when text has nothing but spaces. */
+/* A code as typed: normalized (insider_code_normalize) and stored, or the stored one removed when text has nothing
+ * but spaces. */
 InsiderCodeResult insider_set_code(const char *text);
 
 /* check_thread's first step (update.c): with Test builds on (test_builds), INSIDER_URL set and a code stored, asks the

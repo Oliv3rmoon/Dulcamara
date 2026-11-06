@@ -84,6 +84,7 @@ int main(int argc, char **argv)
     /* Settings > System: Test builds on, and the code typed on Dulcamara's keyboard */
     app.settings.update_test_builds = true;
     printf("enabled %d hint before %d\n", insider_enabled(), insider_hint());
+    printf("refused %d has %d\n", (int)insider_set_code("abcd0efgh"), insider_has_code()); /* not repaired */
     printf("code %d has %d hint %d\n", (int)insider_set_code("abcd-efgh"), insider_has_code(), insider_hint());
 
     update_check();

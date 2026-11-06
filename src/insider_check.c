@@ -17,22 +17,28 @@
 
 /* ---------------------------------------------------------------- the code */
 
-int insider_code_normalize(const char *text, char code[INSIDER_CODE_LENGTH + 1])
+bool insider_code_normalize(const char *text, char code[INSIDER_CODE_LENGTH + 1])
 {
     int n = 0;
+    code[0] = '\0';
     for (const char *p = text; *p; ++p)
     {
         char c = *p;
+        if (c == ' ' || c == '-')
+            continue;
         if (c >= 'a' && c <= 'z')
             c = (char)(c - 'a' + 'A');
-        if (!strchr(INSIDER_ALPHABET, c))
-            continue;
-        if (n < INSIDER_CODE_LENGTH)
-            code[n] = c;
-        ++n;
+        if (n == INSIDER_CODE_LENGTH || !strchr(INSIDER_ALPHABET, c))
+        {
+            code[0] = '\0'; /* refused, not repaired */
+            return false;
+        }
+        code[n++] = c;
     }
-    code[n < INSIDER_CODE_LENGTH ? n : INSIDER_CODE_LENGTH] = '\0';
-    return n;
+    code[n] = '\0';
+    if (n != INSIDER_CODE_LENGTH)
+        code[0] = '\0';
+    return n == INSIDER_CODE_LENGTH;
 }
 
 /* ---------------------------------------------------------------- the request */
@@ -511,8 +517,7 @@ InsiderNext insider_decide(const char *base, bool test_builds, const char *code,
     memset(result, 0, sizeof(*result));
     result->status = INSIDER_OFF;
     char normal[INSIDER_CODE_LENGTH + 1];
-    if (!base || !base[0] || !test_builds || !code || insider_code_normalize(code, normal) != INSIDER_CODE_LENGTH ||
-        !request)
+    if (!base || !base[0] || !test_builds || !code || !insider_code_normalize(code, normal) || !request)
         return INSIDER_NEXT_GITHUB;
     char url[INSIDER_URL_MAX + 1], json[256];
     if ((size_t)snprintf(url, sizeof(url), "%s" INSIDER_UPDATES_PATH, base) >= sizeof(url) ||

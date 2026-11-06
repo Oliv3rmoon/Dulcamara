@@ -44,7 +44,8 @@ bool insider_load_code(char code[INSIDER_CODE_LENGTH + 1])
         return false;
     const bool read = fgets(line, sizeof(line), f) != NULL;
     fclose(f);
-    return read && insider_code_normalize(line, code) == INSIDER_CODE_LENGTH;
+    line[strcspn(line, "\r\n")] = '\0'; /* the line's end */
+    return read && insider_code_normalize(line, code);
 }
 
 bool insider_has_code(void)
@@ -69,7 +70,7 @@ InsiderCodeResult insider_set_code(const char *text)
         np_log("insider: no code stored");
         return INSIDER_CODE_CLEARED;
     }
-    if (insider_code_normalize(text, code) != INSIDER_CODE_LENGTH)
+    if (!insider_code_normalize(text, code))
         return INSIDER_CODE_NOT_A_CODE;
     /* written whole, then renamed into place: the update's thread may be reading it */
     snprintf(temp, sizeof(temp), "%s.new", path);

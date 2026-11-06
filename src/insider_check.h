@@ -28,10 +28,10 @@
 #define INSIDER_DOWNLOAD_PATH "/v1/download/"
 #define INSIDER_URL_MAX 255 /* a download address, as update.c's zip_url holds it */
 
-/* A code as typed ("abcd-efgh", "ABCD EFGH") as the service reads it: uppercase, and every character outside
- * INSIDER_ALPHABET dropped. code gets the first INSIDER_CODE_LENGTH of what is left; returns how many there were in
- * all. Only INSIDER_CODE_LENGTH exactly is a code. */
-int insider_code_normalize(const char *text, char code[INSIDER_CODE_LENGTH + 1]);
+/* A code as typed ("abcd-efgh", "ABCD EFGH") as the service reads it (docs/API.md): uppercase, spaces and hyphens
+ * removed, and then it must be exactly INSIDER_CODE_LENGTH characters of INSIDER_ALPHABET: true and code. Anything
+ * else is refused, never repaired by dropping characters ("ABCD0EFGH" is no code): false, and code "". */
+bool insider_code_normalize(const char *text, char code[INSIDER_CODE_LENGTH + 1]);
 
 /* The request's body, {"app":"dulcamara","installed_version":...,"code":...}, the two strings escaped as JSON
  * strings. False when it doesn't fit in size. */
@@ -89,7 +89,7 @@ typedef enum
 } InsiderNext;
 
 /* The update check's first step (update.c's check_thread). With base set (INSIDER_URL), test_builds on and code a
- * code (insider_code_normalize gives INSIDER_CODE_LENGTH), POST base "/v1/updates" through request and read the
+ * code (insider_code_normalize takes it), POST base "/v1/updates" through request and read the
  * answer: INSIDER_NEXT_OFFER and *build for an insider build to offer; INSIDER_NEXT_GITHUB otherwise, and then
  * nothing was asked when result->status is INSIDER_OFF. result says what happened (for the log and the hint). */
 InsiderNext insider_decide(const char *base, bool test_builds, const char *code, const char *installed,

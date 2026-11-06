@@ -1,7 +1,8 @@
 /*
  * Dulcamara - the insider code typed on Dulcamara's own keyboard (keyboard.h), over Settings: when Test builds is
  * switched on with no code stored, and from Settings > System > Insider code (insider.h). The console's own keyboard
- * can't be used in Dulcamara. Done stores the code (8 of its characters, as the service reads it), Done with nothing
+ * can't be used in Dulcamara. Done stores the code (exactly 8 of its characters once spaces and hyphens are gone, as
+ * the service reads it; anything else is refused and nothing stored), Done with nothing
  * typed leaves no code, Circle closes it and changes nothing.
  * SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
  * SPDX-License-Identifier: GPL-3.0-or-later

@@ -83,20 +83,37 @@ static InsiderResult read_answer(int http, const char *json, InsiderBuild *b)
 static void test_code(void)
 {
     char code[INSIDER_CODE_LENGTH + 1];
-    CHECK(insider_code_normalize("abcd-efgh", code) == 8 && !strcmp(code, "ABCDEFGH"));
-    CHECK(insider_code_normalize("ABCD-EFGH", code) == 8 && !strcmp(code, "ABCDEFGH"));
-    CHECK(insider_code_normalize(" abcd efgh\n", code) == 8 && !strcmp(code, "ABCDEFGH"));
-    CHECK(insider_code_normalize("2345-6789", code) == 8 && !strcmp(code, "23456789"));
-    CHECK(insider_code_normalize("wxyz-2345", code) == 8 && !strcmp(code, "WXYZ2345"));
-    /* every character of the alphabet, and only those */
-    CHECK(insider_code_normalize(INSIDER_ALPHABET, code) == 30 && !strcmp(code, "23456789"));
-    CHECK(insider_code_normalize("01OILU oilu", code) == 0 && !strcmp(code, ""));
-    CHECK(insider_code_normalize("", code) == 0 && !strcmp(code, ""));
-    CHECK(insider_code_normalize("ABCD-EFG", code) == 7);              /* one short */
-    CHECK(insider_code_normalize("ABCD-EFGHJ", code) == 9);            /* one too many: not cut to 8 */
-    CHECK(insider_code_normalize("ABCD-EFG0", code) == 7);             /* a zero is no code character */
-    CHECK(insider_code_normalize("AB\xC3\xA9" "CDEFGH", code) == 8 && !strcmp(code, "ABCDEFGH")); /* é dropped */
-    CHECK(insider_code_normalize("a-b-c-d-e-f-g-h", code) == 8 && !strcmp(code, "ABCDEFGH"));
+    /* uppercase, spaces and hyphens removed: what the service reads */
+    CHECK(insider_code_normalize("abcd-efgh", code) && !strcmp(code, "ABCDEFGH"));
+    CHECK(insider_code_normalize("ABCD-EFGH", code) && !strcmp(code, "ABCDEFGH"));
+    CHECK(insider_code_normalize("abcd efgh", code) && !strcmp(code, "ABCDEFGH"));
+    CHECK(insider_code_normalize("  AbCd - eFgH  ", code) && !strcmp(code, "ABCDEFGH"));
+    CHECK(insider_code_normalize("a-b-c-d-e-f-g-h", code) && !strcmp(code, "ABCDEFGH"));
+    CHECK(insider_code_normalize("2345-6789", code) && !strcmp(code, "23456789"));
+    CHECK(insider_code_normalize("wxyz-2345", code) && !strcmp(code, "WXYZ2345"));
+    CHECK(insider_code_normalize("--ABCDEFGH--", code) && !strcmp(code, "ABCDEFGH"));
+    /* every character of the alphabet is a code character */
+    for (const char *c = INSIDER_ALPHABET; *c; ++c)
+    {
+        char typed[9];
+        memset(typed, *c, 8);
+        typed[8] = '\0';
+        CHECK(insider_code_normalize(typed, code) && !strcmp(code, typed));
+    }
+    /* anything else is refused, never repaired: nothing comes back */
+    const char *const refused[] = {
+        "",           "ABCD-EFG",    "ABCD-EFGHJ",  "ABCD0EFGH",  "ABCD-EFG0", "ABCDEFGO",   "ABCDEFGI",
+        "ABCDEFGL",   "ABCDEFGU",    "ABCDEFG1",    "ABCD_EFGH",  "ABCD.EFGH", "ABCD\tEFGH", "ABCDEFGH\n",
+        "ABCD\xC3\xA9" "EFGH", "AB\xC3\xA9" "CDEF", "--------",   "        ",  "ABCDEFGHABCDEFGH",
+    };
+    for (size_t i = 0; i < sizeof(refused) / sizeof(refused[0]); ++i)
+    {
+        memset(code, 'X', sizeof(code));
+        const bool taken = insider_code_normalize(refused[i], code);
+        if (taken)
+            printf("  \"%s\" was taken as a code\n", refused[i]);
+        CHECK(!taken && code[0] == '\0');
+    }
 }
 
 /* ---------------------------------------------------------------- the request */
@@ -419,7 +436,7 @@ static void test_decide(void)
     CHECK(!strcmp(f.json, "{\"app\":\"dulcamara\",\"installed_version\":\"0.2.13\",\"code\":\"ABCDEFGH\"}"));
     /* a code as typed is sent as the service reads it */
     f = (Fake){0, 200, update, "", ""};
-    CHECK(decide(&f, BASE, true, "abcd-efgh\n", &b, &r) == INSIDER_NEXT_OFFER && strstr(f.json, "\"ABCDEFGH\""));
+    CHECK(decide(&f, BASE, true, "abcd efgh", &b, &r) == INSIDER_NEXT_OFFER && strstr(f.json, "\"ABCDEFGH\""));
 
     /* an expired code, a refused one, no build newer: GitHub, as before */
     const struct
@@ -465,6 +482,7 @@ static void test_decide(void)
     } off[] = {
         {"", true, "ABCDEFGH"}, {NULL, true, "ABCDEFGH"}, {BASE, false, "ABCDEFGH"}, {BASE, true, ""},
         {BASE, true, NULL},     {BASE, true, "ABCDEFG"},   {BASE, true, "ABCDEFGHJ"}, {BASE, true, "OOOOIIII"},
+        {BASE, true, "ABCD0EFGH"}, {BASE, true, "ABCDEFGH\n"},
     };
     for (size_t i = 0; i < sizeof(off) / sizeof(off[0]); ++i)
     {
