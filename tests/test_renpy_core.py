@@ -338,13 +338,14 @@ class RenpyCoreTest(unittest.TestCase):
 
     def test_a_black_flash_is_logged(self):
         # Testers see boxes flash black for a moment: the core's log finds each in the pictures Ren'Py draws, with its
-        # box, so that one not found there is the frontend's. A black box shown for a moment is one, where it was.
+        # box, so that one not found there is the frontend's. A black box shown for a moment is one, where it was; how
+        # many pictures long depends on the machine's frame rate (6 on a fast CI runner), so any length is taken.
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             output = self.run_core("start", make_game(work / "Flash"), work / "data",
                                    env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_FLASH": "1"})
             self.assertIn("DULCAMARA-TEST: flash shown", output)
-            self.assertRegex(output, r"black flash 1, picture \d+, [1-5] pictures long: 160x120 at 320,240 of the "
+            self.assertRegex(output, r"black flash 1, picture \d+, \d+ pictures long: 160x120 at 320,240 of the "
                                      r"1280x720 picture")
 
     def test_a_testers_switches(self):
