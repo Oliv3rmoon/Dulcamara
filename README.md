@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="sce_sys/icon0.png" width="128" alt="Dulcamara icon">
+  <img src="sce_sys/icon0.png" width="160" alt="Dulcamara logo">
 </p>
 
 <h1 align="center">Dulcamara</h1>
@@ -9,12 +9,19 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases/latest"><img src="https://img.shields.io/github/v/release/Oliv3rmoon/Dulcamara?style=for-the-badge&label=download&color=e5484d&labelColor=0d0d0f" alt="Download the latest release"></a>
-  <a href="https://discord.gg/pSqgRU3YP9"><img src="https://img.shields.io/badge/discord-nightly-0d0d0f?style=for-the-badge&logo=discord&logoColor=e5484d" alt="Discord: nightly"></a>
-  <a href="https://github.com/Oliv3rmoon/Dulcamara/stargazers"><img src="https://img.shields.io/github/stars/Oliv3rmoon/Dulcamara?style=for-the-badge&logo=github&logoColor=e5484d&color=e5484d&labelColor=0d0d0f" alt="GitHub stars"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-0d0d0f?style=for-the-badge&labelColor=0d0d0f&color=e5484d" alt="GPL-3.0-or-later"></a>
-  <a href="https://buymeacoffee.com/oliv3rmoon"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-0d0d0f?style=for-the-badge&logo=buymeacoffee&logoColor=e5484d" alt="Buy me a coffee"></a>
+  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases"><img src="https://img.shields.io/github/v/release/Oliv3rmoon/Dulcamara?include_prereleases" alt="Latest release"></a>
+  <a href="https://discord.gg/pSqgRU3YP9"><img src="https://img.shields.io/badge/discord-join%20nightly-5865F2?logo=discord&logoColor=white" alt="Discord: join nightly"></a>
+  <a href="https://github.com/Oliv3rmoon/Dulcamara/stargazers"><img src="https://img.shields.io/github/stars/Oliv3rmoon/Dulcamara?style=social" alt="GitHub stars"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue" alt="License: GPL-3.0-or-later"></a>
+  <a href="https://buymeacoffee.com/oliv3rmoon"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-e5484d?logo=buymeacoffee&logoColor=white" alt="Buy me a coffee"></a>
 </p>
+
+<p align="center">
+  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases/latest"><strong>Download the latest release</strong></a><br>
+  Test builds are on the <a href="https://github.com/Oliv3rmoon/Dulcamara/releases">Releases page</a>, marked pre-release.
+</p>
+
+<p align="center">If Dulcamara works for you, a ⭐ helps other PS5 owners find it.</p>
 
 Dulcamara, named after *Solanum dulcamara*, the bittersweet nightshade, is a PS5 homebrew app by **[Oliv3rmoon](https://github.com/Oliv3rmoon)** for story games and RPGs: a library that finds your RPG Maker 2000 and 2003 games and plays them, with the Nightshade look, CRT shaders and a Vulkan screen. The latest release is **0.1.0**; what changed is in the [changelog](docs/CHANGELOG.md).
 
@@ -73,6 +80,8 @@ Dulcamara is one of seven repositories in the Nightshade family, all by [Oliv3rm
 [EasyRPG Player](https://easyrpg.org) for RPG Maker 2000 and 2003 games and [Ren'Py](https://www.renpy.org) for visual novels, on the frontend of [Mandrake](https://github.com/Oliv3rmoon/Mandrake).
 
 ## Thanks
+
+Thanks to the testers in the nightly Discord who try every test build and send logs.
 
 - **[EasyRPG](https://easyrpg.org)**, the team behind EasyRPG Player and liblcf, who made RPG Maker 2000
   and 2003 games playable everywhere as free software. Dulcamara only puts their work on the PS5;
