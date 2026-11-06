@@ -1249,6 +1249,7 @@ static bool ensure_game_texture(int format, int w, int h)
 /* PS5: the latest game picture, kept in SwanStationPS5's memory and scaled straight
  * into the canvas by blit.c (SDL's software stretch was the bottleneck). */
 static const uint32_t *game_image;
+static bool game_image_new; /* game_image changed since the interface's texture last took it */
 static int game_image_w, game_image_h;
 static size_t game_image_pitch;
 #endif
@@ -1530,6 +1531,7 @@ void plat_upload_game(const void *pixels, int width, int height, size_t pitch, i
             prescale_sharp(src, width, height, pitch_px, out, k);
         grade_pixels(out, width * (k > 1 ? k : 1), height * (k > 1 ? k : 1), (size_t)width * (k > 1 ? k : 1));
         game_image = out;
+        game_image_new = true;
         game_image_w = width * (k > 1 ? k : 1);
         game_image_h = height * (k > 1 ? k : 1);
         game_image_pitch = (size_t)game_image_w;
@@ -1711,13 +1713,19 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
     }
     if (game_image && gpu_ui)
     {
-        /* the picture of the software renderer as a texture of the GPU interface, updated every frame */
+        /* the picture of the software renderer as a texture of the GPU interface, updated for each new picture */
         static int soft_tex = -1, soft_w, soft_h;
         static bool soft_smooth;
         static uint8_t *rgba;
         const int cut = (int)(game_image_h * crop), vis_h = game_image_h - 2 * cut;
+        /* Dulcamara: the texture is made again only for a new picture. Each time costs a pass over every pixel, a
+         * staging buffer and an image the size of the picture, and a wait for the GPU (ui_upload): up to 0.2.11 it
+         * was made 60 times a second for a 1920x1080 Ren'Py game's 16 to 22 pictures, and its tester saw black bars
+         * whenever the app ran below 60. */
+        bool fresh = game_image_new;
         if (soft_tex < 0 || soft_w != game_image_w || soft_h != game_image_h || soft_smooth != settings->smooth)
         {
+            fresh = true;
             if (soft_tex >= 0)
                 vkp_ui_texture_free(soft_tex);
             free(rgba);
@@ -1732,8 +1740,9 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
             soft_h = game_image_h;
             soft_smooth = settings->smooth;
         }
-        if (soft_tex >= 0 && rgba)
+        if (soft_tex >= 0 && rgba && fresh)
         {
+            game_image_new = false;
             for (int y = 0; y < game_image_h; ++y)
             {
                 const uint32_t *src = game_image + (size_t)y * game_image_pitch;
@@ -1748,9 +1757,10 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
                 }
             }
             vkp_ui_texture_update(soft_tex, rgba);
+        }
+        if (soft_tex >= 0 && rgba)
             gpu_quad(soft_tex, (float)dx, (float)dy, (float)(dx + dw), (float)(dy + dh), 0.0f, (float)cut / game_image_h, 1.0f,
                      (float)(cut + vis_h) / game_image_h, 0xff000000u | (uint32_t)dim << 16 | (uint32_t)dim << 8 | dim);
-        }
         return;
     }
     if (game_image)

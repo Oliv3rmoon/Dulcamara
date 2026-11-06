@@ -479,6 +479,36 @@ void app_draw_game(uint8_t dim)
 
 static const int FF_SPEEDS[] = {2, 3, 4, 6, 8};
 
+/* A game's frames that came late (more than 25 ms after the one before, where 60 a second is 16.7): in the log with
+ * how long running the game, drawing and presenting took, the first 30 and every 300th, and how many of each 3600
+ * there were. A tester saw a Ren'Py game's black bars whenever Show FPS fell below 60, and only then. */
+static uint64_t game_run_us, game_draw_us;
+
+static void note_game_frame(uint64_t interval, uint64_t work, uint64_t present)
+{
+    static int frames, late, noted;
+    static uint64_t slowest;
+    ++frames;
+    if (interval > 25000)
+    {
+        ++late;
+        slowest = interval > slowest ? interval : slowest;
+        if (++noted <= 30 || noted % 300 == 0)
+            np_log("app: a late frame, %.1f ms after the one before: the game ran %.1f ms, drawing took %.1f ms, the "
+                   "rest of the frame %.1f ms, presenting %.1f ms",
+                   interval / 1000.0, game_run_us / 1000.0, game_draw_us / 1000.0,
+                   (work > game_run_us + game_draw_us ? work - game_run_us - game_draw_us : 0) / 1000.0,
+                   present / 1000.0);
+    }
+    if (frames >= 3600)
+    {
+        np_log("app: %d of the game's last %d frames came late, the latest %.1f ms after the one before", late,
+               frames, slowest / 1000.0);
+        frames = late = 0;
+        slowest = 0;
+    }
+}
+
 static void game_screen(PadState *pads, uint32_t pressed)
 {
     const PadState *p = &pads[app_nav_pad()];
@@ -553,8 +583,10 @@ static void game_screen(PadState *pads, uint32_t pressed)
     const double step = 1.0 / host_fps();
     if (seconds > step * 0.98 && seconds < step * 1.02)
         seconds = step;
+    const uint64_t run_start = plat_ticks_us();
     host_run(runs, seconds);
     host_feed_audio(0.07);
+    game_run_us = plat_ticks_us() - run_start;
 
     /* the game's frames a second, for Show FPS */
     static uint64_t window_start;
@@ -574,7 +606,9 @@ static void game_screen(PadState *pads, uint32_t pressed)
         app_toast("The game closed.");
         return;
     }
+    const uint64_t draw_start = plat_ticks_us();
     app_draw_game(255);
+    game_draw_us = plat_ticks_us() - draw_start;
     keyboard_draw();
     if (app.fast_forward)
     {
@@ -687,7 +721,7 @@ int main(int argc, char **argv)
 
     bool quit = false;
     PadState pads[NP_MAX_PADS];
-    uint64_t last = plat_ticks_us();
+    uint64_t last = plat_ticks_us(), last_frame_start = last;
     const uint64_t opened = last;
     bool update_offered = false;
     bool in_background = false;
@@ -753,7 +787,11 @@ int main(int argc, char **argv)
         covers_update(app.game >= 0 ? app.game : app.settings.last_game);
         message_box_draw();
         toast_render();
+        const uint64_t drawn = plat_ticks_us();
         plat_end_frame();
+        if (app.screen == SCREEN_GAME && app.game >= 0)
+            note_game_frame(now - last_frame_start, drawn - now, plat_ticks_us() - drawn);
+        last_frame_start = now;
     }
 
     /* Only the desktop build gets here; the PS5 shell closes the title. */

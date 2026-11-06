@@ -12,6 +12,13 @@ that played once and did not loop.
   Ren'Py cores), so on the console something fails there. Each such failure is now in the log
   (`Ren'Py could not load ..., and stops looping it if it did: ...`); a host test takes a looping file away and finds
   the line.
+- **The app keeps 60 frames a second more often with a Ren'Py game (PS5).** The tester saw the black bars whenever
+  Show FPS fell below 60 and never at 60, and Show FPS counts the app's own frames, not the game's. Without a shader,
+  a game's picture is a texture of the app's interface, and the app made it again every frame: a pass over every
+  pixel, a staging buffer and an image the picture's size, and a wait for the GPU, 60 times a second for a 1920x1080
+  game that draws 16 to 22 pictures. It is made only for a new picture now. Each late frame of a game (more than 25 ms
+  after the one before) is in the log with how long running the game, drawing and presenting took, and how many of
+  every 3600 came late.
 - **Black flashes and the frame rate.** Her 1920x1080 games drew 16 to 22 pictures a second, 28.5 ms of each reading
   the picture back. Each black flash in the log now says how long after the picture before its picture came, and
   the report every 600 pictures counts the flashes. To try whether a faster picture stops them,
