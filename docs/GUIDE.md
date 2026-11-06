@@ -69,7 +69,8 @@ instead, test builds (pre-releases) among them, and the newest of those is offer
 version and it carries `PPSA99010.zip` and `SHA256SUMS`, both this repository's own files, a popup offers it when
 the app opens (**Update now** or **Later**; Cross on **Check for updates now** installs it too). The ZIP downloads with
 its progress shown (Circle hides the popup and the download goes on), is checked against `SHA256SUMS` and is installed
-into the folder the app runs from; a download that fails says why and can be tried again. The new version runs from
+into the folder the app runs from. A download that stalls or drops goes on from where it stopped; one that fails
+says why and can be tried again. The new version runs from
 the next start: the popup's **Close Dulcamara** closes the app so you can open it again. Your games and saves are not
 touched. A release built by this repository's workflow can be checked with
 `gh attestation verify PPSA99010.zip -R Oliv3rmoon/Dulcamara`.

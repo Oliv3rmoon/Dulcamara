@@ -2,21 +2,31 @@
 
 ## 0.2.13
 
-A test build for the tester's two requests: the in-app update said "The download failed" every time, and she asked for
-the update to be offered in a popup, as the other apps do.
+A test build for the tester's three reports: the in-app update said "The download failed" every time, she asked for
+the update to be offered in a popup, as the other apps do, and the library sometimes showed 0 games when there were
+games.
 
-- **The update's download no longer gives up after 25 seconds.** The download had 25 seconds all told, a limit meant
-  for small files, and `PPSA99010.zip` is 75.8 MB: any connection slower than 3 MB/s (24 Mbit/s) failed, every time
-  (curl's error 28). Checking for the update worked, because `SHA256SUMS` comes the same way but is 80 bytes. Now a
-  download takes as long as it needs and is given up only when nothing arrives for 30 seconds. A failure says why
-  ("The download failed: nothing arrived for 30 seconds") and can be tried again at once; the log has curl's error,
-  and each download's time and speed. A host test downloads past the old limit from a slow local server, follows a
-  redirect as GitHub's, and gives a stalled download up.
+- **The update's download no longer gives up after 25 seconds.** Her log had `curl 28, http 200` three times in a
+  row, on a phone's hotspot: the download had 25 seconds all told, a limit meant for small files, and
+  `PPSA99010.zip` is 75.8 MB, so any connection slower than 3 MB/s (24 Mbit/s) failed every time. Checking for the
+  update worked, because `SHA256SUMS` comes the same way but is 80 bytes. Now a download takes as long as it needs and
+  is given up only when it stays under 1 KB/s for 60 seconds. A download that stalls or drops goes on from where it
+  stopped (a Range request into its `.part` file), by itself up to 5 times in a row while each try gets further, and
+  again from Try again; the finished file is still checked against `SHA256SUMS`. A failure says why ("The download
+  failed: the connection stalled (under 1 KB/s for 60 seconds)"); the log has curl's error, the bytes kept, and each
+  download's time and speed. A host test downloads an update-sized file (75.8 MB) at 2.5 MB/s, past the old limit,
+  goes on from a dropped connection, starts over when a server ignores the Range, follows a redirect as GitHub's,
+  and gives a stalled download up.
 - **Updates are offered in a popup.** When the app opens and finds a newer release, "Update available" (or "Test
   build available") shows the version and the download's size, with Update now and Later, where 0.2.12 and before
   installed it without asking. It shows how far the download has got (Circle hides it and the download goes on;
   Settings > System shows the progress too), then Close Dulcamara or Later once it is installed, or the reason and Try
   again or Later when it fails.
+- **"0 games" when there are games.** Those starts were sandboxed: her log had `storage: sandboxed (no unlock service
+  answered (LegacyJB, etaHEN, PS5SX2 Helper) ...)`, then `library: 0 game(s)` at every Look again. A sandboxed app can
+  open files in `/data` but not list folders, and `/data` is unlocked only as the app starts, before any thread runs,
+  so Look again could never find them. Now the library says so in place of "No games yet", with the reason, and Square
+  starts Dulcamara again, which asks for the unlock again. The log line says when 0 games is because of the sandbox.
 - The fix is in the new version's own updater, so 0.2.13 itself has to be installed by hand once.
 - Not yet run on a console.
 
