@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.12
+
+A test build after the tester's runs of 0.2.10 (0.2.11 came out later). Four hours in a game with no crash; left were
+the black flashes, which she sees below 60 frames a second, characters missing after hours, and in some games music
+that played once and did not loop.
+
+- **Music that stops looping says why.** A game's music loops because Ren'Py queues it again after itself, and when
+  loading, playing or queuing it fails, Ren'Py takes it off the loop without a word: it plays once. The core passes
+  loops through as they are (host tests: OGG, WAV and MP3 music loops, from its own file and from an archive, in both
+  Ren'Py cores), so on the console something fails there. Each such failure is now in the log
+  (`Ren'Py could not load ..., and stops looping it if it did: ...`); a host test takes a looping file away and finds
+  the line.
+- **Black flashes and the frame rate.** Her 1920x1080 games drew 16 to 22 pictures a second, 28.5 ms of each reading
+  the picture back. Each black flash in the log now says how long after the picture before its picture came, and
+  the report every 600 pictures counts the flashes. To try whether a faster picture stops them,
+  `DULCAMARA_PICTURE_HEIGHT=720` in `/data/dulcamara/renpy-test.txt` draws a taller game 720 high (its width to
+  match), as its window would be on a computer: a smaller picture to draw and read back.
+- **Characters missing after hours.** Every image Ren'Py uploads, it unmaps a pixel buffer it never mapped, and that
+  harmless OpenGL error used up the log's count of errors as a game started. It is dropped now, and each time OpenGL
+  has no memory for a texture is logged (the first 20, then every 100th), with the memory line every 3 minutes.
+- Ren'Py 7's import hook skipped every module it wraps while it loaded another: now only the one it is loading.
+- Not yet run on a console.
+
 ## 0.2.11
 
 A test build after 0.2.10's console run. Ren'Py 7 games start and play: the tester played one in game. Left were
