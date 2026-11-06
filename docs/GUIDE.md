@@ -74,6 +74,26 @@ says why and can be tried again. The new version runs from
 the next start: the popup's **Close Dulcamara** closes the app so you can open it again. Your games and saves are not
 touched. A release built by this repository's workflow can be checked with
 `gh attestation verify PPSA99010.zip -R Oliv3rmoon/Dulcamara`.
+
+### Insider builds
+
+Verified, active members of nightly, Dulcamara's Discord ([discord.gg/pSqgRU3YP9](https://discord.gg/pSqgRU3YP9)),
+can get new test builds before everyone else. To get an insider code, sign in with Discord on the insider page that
+the nightly Discord points to: the code is 8 letters and digits, such as `ABCD-EFGH`. In **Settings > System**,
+switching **Test builds** on asks for the code once, on Dulcamara's own keyboard (Done with nothing typed, or Circle:
+no code, and Test builds is on all the same); **Insider code** below it types a new one, or clears it with nothing
+typed. With Test builds on and a code stored, the update check asks the insider service first: when it has a newer
+insider build for you, the popup offers it as a test build, and it is downloaded, checked against the SHA-256 and the
+size the service gave and installed exactly as a release is. Anything else (no code, a code that expired or was
+revoked, no longer qualifying, no network, the service down) and Dulcamara asks GitHub as above. When the service
+refused your code, or Test builds is on without one, Settings says where to get one.
+
+Dulcamara always works without a code: the service only decides who gets a test build early, never whether the app
+runs or what it can play. Only your code and Dulcamara's version (with the User-Agent `Dulcamara/<version>`) are
+sent to it; the code is kept in `/data/dulcamara/insider-code` and never written to the log. A build made without the
+service's address (`make INSIDER_URL=https://...`) has no insider builds at all: no code is asked for and nothing is
+sent.
+
 ## Building from source
 
 The PS5 app builds on Linux or WSL (Ubuntu 24.04); GitHub Actions builds every push
