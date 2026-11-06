@@ -11,10 +11,12 @@
 #include "../core/cores.h"
 #include "../core/host.h"
 #include "../i18n.h"
+#include "../insider.h"
 #include "../platform/platform.h"
 #include "../update.h"
 #include "draw.h"
 #include "icons.h"
+#include "insider_prompt.h"
 #include "qr.h"
 #include "sfx.h"
 #include "text.h"
@@ -46,6 +48,7 @@ enum Action
     A_COMMUNITY,    /* nightly's card: its QR code (community.h) */
     A_DEFAULT_KEYS, /* Keys for this game: every button back to the core's own */
     A_SOUNDS,       /* a K_GAME row's: Cross opens the game's Sounds for this game, not its keys */
+    A_INSIDER_CODE, /* the insider code on Dulcamara's keyboard (insider.h): only in a build with INSIDER_URL */
 };
 
 typedef struct
@@ -202,6 +205,9 @@ static const Row SYSTEM[] = {
      K_TOGGLE, FIELD(update_check), NULL, 0, NULL, A_NONE, -1},
     {"Test builds", "Also offers test builds (GitHub's pre-releases) when they are newer; they may break things.",
      K_TOGGLE, FIELD(update_test_builds), NULL, 0, NULL, A_NONE, -1},
+    {"Insider code", "Your code from nightly's insider page: its members get test builds first. Cross types it; "
+                     "nothing typed clears it.",
+     K_ACTION, 0, NULL, 0, NULL, A_INSIDER_CODE, -1},
     {"Check for updates now", "Asks GitHub now.", K_ACTION, 0, NULL, 0, NULL, A_CHECK_UPDATE, -1},
     {"Close Dulcamara", "Closes the app. Save in the game first.", K_ACTION, 0, NULL, 0, NULL, A_CLOSE_APP, -1},
 };
@@ -367,12 +373,14 @@ static bool selectable(const Row *r)
     return r->kind != K_INFO && !(r->kind == K_CORE && app.game >= 0);
 }
 
-/* The rows a tab shows now: Keys and Sounds for a game only when the library has a Ren'Py game. */
+/* The rows a tab shows now: Keys and Sounds for a game only when the library has a Ren'Py game, Insider code only in
+ * a build with nightly's insider builds. */
 static int tab_rows(const Tab *t, const Row **rows)
 {
     int n = 0;
     for (int i = 0; i < t->count && n < ROWS_MAX; ++i)
-        if (t->rows[i].kind != K_GAME || keys_pick_game() >= 0)
+        if ((t->rows[i].kind != K_GAME || keys_pick_game() >= 0) &&
+            (t->rows[i].action != A_INSIDER_CODE || insider_enabled()))
             rows[n++] = &t->rows[i];
     return n;
 }
@@ -438,6 +446,7 @@ static void run_action(int action)
         app.quit_requested = true;
         break;
     case A_COMMUNITY: community_open = true; break;
+    case A_INSIDER_CODE: insider_prompt_open(); break;
     default: break;
     }
 }
@@ -563,6 +572,8 @@ void settings_screen(uint32_t pressed)
         }
         pressed = 0;
     }
+    if (insider_prompt_input(pressed)) /* the insider code's keyboard is up: it takes the buttons */
+        pressed = 0;
     if (pressed & BIT(BTN_CIRCLE))
     {
         leave();
@@ -617,6 +628,9 @@ void settings_screen(uint32_t pressed)
             *b = !*b;
             changed(r);
             sfx_play(SFX_CLICK);
+            /* Test builds on in a build with nightly's insider builds, and no code yet: it is asked for */
+            if (r->field == FIELD(update_test_builds) && *b && insider_enabled() && !insider_has_code())
+                insider_prompt_open();
         }
         else if (r->kind == K_GAME && (pressed & (BIT(BTN_LEFT) | BIT(BTN_RIGHT))))
         {
@@ -736,6 +750,7 @@ void settings_screen(uint32_t pressed)
             snprintf(community, sizeof(community), "%s  \xC2\xB7  %s", COMMUNITY_NAME, COMMUNITY_LINK);
             const char *value = it->action == A_CHECK_UPDATE ? update_text()
                                 : it->action == A_COMMUNITY  ? community
+                                : it->action == A_INSIDER_CODE ? (insider_has_code() ? tr("Set") : tr("Not set"))
                                                              : "";
             if (value[0])
                 text_draw_fit(right, ry + 23, 24, FONT_REGULAR, TH_TEXT_DIM, ALIGN_RIGHT, w * 0.45f, value);
@@ -746,9 +761,16 @@ void settings_screen(uint32_t pressed)
     /* the chosen row's explanation */
     if (selectable(r) && r->help)
         text_draw_fit(x, list_y + visible * row_h + 40, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT, w, tr(r->help));
+    /* under Test builds and Insider code: where a code comes from, while there is none or the last answer refused it */
+    if (selectable(r) &&
+        ((r->kind == K_TOGGLE && r->field == FIELD(update_test_builds)) || r->action == A_INSIDER_CODE) &&
+        insider_hint())
+        text_draw_fit(x, list_y + visible * row_h + 76, 26, FONT_REGULAR, TH_FOCUS, ALIGN_LEFT, w,
+                      tr("Insider builds: get a code in the nightly Discord, discord.gg/pSqgRU3YP9"));
     static const int glyphs[] = {GLYPH_CROSS, GLYPH_CIRCLE};
     static const char *const labels[] = {"Change", "Back"};
     app_draw_hints(glyphs, labels, 2, app.game >= 0 ? host_core_name() : NP_TITLE " " NP_VERSION);
+    insider_prompt_draw();
     if (community_open)
         draw_community();
 }
