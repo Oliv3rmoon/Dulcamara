@@ -46,6 +46,9 @@ PACBREW_INCLUDE_PATHS ?=
 # The library reads game titles in Shift-JIS and the Windows code pages (src/rpgmaker.c): GNU libiconv. The core
 # has its own copy, local to its archive.
 PACBREW_STATIC_ARCHIVES ?= lib/libiconv.a
+# nightly's insider service, such as https://nightly-insider.<account>.workers.dev (src/insider.h): its insider builds
+# are offered to members with a code. Empty: none.
+INSIDER_URL ?=
 PS5_HOST ?=
 FTP_PORT ?= 2121
 DEPLOY_FORMAT ?= folder
@@ -72,6 +75,7 @@ export HOST_CC HOST_CXX HOST_TEST_CFLAGS HOST_TEST_CXXFLAGS HOST_TEST_LDFLAGS
 export APP_VULKAN APP_DEFINITIONS APP_INCLUDE_PATHS APP_STATIC_ARCHIVES APP_RUNTIME_MODULES APP_WRAP_SYMBOLS
 export APP_SOURCE_DIR APP_PARAM APP_SCE_SYS APP_ASSETS APP_ROOT_FILES
 export APP_LAPY_HELPER
+export INSIDER_URL
 export PACBREW_PACKAGES PACBREW_INCLUDE_PATHS PACBREW_STATIC_ARCHIVES
 export PS5_HOST FTP_PORT DEPLOY_FORMAT PS5_FTP_USER PS5_FTP_PASSWORD DEPLOY_DRY_RUN
 export TITLE_ID APP_NAME APP_CATEGORY CONTENT_SUFFIX

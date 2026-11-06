@@ -140,6 +140,17 @@ pacbrew_archives=()
 [[ -z ${PACBREW_INCLUDE_PATHS:-} ]] || read -r -a pacbrew_includes <<< "$PACBREW_INCLUDE_PATHS"
 [[ -z ${PACBREW_STATIC_ARCHIVES:-} ]] || read -r -a pacbrew_archives <<< "$PACBREW_STATIC_ARCHIVES"
 
+# nightly's insider service (src/insider.h): make INSIDER_URL=https://... gives the compiler its address as a C string,
+# which APP_DEFINITIONS' plain names can't be. Empty or unset: no insider builds.
+insider_definitions=()
+if [[ -n ${INSIDER_URL:-} ]]; then
+    [[ $INSIDER_URL =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*$ ]] || {
+        echo "invalid INSIDER_URL: an https:// address without a / at its end, such as https://nightly-insider.<account>.workers.dev" >&2
+        exit 2
+    }
+    insider_definitions=("-DINSIDER_URL=\"$INSIDER_URL\"")
+fi
+
 # Link-time wrappers: each symbol S resolves to the app's __wrap_S, and
 # __real_S to the original (for example fcntl, which libcurl needs wrapped).
 wrap_options=()
@@ -197,6 +208,7 @@ for source in "${sources[@]}"; do
         }
         args+=("-D$definition")
     done
+    args+=(${insider_definitions[@]+"${insider_definitions[@]}"})
     for include in "${includes[@]}"; do
         [[ $include =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$ && -d $root/$include ]] || {
             echo "invalid include path: $include" >&2; exit 2;

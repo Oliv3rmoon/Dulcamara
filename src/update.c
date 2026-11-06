@@ -18,6 +18,7 @@
 #include "drives.h"
 #include "app.h"
 #include "i18n.h"
+#include "insider.h"
 #include "net.h"
 #include "platform/platform.h"
 #include "update_release.h"
@@ -96,6 +97,13 @@ static int check_thread(void *test_builds_on)
     version[0] = zip_url[0] = zip_sha256[0] = '\0';
     zip_size = 0;
     install_failed = false;
+    /* with Test builds on and an insider code, nightly's insider build first (insider.h); anything else: GitHub */
+    if (insider_first(test_builds, version, sizeof(version), zip_url, sizeof(zip_url), zip_sha256, &zip_size))
+    {
+        test_build = true;
+        SDL_AtomicSet(&state, UPDATE_AVAILABLE);
+        return 0;
+    }
     char *body = NULL;
     size_t len = 0;
     /* releases/latest: the newest release that is neither a draft nor a pre-release. With Test builds on, the
@@ -286,7 +294,10 @@ static int install_thread(void *unused)
     path_join(zip, sizeof(zip), dir, name);
     snprintf(part, sizeof(part), "%s.part", zip);
     forget_other_downloads(dir, name);
-    np_log("update: downloading %s (%llu bytes) to %s", zip_url, (unsigned long long)zip_size, zip);
+    insider_refresh_url(version, zip_sha256, zip_url, sizeof(zip_url));
+    char shown[160];
+    np_log("update: downloading %s (%llu bytes) to %s", insider_loggable(zip_url, shown, sizeof(shown)),
+           (unsigned long long)zip_size, zip);
     const uint64_t started = plat_ticks_us();
     const uint64_t had = size_of(part);
     char why[96] = "";
@@ -316,7 +327,7 @@ static int install_thread(void *unused)
            took > 0 ? (double)fetched / 1048576.0 / took : 0.0, had ? ", going on from an earlier try" : "");
     /* nothing is unpacked unless the ZIP is the one SHA256SUMS names */
     char got[65] = "";
-    if (!release_file_sha256(zip, got) || strcmp(got, zip_sha256) != 0)
+    if (!insider_size_ok(zip_url, zip, zip_size) || !release_file_sha256(zip, got) || strcmp(got, zip_sha256) != 0)
     {
         np_log("update: " UPDATE_ZIP " sha256 %s, " UPDATE_SUMS " says %s", got, zip_sha256);
         remove(zip);
