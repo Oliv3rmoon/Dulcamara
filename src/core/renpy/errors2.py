@@ -83,6 +83,37 @@ def fullscreen_set(preferences, value):
     preferences.__dict__["fullscreen"] = value
 
 
+# DULCAMARA_PICTURE_HEIGHT=<h> (renpy-test.txt, on a console): a game taller than h is drawn h high (its width to
+# match), as its window would be that size on a computer, and the picture the core reads back each time is smaller. A
+# tester's Ren'Py games of 1920x1080 drew 16 to 22 pictures a second, 28 ms of each reading it back, and she sees the
+# black flashes where they run below 60.
+def picture_height():
+    setting = os.environ.get("DULCAMARA_PICTURE_HEIGHT", "")
+    return int(setting) if setting.isdigit() and int(setting) >= 240 else 0
+
+
+sizes_noted = set()
+
+
+def physical_size_get(preferences):
+    height = picture_height()
+    config = sys.modules["renpy.config"]
+    width_v, height_v = config.screen_width, config.screen_height
+    if height and height_v > height:
+        size = (int(round(width_v * height / float(height_v))), height)
+        # noted as the window is made (Ren'Py reads its preferences before the game sets its size)
+        if getattr(sys.modules.get("renpy.game"), "interface", None) is not None and size not in sizes_noted:
+            sizes_noted.add(size)
+            _dulcamara.log(1, "renpy: the game's %dx%d is drawn at %dx%d (DULCAMARA_PICTURE_HEIGHT)" % (
+                width_v, height_v, size[0], size[1]))
+        return size
+    return preferences.__dict__.get("physical_size")
+
+
+def physical_size_set(preferences, value):
+    preferences.__dict__["physical_size"] = value
+
+
 def quit_event(interface):
     # the frontend closing the game: quit, without the "are you sure" Ren'Py asks a player
     if _dulcamara.stopping():
@@ -419,12 +450,42 @@ def sound_play(channel, file, name, *args, **kwargs):
         fewer_copies(channel, name)
     except Exception as e:
         _dulcamara.log(2, "renpy: the copies of %s were not counted: %s" % (describe(name), describe(e)))
-    return originals["sound_play"](channel, file, name, *args, **kwargs)
+    try:
+        return originals["sound_play"](channel, file, name, *args, **kwargs)
+    except Exception as e:
+        sound_failed("play", name, channel, e)
+        raise
 
 
 def sound_queue(channel, file, name, *args, **kwargs):
     file = sound("queues", channel, file, name, kwargs)
-    return originals["sound_queue"](channel, file, name, *args, **kwargs)
+    try:
+        return originals["sound_queue"](channel, file, name, *args, **kwargs)
+    except Exception as e:
+        sound_failed("queue", name, channel, e)
+        raise
+
+
+# A sound Ren'Py cannot load, play or queue: Ren'Py says nothing and, if its channel loops it (a game's music), takes it
+# off the loop for good, so that the music plays once (a tester's games, on the console only: on the build machine they
+# loop). In the log, the first 20 and every 100th.
+sounds_failed = [0]
+
+
+def sound_failed(what, name, channel, e):
+    sounds_failed[0] += 1
+    if sounds_failed[0] <= 20 or sounds_failed[0] % 100 == 0:
+        where = " on channel %s" % describe(channel) if channel is not None else ""
+        _dulcamara.log(2, "renpy: Ren'Py could not %s %s%s, and stops looping it if it did: %s (%d so far)"
+                       % (what, describe(name), where, describe(e), sounds_failed[0]))
+
+
+def audio_load(fn, *args, **kwargs):
+    try:
+        return originals["audio_load"](fn, *args, **kwargs)
+    except Exception as e:
+        sound_failed("load", fn, None, e)
+        raise
 
 
 # Every MEMORY_EVERY seconds (the core's clock), what the game holds: the app's heap and the direct memory ps5-opengl
@@ -658,6 +719,10 @@ def wrap(module):
         # each time Ren'Py loads it (again as it reloads): a movie's picture waits for its mask's
         originals["get_movie_texture"] = module.get_movie_texture
         module.get_movie_texture = movie_texture
+    elif module.__name__ == "renpy.audio.audio" and "audio_load" not in originals:
+        # a sound Ren'Py cannot load is in the log (a loop drops it)
+        originals["audio_load"] = module.load
+        module.load = audio_load
     elif module.__name__ == "renpy.loadsave":
         # each time Ren'Py loads it: an autosave the console gives no thread for is made on Ren'Py's own
         originals["force_autosave"] = module.force_autosave
@@ -667,6 +732,8 @@ def wrap(module):
         # display's size (3840x2160 on the console, by SDL's account) and the picture with it, and the screen went
         # black. The console's picture is the game's own size, scaled by the app.
         module.Preferences.fullscreen = property(fullscreen_get, fullscreen_set)
+        if picture_height():
+            module.Preferences.physical_size = property(physical_size_get, physical_size_set)
         if os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
             module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
     elif module.__name__ == "renpy.config":
@@ -692,20 +759,20 @@ class Finder(object):
 
     names = ("renpy.error", "renpy.display.error", "renpy.display.core", "renpy.preferences", "renpy.log",
              "renpy.audio.renpysound", "renpy.display.focus", "renpy.display.im", "renpy.display.presplash",
-             "renpy.config", "renpy.display.video", "renpy.loadsave")
-    busy = False
+             "renpy.config", "renpy.display.video", "renpy.loadsave", "renpy.audio.audio")
+    loading = set()  # each is imported as it would be, so it skips itself; one it imports is wrapped in turn
 
     def find_module(self, name, path=None):
-        if name in self.names and not self.busy:
+        if name in self.names and name not in self.loading:
             return self
         return None
 
     def load_module(self, name):
-        Finder.busy = True
+        Finder.loading.add(name)
         try:
             __import__(name)
         finally:
-            Finder.busy = False
+            Finder.loading.discard(name)
         module = sys.modules[name]
         originals.pop({"renpy.error": "report_exception", "renpy.display.error": "report_parse_errors",
                        "renpy.display.core": "quit_event", "renpy.log": "log_write"}.get(name), None)

@@ -553,6 +553,10 @@ int main(int argc, char **argv)
         ok = (!strcmp(mode, "error") ? until_logged("Ren'Py reported an error") : until_logged("DULCAMARA-TEST: started"))
              && until_picture();
         frames(60);
+        /* RENPY_HEADLESS_UNTIL: and on until the log has that (a test game's step that takes a while) */
+        const char *until = getenv("RENPY_HEADLESS_UNTIL");
+        if (ok && until && *until)
+            ok = until_logged(until);
     }
     else if (ok)
     {

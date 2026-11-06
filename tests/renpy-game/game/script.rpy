@@ -164,6 +164,23 @@ label start:
         $ dulcamara_test("movie mask: " + dulcamara_movie_mask())
     if os.environ.get("DULCAMARA_TEST_AUTOSAVE") == "1":
         $ dulcamara_test(dulcamara_autosave())
+    # DULCAMARA_TEST_LOOP=<a sound>: played as the game's music (which loops) for three times its second: whether it
+    # still plays after
+    if os.environ.get("DULCAMARA_TEST_LOOP"):
+        play music os.environ.get("DULCAMARA_TEST_LOOP")
+        $ renpy.pause(3.5, hard=True)
+        $ dulcamara_test("music after 3.5 s: " + str(renpy.music.get_playing()))
+    # DULCAMARA_TEST_LOOP_GONE=1: the game's music, a copy of its tone, taken away as it plays: Ren'Py stops looping it,
+    # and the log says why
+    if os.environ.get("DULCAMARA_TEST_LOOP_GONE") == "1":
+        $ dulcamara_once = os.path.join(config.gamedir, "audio", "once.ogg")
+        $ dulcamara_tone = open(os.path.join(config.gamedir, "audio", "tone.ogg"), "rb").read()
+        $ open(dulcamara_once, "wb").write(dulcamara_tone)
+        play music "audio/once.ogg"
+        $ renpy.pause(0.3, hard=True)
+        $ os.remove(dulcamara_once)
+        $ renpy.pause(3.0, hard=True)
+        $ dulcamara_test("music after it was gone: " + str(renpy.music.get_playing()))
     # DULCAMARA_TEST_FLASH=1: a black box, 160x120 at 320,240, over the picture for a moment, as a tester's boxes
     # flash black: the core's log finds it in its pictures
     if os.environ.get("DULCAMARA_TEST_FLASH") == "1":

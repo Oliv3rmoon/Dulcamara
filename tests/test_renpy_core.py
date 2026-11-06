@@ -362,6 +362,41 @@ class RenpyCoreTest(unittest.TestCase):
             self.assertNotIn("sets PATH", output)
             self.assertNotIn("dulcamara_lower", output)
 
+    def test_music_loops(self):
+        # A game's music loops (Ren'Py queues it again after itself): a second of it still plays after three, for each
+        # kind a game's music comes in, from its own file and from an archive
+        for archived in (False, True):
+            for sound in ("audio/tone.ogg", "audio/tone.wav"):
+                with tempfile.TemporaryDirectory() as directory:
+                    work = Path(directory)
+                    output = self.run_core("start", make_game(work / "Loop", archived=archived), work / "data",
+                                           env={"DULCAMARA_TEST_LOOP": sound,
+                                                "RENPY_HEADLESS_UNTIL": "DULCAMARA-TEST: music after"})
+                    self.assertIn(f"DULCAMARA-TEST: music after 3.5 s: {sound}\n", output, (sound, archived))
+
+    def test_music_that_stops_looping_says_why(self):
+        # Ren'Py takes a sound it cannot load off its channel's loop without a word: a tester's music played once on
+        # the console. Taken away as it plays, it stops, and the log says why.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("start", make_game(work / "Gone"), work / "data",
+                                   env={"DULCAMARA_TEST_LOOP_GONE": "1", "RENPY_HEADLESS_VERBOSE": "1",
+                                        "RENPY_HEADLESS_UNTIL": "DULCAMARA-TEST: music after it was gone"})
+            self.assertIn("DULCAMARA-TEST: music after it was gone: None", output)
+            self.assertRegex(output, r"Ren'Py could not load u?'?audio/once\.ogg'?, and stops looping it if it did: ")
+
+    def test_a_game_drawn_smaller(self):
+        # DULCAMARA_PICTURE_HEIGHT (renpy-test.txt on a console): a game taller than that is drawn that high, its
+        # picture read back smaller
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            data = work / "data"
+            data.mkdir()
+            (data / "renpy-test.txt").write_text("DULCAMARA_PICTURE_HEIGHT=360\n", encoding="utf-8")
+            output = self.run_core("start", make_game(work / "Smaller"), data, env={"RENPY_HEADLESS_VERBOSE": "1"})
+            self.assertIn("the game's 1280x720 is drawn at 640x360 (DULCAMARA_PICTURE_HEIGHT)", output)
+            self.assertIn("the picture is 640x360", output)
+
     def test_the_presplash(self):
         # A game's presplash (game/presplash.png, or presplash_foreground and _background, a progress bar) is the
         # picture while the game loads, centred on black: Ren'Py draws it into a window of its own the console never

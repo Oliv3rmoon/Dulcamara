@@ -33,6 +33,8 @@ typedef intptr_t GLsizeiptr, GLintptr;
 #define GL_PIXEL_PACK_BUFFER 0x88EB
 #define GL_PIXEL_PACK_BUFFER_BINDING 0x88ED
 #define GL_PIXEL_UNPACK_BUFFER 0x88EC
+#define GL_INVALID_OPERATION 0x0502
+#define GL_OUT_OF_MEMORY 0x0505
 #define GL_PIXEL_UNPACK_BUFFER_BINDING 0x88EF
 #define GL_STREAM_READ 0x88E1
 #define GL_READ_ONLY 0x88B8
@@ -317,19 +319,40 @@ typedef struct
 static Work work, reported;
 static bool time_draws; /* every 30th picture's draws: a clock read around each of them would cost more than many */
 
-/* OpenGL's errors after an upload or a copy (a texture without memory is drawn black), the first 8 in the log */
+/* OpenGL's errors after an upload or a copy (a texture without memory is drawn black), the first 8 in the log; and
+ * every time OpenGL has no memory for a texture, the first 20 and every 100th (a tester's characters went missing after
+ * hours of a game) */
 static void note_call_errors(const char *call, GLsizei w, GLsizei h)
 {
-    static int logged;
+    static int logged, out_of_memory;
     for (int i = 0; i < 4; ++i)
     {
         const GLenum error = gl.GetError();
         if (!error)
             return;
         ++work.errors;
-        if (logged++ < 8)
-            log_queue(2, "renpy: OpenGL reported error 0x%04x after %s, %dx%d", error, call, w, h);
+        if (error == GL_OUT_OF_MEMORY ? ++out_of_memory <= 20 || out_of_memory % 100 == 0 : logged++ < 8)
+            log_queue(2, "renpy: OpenGL reported error 0x%04x after %s, %dx%d%s", error, call, w, h,
+                      error == GL_OUT_OF_MEMORY ? " (no memory for it)" : "");
     }
+}
+
+/* Ren'Py unmaps the pixel-unpack buffer it uploads an image through (load_gltexture), which it never mapped: an
+ * OpenGL error (GL_INVALID_OPERATION) each time, which the log took for the next call's, using up its count before an
+ * error that matters came. That one is dropped here. */
+static GLboolean watched_unmap_buffer(GLenum target)
+{
+    const GLboolean unmapped = gl.UnmapBuffer(target);
+    if (target == GL_PIXEL_UNPACK_BUFFER && !unmapped)
+    {
+        const GLenum error = gl.GetError();
+        if (error && error != GL_INVALID_OPERATION)
+        {
+            ++work.errors;
+            log_queue(2, "renpy: OpenGL reported error 0x%04x as Ren'Py unmapped a pixel buffer", error);
+        }
+    }
+    return unmapped;
 }
 
 static void watched_draw_elements(GLenum mode, GLsizei count, GLenum type, const void *indices)
@@ -706,6 +729,7 @@ void *gl_proc(const char *name)
     WATCH("glBufferData", BufferData, watched_buffer_data)
     WATCH("glBlendFuncSeparate", BlendFuncSeparate, watched_blend_func_separate)
     WATCH("glBlendFunc", BlendFunc, watched_blend_func)
+    WATCH("glUnmapBuffer", UnmapBuffer, watched_unmap_buffer)
 #undef WATCH
     return real;
 }
@@ -738,11 +762,15 @@ static struct
 {
     bool open;
     int start, x0, y0, x1, y1, black; /* the picture it began in, its box (pixels looked at), how many were black */
+    int64_t after_usec;               /* how long after the picture before it that one came */
     Work work;
 } flash;
 
 static void watch_flashes(const uint32_t *pixels, int w, int h, int count)
 {
+    static int64_t last_usec;
+    const int64_t now = now_usec(), after = last_usec ? now - last_usec : 0;
+    last_usec = now;
     const int cols = (w + FLASH_STEP - 1) / FLASH_STEP, rows = (h + FLASH_STEP - 1) / FLASH_STEP;
     const size_t n = (size_t)cols * (size_t)rows;
     if (n > black_capacity)
@@ -787,12 +815,12 @@ static void watch_flashes(const uint32_t *pixels, int w, int h, int count)
         if (++flashes <= 40 || flashes % 100 == 0)
             log_queue(2,
                       "renpy: black flash %d, picture %d, %d pictures long: %dx%d at %d,%d of the %dx%d picture; the "
-                      "picture it began in had %d draws, %d uploads, %d new textures, %d copies and %d images made "
-                      "ready on the CPU",
+                      "picture it began in came %.1f ms after the one before and had %d draws, %d uploads, %d new "
+                      "textures, %d copies and %d images made ready on the CPU",
                       flashes, flash.start, count - flash.start, (flash.x1 - flash.x0 + 1) * FLASH_STEP,
                       (flash.y1 - flash.y0 + 1) * FLASH_STEP, flash.x0 * FLASH_STEP, flash.y0 * FLASH_STEP, w, h,
-                      flash.work.draws, flash.work.uploads, flash.work.storages, flash.work.copies,
-                      flash.work.cpu_loads);
+                      (double)flash.after_usec / 1000.0, flash.work.draws, flash.work.uploads, flash.work.storages,
+                      flash.work.copies, flash.work.cpu_loads);
     }
     else if (flash.open && count - flash.start >= FLASH_PICTURES)
         flash.open = false; /* still black: the picture changed */
@@ -809,6 +837,7 @@ static void watch_flashes(const uint32_t *pixels, int w, int h, int count)
     flash.x1 = x1;
     flash.y1 = y1;
     flash.black = black;
+    flash.after_usec = after;
     flash.work = work;
 }
 
@@ -998,7 +1027,7 @@ static void timed(int64_t present_usec, int64_t read_usec, int64_t present_start
               "renpy: Ren'Py's OpenGL work, %d pictures in %.1f s: %.1f draws a picture (%.3f ms each), %.2f "
               "uploads (%.2f ms each, %.0f kilopixels), %.2f new textures (%.2f ms each), %.2f copies (%.2f ms "
               "each, %.2f of it writing back), %.2f images made ready on the CPU (%.2f ms each), %.1f ms the most a "
-              "picture took, %d over 50 ms, %d OpenGL errors",
+              "picture took, %d over 50 ms, %d OpenGL errors, %d black flashes so far",
               count, (double)(now_usec() - first_start) / 1e6, r->draws / n,
               r->timed_draws ? (double)r->draw_usec / r->timed_draws / ms : 0.0, r->uploads / n,
               r->uploads ? (double)r->upload_usec / r->uploads / ms : 0.0,
@@ -1007,7 +1036,7 @@ static void timed(int64_t present_usec, int64_t read_usec, int64_t present_start
               r->copies ? (double)r->copy_usec / r->copies / ms : 0.0,
               r->copies ? (double)r->write_back_usec / r->copies / ms : 0.0, r->cpu_loads / n,
               r->cpu_loads ? (double)r->cpu_load_usec / r->cpu_loads / ms : 0.0, (double)gl_slowest / ms,
-              slow_pictures, r->errors);
+              slow_pictures, r->errors, flashes);
     total = slowest = read_total = gl_slowest = 0;
     count = slow_pictures = 0;
     memset(&reported, 0, sizeof(reported));
