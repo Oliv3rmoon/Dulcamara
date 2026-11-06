@@ -18,7 +18,11 @@
   and INSIDER_URL that server: the insider
   build offered as a test build, a stale .part of another build refused by the SHA-256 check and the try after it
   starting clean, a tampered download refused and the next try taking the right one, a download of the wrong size
-  refused, the offer withdrawn once Test builds is off, and the code and the token nowhere in the log.
+  refused, a download the service refuses (403: the member's code removed) not installed, the offer withdrawn once
+  Test builds is off, and the code and the token nowhere in the log.
+
+The test service answers as docs/API.md has it: 415 for a request that isn't application/json and 403 for one with a
+web page's Origin or Sec-Fetch-Site, which the app never sends.
 
 Also checks that INSIDER_URL is empty unless the build gives one, and that make INSIDER_URL=... reaches the compiler
 as a C string through tools/build.sh."""
@@ -154,7 +158,12 @@ class Service(http.server.BaseHTTPRequestHandler):
         body = self.rfile.read(length).decode("utf-8", "replace")
         Service.requests.append((self.path, dict(self.headers), body))
         base = self.path[:-len("/v1/updates")] if self.path.endswith("/v1/updates") else None
-        if base in ("/good", "/upd"):
+        # docs/API.md: JSON only, and never a web page's request
+        if self.headers.get("Content-Type") != "application/json":
+            self.answer(415, '{"status":"bad_request"}')
+        elif self.headers.get("Origin") is not None or self.headers.get("Sec-Fetch-Site", "none") != "none":
+            self.answer(403, '{"status":"forbidden"}')
+        elif base in ("/good", "/upd"):
             self.answer(200, self.update(base, size=len(ZIP) + 1 if Service.mode == "wrong-size" else None))
         elif base == "/expired":
             self.answer(200, '{"status":"expired_code","hint":"' + HINT + '"}')
@@ -176,7 +185,8 @@ class Service(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         Service.downloads.append((self.path, self.headers.get("Range", "")))
-        if not self.path.endswith("/v1/download/" + TOKEN):
+        if not self.path.endswith("/v1/download/" + TOKEN) or Service.mode == "revoked":
+            # an altered or expired token, or one whose member's code was removed since
             self.answer(403, '{"status":"expired_or_invalid"}')
             return
         data = ZIP
@@ -240,6 +250,9 @@ class InsiderNetworkTest(unittest.TestCase):
         self.assertEqual(path, "/good/v1/updates")
         self.assertEqual(json.loads(body), {"app": "dulcamara", "installed_version": np_version(), "code": CODE})
         self.assertEqual(headers.get("Content-Type"), "application/json")
+        # no web page's headers: the service refuses a request with them (403)
+        self.assertNotIn("Origin", headers)
+        self.assertFalse([h for h in headers if h.lower().startswith("sec-fetch-")], headers)
         self.assertEqual(headers.get("User-Agent"), "Dulcamara/" + np_version())
         self.assertLessEqual(len(body), 1024)
 
@@ -380,6 +393,17 @@ class UpdateWithInsiderBuildTest(unittest.TestCase):
         self.assertIn("install 1 failed retry 1 message The download doesn't match its SHA256SUMS", lines, out)
         self.assertIn(f"the insider build isn't the {len(ZIP) + 1} bytes its answer gave", log)
         self.assertEqual(lines[-1], "cache", out)
+        self.private(data, log, out)
+
+    def test_a_download_the_service_refuses_is_not_installed(self):
+        # The download address answers 403 once the member's code is removed (or it ran out): a failed download,
+        # nothing unpacked, nothing kept, and trying again changes nothing.
+        data, lines, log, out = self.run_update("revoked", 2)
+        self.offered(lines, out)
+        self.assertIn("install 1 failed retry 1 message The download failed: the server answered 403", lines, out)
+        self.assertIn("install 2 failed retry 1 message The download failed: the server answered 403", lines, out)
+        self.assertEqual([l for l in lines if l.startswith("cache")], ["cache", "cache"], out)
+        self.assertNotIn("downloaded in", log)
         self.private(data, log, out)
 
     def test_the_offer_goes_once_test_builds_is_off(self):

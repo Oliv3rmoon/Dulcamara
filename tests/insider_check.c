@@ -182,6 +182,10 @@ static void test_other_statuses(void)
     CHECK(r.status == INSIDER_HTTP_ERROR && r.http == 503 && !strcmp(r.answer, "unavailable"));
     r = read_answer(429, "{\"status\":\"rate_limited\"}", &b);
     CHECK(r.status == INSIDER_HTTP_ERROR && !strcmp(r.answer, "rate_limited"));
+    r = read_answer(415, "{\"status\":\"bad_request\"}", &b); /* not application/json */
+    CHECK(r.status == INSIDER_HTTP_ERROR && r.http == 415);
+    r = read_answer(403, "{\"status\":\"forbidden\"}", &b); /* a web page's Origin or Sec-Fetch-Site */
+    CHECK(r.status == INSIDER_HTTP_ERROR && r.http == 403 && !strcmp(r.answer, "forbidden"));
     r = read_answer(404, "{\"status\":\"unknown_app\"}", &b);
     CHECK(r.status == INSIDER_HTTP_ERROR);
     r = read_answer(400, "{\"status\":\"bad_request\"}", &b);
@@ -434,6 +438,8 @@ static void test_decide(void)
         {502, "<html>Bad gateway</html>", INSIDER_HTTP_ERROR},
         {503, "{\"status\":\"unavailable\"}", INSIDER_HTTP_ERROR},
         {429, "{\"status\":\"rate_limited\"}", INSIDER_HTTP_ERROR},
+        {415, "{\"status\":\"bad_request\"}", INSIDER_HTTP_ERROR},
+        {403, "{\"status\":\"forbidden\"}", INSIDER_HTTP_ERROR},
         {200, "{\"status\":\"update\"", INSIDER_MALFORMED},
         {200, NULL, INSIDER_MALFORMED},
         {200, "{\"status\":\"update\",\"build\":{\"version\":\"0.2.12\"}}", INSIDER_BAD_BUILD},
