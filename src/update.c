@@ -247,18 +247,63 @@ static void on_progress(void *unused, uint64_t done, uint64_t total)
     SDL_AtomicSet(&total_kib, (int)(total / 1024u));
 }
 
+/* The cache's update files that aren't this version's go: update.zip and update.zip.part (0.2.12 and before), and
+ * update-<another version>.zip(.part), so that a download stopped half way is gone on from only by its own version. */
+static void forget_other_downloads(const char *dir, const char *keep)
+{
+    DIR *d = opendir(dir);
+    if (!d)
+        return;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL)
+    {
+        if (strncmp(e->d_name, "update", 6) != 0 || !strstr(e->d_name, ".zip") ||
+            !strncmp(e->d_name, keep, strlen(keep)))
+            continue;
+        char path[NP_PATH_MAX];
+        path_join(path, sizeof(path), dir, e->d_name);
+        if (remove(path) == 0)
+            np_log("update: removed %s", path);
+    }
+    closedir(d);
+}
+
+static uint64_t size_of(const char *path)
+{
+    struct stat st;
+    return stat(path, &st) == 0 && st.st_size > 0 ? (uint64_t)st.st_size : 0;
+}
+
+#define DOWNLOAD_TRIES 5 /* in a row, each going on from where the one before stopped, while each gets further */
+
 static int install_thread(void *unused)
 {
     (void)unused;
-    char zip[NP_PATH_MAX];
-    path_join(zip, sizeof(zip), app.paths.root, "cache/update.zip");
-    char dir[NP_PATH_MAX];
+    char dir[NP_PATH_MAX], name[64], zip[NP_PATH_MAX], part[NP_PATH_MAX + 8];
     path_join(dir, sizeof(dir), app.paths.root, "cache");
     make_dirs(dir);
-    np_log("update: downloading %s (%llu bytes)", zip_url, (unsigned long long)zip_size);
+    snprintf(name, sizeof(name), "update-%s.zip", version);
+    path_join(zip, sizeof(zip), dir, name);
+    snprintf(part, sizeof(part), "%s.part", zip);
+    forget_other_downloads(dir, name);
+    np_log("update: downloading %s (%llu bytes) to %s", zip_url, (unsigned long long)zip_size, zip);
     const uint64_t started = plat_ticks_us();
-    char why[96];
-    if (net_download(zip_url, zip, on_progress, NULL, why, sizeof(why)) != NET_OK)
+    const uint64_t had = size_of(part);
+    char why[96] = "";
+    NetResult result = NET_UNAVAILABLE;
+    for (int attempt = 1; attempt <= DOWNLOAD_TRIES; ++attempt)
+    {
+        const uint64_t before = size_of(part);
+        result = net_download(zip_url, zip, on_progress, NULL, why, sizeof(why));
+        const uint64_t after = size_of(part);
+        if (result != NET_UNAVAILABLE || after <= before || attempt == DOWNLOAD_TRIES)
+            break;
+        /* the connection dropped or stalled after some of it came: go on from there, after a breath */
+        np_log("update: the download stopped at %llu of %llu bytes (%s); going on (try %d of %d)",
+               (unsigned long long)after, (unsigned long long)zip_size, why, attempt + 1, DOWNLOAD_TRIES);
+        plat_sleep_us(2000000);
+    }
+    if (result != NET_OK)
     {
         char text[160];
         snprintf(text, sizeof(text), tr("The download failed: %s"), why[0] ? why : tr("no reason given"));
@@ -266,7 +311,9 @@ static int install_thread(void *unused)
         return 0;
     }
     const double took = (double)(plat_ticks_us() - started) / 1e6;
-    np_log("update: downloaded in %.1f s (%.2f MB/s)", took, took > 0 ? (double)zip_size / 1048576.0 / took : 0.0);
+    const uint64_t fetched = zip_size > had ? zip_size - had : 0;
+    np_log("update: downloaded in %.1f s (%.2f MB/s%s)", took,
+           took > 0 ? (double)fetched / 1048576.0 / took : 0.0, had ? ", going on from an earlier try" : "");
     /* nothing is unpacked unless the ZIP is the one SHA256SUMS names */
     char got[65] = "";
     if (!release_file_sha256(zip, got) || strcmp(got, zip_sha256) != 0)
@@ -280,6 +327,7 @@ static int install_thread(void *unused)
     memset(&archive, 0, sizeof(archive));
     if (!mz_zip_reader_init_file(&archive, zip, 0))
     {
+        remove(zip);
         fail(tr("The download isn't a valid zip"));
         return 0;
     }

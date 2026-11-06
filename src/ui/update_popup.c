@@ -241,7 +241,7 @@ void update_popup_draw(void)
         text_draw(cx, ty, 42, FONT_BOLD, argb_alpha(TH_TEXT, a), ALIGN_CENTER, tr("The update didn't install"));
         text_draw_fit(cx, ty + 66, 26, FONT_REGULAR, argb_alpha(TH_TEXT, a), ALIGN_CENTER, inner, update_message());
         text_draw_fit(cx, ty + 120, 24, FONT_REGULAR, argb_alpha(TH_TEXT_DIM, a), ALIGN_CENTER, inner,
-                      tr(update_can_retry() ? "Nothing was changed. You can try again now or later."
+                      tr(update_can_retry() ? "Nothing was changed. Try again goes on from where it stopped."
                                             : "Nothing was changed. Settings > System can check again."));
         break;
     }
