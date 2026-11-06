@@ -60,6 +60,25 @@ class LibraryTest(unittest.TestCase):
         self.assertIn('#define NP_TITLE_ID "PPSA99010"', header)
         self.assertIn('#define NP_DATA "/data/dulcamara"', header)
 
+    def test_a_sandboxed_start_says_why_there_are_no_games(self):
+        # The tester's "it sometimes shows 0 games when there are games": her log had
+        # "storage: sandboxed (no unlock service answered ...)" and then "library: 0 game(s)" at every Look again.
+        # A sandboxed app can't list folders, and /data is unlocked only first thing in main(), so Look again could
+        # never find them. Now the library says why, and Square starts the app again, which asks again.
+        shelf = (ROOT / "src/ui/shelf.c").read_text(encoding="utf-8")
+        self.assertIn("if (app.sandboxed)\n    {\n        draw_sandboxed();", shelf)
+        self.assertIn("Dulcamara can't see your games", shelf)
+        self.assertIn("(pressed & BIT(BTN_SQUARE)) && app.sandboxed && app.library.count == 0", shelf)
+        self.assertIn("app_unlock_again();", shelf)
+        self.assertIn('"Start again"', shelf)
+        main = (ROOT / "src/main.c").read_text(encoding="utf-8")
+        unlock = main[main.index("void app_unlock_again(void)"):]
+        unlock = unlock[:unlock.index("\n}\n")]
+        self.assertIn("start_again();", unlock)  # the PS5 starts again: the unlock is asked before any thread
+        self.assertIn("sandboxed, so its folders can't be listed", main)
+        # the unlock itself stays where it was: first thing in main(), before SDL starts a thread
+        self.assertLess(main.index("app.sandboxed = !plat_prepare_storage("), main.index("if (!plat_init())"))
+
 
 if __name__ == "__main__":
     unittest.main()

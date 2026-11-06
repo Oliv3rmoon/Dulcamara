@@ -287,8 +287,38 @@ static void invite_once(void)
     }
 }
 
+/* No games because /data wasn't unlocked as the app started (app.sandboxed): its games are there, but a sandboxed app
+ * can't list folders. Said so, with the reason, in place of "No games yet"; Square starts the app again to ask again
+ * (the tester's "sometimes shows 0 games when there are games": her log had no unlock service answering). */
+static void draw_sandboxed(void)
+{
+    const float w = 1160, h = 470, x = (plat_width() - w) * 0.5f, y = 250;
+    draw_rrect(x, y, w, h, TH_RADIUS, TH_CARD_A(0xe8));
+    draw_rect(x, y, w, 4, TH_DANGER);
+    icon_draw(ICON_ALERT_TRIANGLE, x + 56, y + 56, 64, TH_DANGER);
+    text_draw(x + 150, y + 62, 40, FONT_BOLD, TH_TEXT, ALIGN_LEFT, tr("Dulcamara can't see your games"));
+    char reason[260];
+    snprintf(reason, sizeof(reason), tr("Why: %s."), app.sandbox_reason[0] ? app.sandbox_reason : tr("not known"));
+    const char *lines[] = {
+        "/data wasn't unlocked when Dulcamara started, so it can't list " NP_DATA "/games.",
+        "Your games and saves are still there.",
+        reason,
+        "Make sure etaHEN (or your jailbreak's unlock service) is running,",
+        "then press Square: Dulcamara starts again and asks once more.",
+    };
+    float ly = y + 160;
+    for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); ++i, ly += 48)
+        text_draw_fit(x + 56, ly, 28, i == 4 ? FONT_BOLD : FONT_REGULAR, i == 2 ? TH_TEXT_DIM : TH_TEXT, ALIGN_LEFT,
+                      w - 112, i == 2 ? lines[i] : tr(lines[i]));
+}
+
 static void draw_empty(void)
 {
+    if (app.sandboxed)
+    {
+        draw_sandboxed();
+        return;
+    }
     const float w = 1160, h = invite ? 570 : 470, x = (plat_width() - w) * 0.5f, y = 250;
     draw_rrect(x, y, w, h, TH_RADIUS, TH_CARD_A(0xe8));
     draw_rect(x, y, w, 4, TH_FOCUS);
@@ -386,7 +416,12 @@ void shelf_screen(uint32_t pressed)
             sfx_play(SFX_CLICK);
         }
     }
-    if (pressed & BIT(BTN_SQUARE))
+    if ((pressed & BIT(BTN_SQUARE)) && app.sandboxed && app.library.count == 0)
+    {
+        sfx_play(SFX_SELECT);
+        app_unlock_again(); /* on the PS5 it doesn't come back */
+    }
+    else if (pressed & BIT(BTN_SQUARE))
     {
         sfx_play(SFX_SELECT);
         app_rescan();
@@ -456,7 +491,8 @@ void shelf_screen(uint32_t pressed)
     }
     static const int glyphs[] = {GLYPH_CROSS, GLYPH_TRIANGLE, GLYPH_SQUARE, GLYPH_START};
     static const char *const labels[] = {"Play", "Sort", "Look again", "Settings"};
+    static const char *const sandboxed_labels[] = {"Play", "Sort", "Start again", "Settings"};
     const int skip = n > 0 ? 0 : 2; /* Play and Sort, without games */
-    app_draw_hints(glyphs + skip, labels + skip, 4 - skip,
+    app_draw_hints(glyphs + skip, (app.sandboxed && n == 0 ? sandboxed_labels : labels) + skip, 4 - skip,
                    n > 0 ? (app.settings.sort_mode ? "Last played first" : "By title") : NULL);
 }

@@ -500,8 +500,13 @@ bool plat_prepare_storage(char *error, size_t size)
              route);
     return false;
 #else
-    (void)error;
-    (void)size;
+    /* The desktop build: NP_SANDBOXED=<a reason> starts it as the PS5 does when nothing unlocks /data, to see that. */
+    const char *sandboxed = SDL_getenv("NP_SANDBOXED");
+    if (sandboxed && *sandboxed)
+    {
+        snprintf(error, size, "%s", sandboxed);
+        return false;
+    }
 #endif
     return true;
 }

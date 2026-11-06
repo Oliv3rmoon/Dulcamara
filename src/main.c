@@ -256,7 +256,11 @@ void app_rescan(void)
     for (int i = 0; i < app.library.count; ++i)
         text_want(app.library.games[i].title); /* Japanese titles: their characters into the atlases */
     covers_start(&app.library);
-    np_log("library: %d game(s) in %s", app.library.count, app.paths.games);
+    if (app.sandboxed && app.library.count == 0)
+        np_log("library: 0 game(s) in %s: sandboxed, so its folders can't be listed (%s)", app.paths.games,
+               app.sandbox_reason);
+    else
+        np_log("library: %d game(s) in %s", app.library.count, app.paths.games);
     shelf_library_changed();
 }
 
@@ -272,27 +276,19 @@ static void restart_file(char *out, size_t size)
 #if defined(__PROSPERO__)
 extern int sceSystemServiceLoadExec(const char *path, const char **arguments);
 
-/* Starts the app again for g. The console's shell may refuse to start a title from itself: then the app closes, as
- * its own exit does, and the game opens at the next start. Does not return. */
-static void restart_for(const Game *g)
+/* Starts the app again. The console's shell may refuse to start a title from itself: then the app closes, as its own
+ * exit does. Does not return. */
+static void start_again(void)
 {
-    char file[NP_PATH_MAX], eboot[NP_PATH_MAX];
-    restart_file(file, sizeof(file));
-    FILE *f = fopen(file, "w");
-    if (f)
-    {
-        fprintf(f, "%s\n", g->id);
-        fclose(f);
-    }
+    char eboot[NP_PATH_MAX];
     plat_asset_path(eboot, sizeof(eboot), "../eboot.bin");
-    np_log("game: starting again for %s (%s)", g->title, eboot);
     app_save_settings();
     icons_shutdown();
     text_shutdown();
     plat_release();
     fflush(NULL);
     int rc = sceSystemServiceLoadExec(eboot, NULL);
-    np_log("game: LoadExec %s refused rc=0x%x; closing, the game opens at the next start", eboot, (unsigned)rc);
+    np_log("app: LoadExec %s refused rc=0x%x; closing, open Dulcamara again", eboot, (unsigned)rc);
     fflush(NULL);
     for (;;)
     {
@@ -300,7 +296,35 @@ static void restart_for(const Game *g)
         plat_sleep_us(1000000);
     }
 }
+
+/* Starts the app again for g, which opens at the next start (also when the shell refuses and the app closes). Does not
+ * return. */
+static void restart_for(const Game *g)
+{
+    char file[NP_PATH_MAX];
+    restart_file(file, sizeof(file));
+    FILE *f = fopen(file, "w");
+    if (f)
+    {
+        fprintf(f, "%s\n", g->id);
+        fclose(f);
+    }
+    np_log("game: starting again for %s", g->title);
+    start_again();
+}
 #endif
+
+void app_unlock_again(void)
+{
+    /* /data is unlocked only first thing in main(), before any thread runs (src/platform/ps5_unlock.c: an app that
+     * asked with threads running was killed), so asking again means starting again. */
+    np_log("storage: starting again to ask for the unlock again (it was: %s)", app.sandbox_reason);
+#if defined(__PROSPERO__)
+    start_again();
+#else
+    app_rescan();
+#endif
+}
 
 /* A Ren'Py game's keys (Keys for this game, from its menu or Settings > Ren'Py: ui/settings.c): keys/<its id>.txt in
  * the data folder. */

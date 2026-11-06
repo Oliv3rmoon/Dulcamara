@@ -51,6 +51,9 @@ void app_draw_game(uint8_t dim);
 /* The controller that moves through the app: player 1's, else the first one connected. */
 int app_nav_pad(void);
 void app_rescan(void);
+/* Sandboxed (app.sandboxed: /data wasn't unlocked as the app started, so no game can be listed): starts the app again,
+ * which asks for the unlock again. Does not return on the PS5. */
+void app_unlock_again(void);
 void app_start_game(int index);
 void app_stop_game(void);
 void app_save_settings(void);
