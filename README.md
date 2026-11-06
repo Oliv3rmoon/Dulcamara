@@ -38,6 +38,12 @@ Dulcamara, named after *Solanum dulcamara*, the bittersweet nightshade, is a PS5
 - **Updates from its own releases.** It asks this repository for a newer release and installs it, after checking `PPSA99010.zip` against the release's `SHA256SUMS`.
 - **Nothing to pay for, and no games.** No paid features, no ads, no account; free software under the GPL. It ships none and downloads none: copy your own.
 
+## nightly insider
+
+New Dulcamara builds after 0.2.12 go to **nightly insiders** first and are published here for everyone about two months later. Insiders update in the app with a free insider code, which you type in once the builds with the code check are out. Without a code the app runs the same and still tells you when a release is out; you update by hand from this page.
+
+To become one, join [nightly on Discord](https://discord.gg/pSqgRU3YP9), verify, run `/rank Tester` in #bot-commands, then sign in with Discord at [nightly-insider.nightly-ps5.workers.dev](https://nightly-insider.nightly-ps5.workers.dev) to get your code.
+
 ## Install
 
 1. Download `PPSA99010.zip` from the [latest release](https://github.com/Oliv3rmoon/Dulcamara/releases/latest) and unzip it. For Ren'Py visual novels, take it from the [0.2.3 test release](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/0.2.3) instead.
