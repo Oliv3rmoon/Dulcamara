@@ -3,6 +3,11 @@
 # job "release" puts the PPSA99010.zip and SHA256SUMS this run built on a GitHub release, the latest, which the
 # app's update check (src/update_release.h) and Nightshade's Settings > Apps then offer. Nothing built anywhere
 # else is ever attached, and a release that already has a ZIP is never changed.
+# Insider builds (opt-in: the repository variable INSIDER_UPLOAD is "true"): job "insider" also uploads a tag's ZIP and
+# SHA256SUMS to the nightly insider service's R2 bucket (tools/insider-upload.py; Oliv3rmoon/nightly-insider), whose
+# members get it at once, and a tag with no release yet gets a draft instead of a published release, so the public
+# release waits for the early-access window and the countdown publishes it. The R2 keys are secrets of the "insider"
+# environment, which only tags may use.
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Download the results from the run's page, under Artifacts:
@@ -135,11 +140,14 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: >-
           python3 -m unittest tests.test_update_release tests.test_net_download tests.test_library tests.test_core
-          tests.test_renpy_core tests.test_renpy7_core tests.test_keyboard -v
+          tests.test_renpy_core tests.test_renpy7_core tests.test_keyboard tests.test_insider -v
 
       - name: Build
         env:
           GH_TOKEN: ${{ github.token }}
+          # The nightly insider service's address (src/insider.h), when the repository variable INSIDER_URL names it;
+          # empty: no insider builds.
+          INSIDER_URL: ${{ vars.INSIDER_URL }}
         run: make
 
       - name: Check system module imports
@@ -259,6 +267,7 @@ jobs:
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          INSIDER_UPLOAD: ${{ vars.INSIDER_UPLOAD }}
         run: |
           set -euo pipefail
           TAG=$GITHUB_REF_NAME
@@ -273,6 +282,14 @@ jobs:
             else
               gh release upload "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY"
             fi
+          elif [[ $INSIDER_UPLOAD == true ]]; then
+            # Insider builds on: the build reaches the insiders first, and the release waits as a draft for the
+            # countdown to publish it once the early-access window is over.
+            note_args=(--generate-notes)
+            [[ -f $notes ]] && note_args=(--notes-file "$notes")
+            gh release create "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --prerelease \
+              --title "Dulcamara $TAG" "${note_args[@]}"
+            echo "::notice title=Draft release::Insider builds are on: $TAG's release was made as a draft, to publish after the early-access window."
           elif [[ -f $notes ]]; then
             gh release create "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --latest \
               --title "Dulcamara $TAG" --notes-file "$notes"
@@ -280,3 +297,47 @@ jobs:
             gh release create "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag --latest \
               --title "Dulcamara $TAG" --generate-notes
           fi
+
+  # The tag's ZIP for the nightly insider service (SETUP.md in Oliv3rmoon/nightly-insider): members with an insider
+  # code are offered it by the app's update check at once. Only with INSIDER_UPLOAD "true", and only for a tag; the R2
+  # keys come from the "insider" environment. A build already uploaded with the same SHA-256 is left as it is, and one
+  # with another is refused: insider builds never change.
+  insider:
+    name: Insider build
+    if: github.ref_type == 'tag' && vars.INSIDER_UPLOAD == 'true'
+    needs: ps5
+    runs-on: ubuntu-24.04
+    environment: insider
+    permissions:
+      contents: read
+    concurrency:
+      group: insider-upload-dulcamara
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out the uploader and the release notes
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/insider-upload.py
+            docs/releases
+          sparse-checkout-cone-mode: false
+
+      - name: Download the files this run built
+        uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+
+      - name: Upload the insider build
+        env:
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          INSIDER_WINDOW_DAYS: ${{ vars.INSIDER_WINDOW_DAYS }}
+        run: |
+          set -euo pipefail
+          (cd release && sha256sum -c SHA256SUMS)
+          python3 -I tools/insider-upload.py --app dulcamara --name Dulcamara --tag "$GITHUB_REF_NAME" \
+            --zip release/PPSA99010.zip --sums release/SHA256SUMS --notes-file "docs/releases/$GITHUB_REF_NAME.md"
