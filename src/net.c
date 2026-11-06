@@ -195,11 +195,11 @@ static size_t buffer_cb(void *data, size_t size, size_t count, void *user)
 int net_request(const char *url, const char *post_data, const char *content_type,
                 const char *user_agent, char **body, size_t *body_length)
 {
-    return net_request_within(url, post_data, content_type, user_agent, 30, body, body_length);
+    return net_request_within(url, post_data, content_type, user_agent, 30, true, body, body_length);
 }
 
 int net_request_within(const char *url, const char *post_data, const char *content_type, const char *user_agent,
-                       long seconds, char **body, size_t *body_length)
+                       long seconds, bool follow_redirects, char **body, size_t *body_length)
 {
     *body = NULL;
     *body_length = 0;
@@ -216,7 +216,7 @@ int net_request_within(const char *url, const char *post_data, const char *conte
     Buffer b = {0};
     struct curl_slist *headers = NULL;
     curl_easy_setopt(easy, CURLOPT_URL, url);
-    curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, follow_redirects ? 1L : 0L);
     curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 8L);
     curl_easy_setopt(easy, CURLOPT_TIMEOUT, seconds);
     curl_easy_setopt(easy, CURLOPT_USERAGENT, user_agent ? user_agent : NP_NAME "/" NP_VERSION);
@@ -281,9 +281,10 @@ int net_request(const char *url, const char *post_data, const char *content_type
 }
 
 int net_request_within(const char *url, const char *post_data, const char *content_type, const char *user_agent,
-                       long seconds, char **body, size_t *body_length)
+                       long seconds, bool follow_redirects, char **body, size_t *body_length)
 {
     (void)seconds;
+    (void)follow_redirects;
     return net_request(url, post_data, content_type, user_agent, body, body_length);
 }
 

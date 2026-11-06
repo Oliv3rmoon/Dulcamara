@@ -2,7 +2,8 @@
  * Dulcamara - the insider request over the network on the host (src/insider_check.c's insider_decide with src/net.c
  * and the host's libcurl), against the server tests/test_insider.py runs:
  *   insider-net-check <base> <code> <seconds>
- * asks <base>/v1/updates as the update check does (insider.c's request: net_request_within with the limit <seconds>)
+ * asks <base>/v1/updates as the update check does (insider.c's request: net_request_within with the limit <seconds>,
+ * redirects not followed)
  * and prints "next <github|offer> status <s> http <n> answer <a> seconds <t>": github is the update check going on to
  * GitHub's releases exactly as before.
  * SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
@@ -21,7 +22,8 @@ static long seconds_limit;
 static int post(void *user, const char *url, const char *json, char **body, size_t *length)
 {
     (void)user;
-    return net_request_within(url, json, "application/json", NP_NAME "/" NP_VERSION, seconds_limit, body, length);
+    return net_request_within(url, json, "application/json", NP_NAME "/" NP_VERSION, seconds_limit, false, body,
+                              length);
 }
 
 static double now(void)

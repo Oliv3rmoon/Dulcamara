@@ -177,6 +177,12 @@ class Service(http.server.BaseHTTPRequestHandler):
             self.answer(200, "<html>a captive portal</html>", "text/html")
         elif base == "/wronghost":
             self.answer(200, self.update(base, url=f"http://127.0.0.2:{Service.port}/wronghost/v1/download/x"))
+        elif base in ("/redirect", "/moved"):
+            # a redirect to where an update would be: never followed, so the code is not sent again
+            self.send_response(307 if base == "/redirect" else 301)
+            self.send_header("Location", f"http://127.0.0.1:{Service.port}/good/v1/updates")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
         elif base == "/hang":
             time.sleep(20)  # nothing comes back: the client gives up first
             self.answer(200, '{"status":"none"}')
@@ -263,6 +269,13 @@ class InsiderNetworkTest(unittest.TestCase):
                                    ("/nothing-here", "http_error", "404")):
             got = self.ask(self.base + base)
             self.assertEqual((got["next"], got["status"], got["http"]), ("github", status, http), got["out"])
+
+        # A redirect is not followed: the code goes to the service's address alone, and a 3xx means GitHub.
+        for base, http in (("/redirect", "307"), ("/moved", "301")):
+            before = len(Service.requests)
+            got = self.ask(self.base + base)
+            self.assertEqual((got["next"], got["status"], got["http"]), ("github", "http_error", http), got["out"])
+            self.assertEqual([p for p, _, _ in Service.requests[before:]], [base + "/v1/updates"])
 
         # Offline: nothing listens on the port.
         free = socket.socket()
@@ -423,7 +436,11 @@ class InsiderSourceTest(unittest.TestCase):
         self.assertLessEqual(timeout, 15)
         insider = (ROOT / "src/insider.c").read_text(encoding="utf-8")
         self.assertIn('net_request_within(url, json, "application/json", NP_NAME "/" NP_VERSION, '
-                      'INSIDER_TIMEOUT_SECONDS', insider)
+                      'INSIDER_TIMEOUT_SECONDS, false,', insider)  # never redirected
+        net = (ROOT / "src/net.c").read_text(encoding="utf-8")
+        self.assertIn("CURLOPT_FOLLOWLOCATION, follow_redirects ? 1L : 0L", net)
+        self.assertIn("return net_request_within(url, post_data, content_type, user_agent, 30, true, body, "
+                      "body_length);", net)  # every other request as before
 
     def test_the_update_asks_the_service_first_and_checks_what_it_downloads(self):
         update = (ROOT / "src/update.c").read_text(encoding="utf-8")

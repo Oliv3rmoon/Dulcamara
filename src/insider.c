@@ -91,8 +91,9 @@ InsiderCodeResult insider_set_code(const char *text)
 static int post(void *user, const char *url, const char *json, char **body, size_t *length)
 {
     (void)user;
-    return net_request_within(url, json, "application/json", NP_NAME "/" NP_VERSION, INSIDER_TIMEOUT_SECONDS, body,
-                              length);
+    /* never redirected: the code goes to INSIDER_URL alone, and a 3xx is an answer like any other not 200 (GitHub) */
+    return net_request_within(url, json, "application/json", NP_NAME "/" NP_VERSION, INSIDER_TIMEOUT_SECONDS, false,
+                              body, length);
 }
 
 /* The service asked, with the stored code; one line in the log for what came back. */
