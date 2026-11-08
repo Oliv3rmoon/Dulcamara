@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases"><img src="https://img.shields.io/github/v/release/Oliv3rmoon/Dulcamara?include_prereleases" alt="Latest release"></a>
+  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases"><img src="https://img.shields.io/github/v/release/Oliv3rmoon/Dulcamara?include_prereleases" alt="Archived public release"></a>
   <a href="https://discord.gg/pSqgRU3YP9"><img src="https://img.shields.io/badge/discord-join%20nightly-5865F2?logo=discord&logoColor=white" alt="Discord: join nightly"></a>
   <a href="https://github.com/Oliv3rmoon/Dulcamara/stargazers"><img src="https://img.shields.io/github/stars/Oliv3rmoon/Dulcamara?style=social" alt="GitHub stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue" alt="License: GPL-3.0-or-later"></a>
@@ -17,9 +17,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases/latest"><strong>Download the latest release</strong></a><br>
-  Test builds are on the <a href="https://github.com/Oliv3rmoon/Dulcamara/releases">Releases page</a>, marked pre-release.
+  <a href="https://nightly-insider.nightly-ps5.workers.dev"><strong>New releases: nightly insider</strong></a><br>
+  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases">Browse the archived public releases</a>
 </p>
+
+> [!IMPORTANT]
+> **The next chapter is insider only.** New Dulcamara releases will no longer be published here, including after a waiting period. Existing public releases and source stay available. Follow [nightly on Discord](https://discord.gg/pSqgRU3YP9) and [nightly insider](https://nightly-insider.nightly-ps5.workers.dev) for upcoming builds.
 
 <p align="center">If Dulcamara works for you, a ⭐ helps other PS5 owners find it.</p>
 
@@ -36,15 +39,25 @@ Dulcamara, named after *Solanum dulcamara*, the bittersweet nightshade, is a PS5
 - **Made for the controller.** Cross confirms, Circle cancels, Triangle opens the game's menu, and every button can be mapped again in Settings. The touchpad opens Dulcamara's menu at any time. Hold R2 (or press it once) to fast-forward from x2 to x8, for grinding and long cutscenes.
 - **CRT and LCD shaders.** CRT Royale, CRT Lottes, CRT Pi, Newpixie, Hyllian NTSC, Mattias, NTSC signals, LCD3x, zfast LCD and Game Boy LCD, or sharp square pixels, whole-number scaling and the game's own shape.
 - **Updates from its own releases.** It asks this repository for a newer release and installs it, after checking `PPSA99010.zip` against the release's `SHA256SUMS`.
-- **Nothing to pay for, and no games.** No paid features, no ads, no account; free software under the GPL. It ships none and downloads none: copy your own.
+- **Free software, no bundled games.** Dulcamara remains under the GPL and includes no ads. Copy your own games; it ships and downloads none. New insider builds require an eligible account; archived public builds keep their existing behavior.
 
 ## nightly insider
 
-New Dulcamara builds after 0.2.12 go to **nightly insiders** first and are published here for everyone about two months later. Insiders update in the app with a free insider code, which you type in once the builds with the code check are out. Without a code the app runs the same and still tells you when a release is out; you update by hand from this page.
+**New releases are now nightly insider only.** There will be no new public releases and no delayed public drop. This repository keeps the previously published source and downloads available as an archive. Eligible insiders receive new builds through [nightly insider](https://nightly-insider.nightly-ps5.workers.dev), with the matching source, build instructions and license notices. Existing licenses and recipients' source rights remain unchanged.
 
-To become one, join [nightly on Discord](https://discord.gg/pSqgRU3YP9), verify, run `/rank Tester` in #bot-commands, then sign in with Discord at [nightly-insider.nightly-ps5.workers.dev](https://nightly-insider.nightly-ps5.workers.dev) to get your code.
+Join [nightly on Discord](https://discord.gg/pSqgRU3YP9), complete verification and the tester requirements, then sign in at [nightly insider](https://nightly-insider.nightly-ps5.workers.dev). Access depends on current eligibility and the release's testing window.
+
+### What is coming
+
+**Dulcamara Eclipse** is being built around a smoother, more reliable session: better game startup and cleanup, safer save handling, rendering fixes, a refreshed interface and new artwork. The focus is on making RPG Maker games and Ren'Py visual novels easier to start, play and return to.
+
+Private testing is also gaining **approved updates while idle and automatic app diagnostics**, with clear tester consent, account controls and a dashboard for failures and performance. Encrypted package storage and authenticated downloads are being prepared for the new delivery. Limited trials have a stated access window and can stop new game launches when it ends; saves and files are preserved.
+
+Eclipse is still in development. The final combined build and physical PS5 checks are pending, so these previews are not a claim that the new release is already available. Follow Discord for the finished build and its exact release notes.
 
 ## Install
+
+These instructions describe the archived public builds. New insider builds include their own installation, account and testing-window instructions.
 
 1. Download `PPSA99010.zip` from the [latest release](https://github.com/Oliv3rmoon/Dulcamara/releases/latest) and unzip it. For Ren'Py visual novels, take it from the [0.2.3 test release](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/0.2.3) instead.
 2. Copy its `PPSA99010` folder to `/data/homebrew/` on the PS5 over FTP, as you install the other Nightshade apps, and set its permissions to `777` (in FileZilla: right-click the folder, *File permissions*, `777`, recurse into subdirectories). Without them the PS5 says *"Can't start the game or app"*. Nightshade's **Settings > Apps** can install it for you instead.
