@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="sce_sys/icon0.png" width="160" alt="Dulcamara logo">
+  <img src="docs/images/herbarium-header.jpg" width="100%" alt="Specimen N° 02, Dulcamara (Solanum dulcamara): RPG Maker and Ren'Py games on a PS5">
 </p>
 
 <h1 align="center">Dulcamara</h1>
