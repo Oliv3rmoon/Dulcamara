@@ -21,6 +21,13 @@
   <a href="https://github.com/Oliv3rmoon/Dulcamara/releases">Browse the archived public releases</a>
 </p>
 
+<p align="center">
+  <img src="docs/images/eclipse-2.0-announcement.jpg" width="100%" alt="Dulcamara Eclipse 2.0: Story mode. Thursday 12 November, 9:21:21 PM Pacific, insiders first">
+</p>
+
+> [!NOTE]
+> **Dulcamara Eclipse 2.0 arrives Thursday 12 November 2026 at 9:21:21 PM Pacific, for nightly insiders.** New in 2.0: **Story mode**, a library that looks like an old RPG menu and talks to you like a visual novel; adding a game from a direct link; automatic save backups; and a scanner that finds games it used to miss. The picture above is a preview. The countdown is in [nightly on Discord](https://discord.gg/pSqgRU3YP9), and the download appears on [nightly insider](https://nightly-insider.nightly-ps5.workers.dev) at zero.
+
 > [!IMPORTANT]
 > **The next chapter is insider only.** New Dulcamara releases will no longer be published here, including after a waiting period. Existing public releases and source stay available. Follow [nightly on Discord](https://discord.gg/pSqgRU3YP9) and [nightly insider](https://nightly-insider.nightly-ps5.workers.dev) for upcoming builds.
 
