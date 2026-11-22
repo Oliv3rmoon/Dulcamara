@@ -410,16 +410,16 @@ python_modlibs=$("$py" -c "import sysconfig; print(' '.join(w for w in sysconfig
     >>"$log/core.log" 2>&1 || fail core
 # ---- Ren'Py's common scripts, compiled into the engine by Ren'Py's own compile command, run by the core: the console's
 # app folder is read-only, and Ren'Py would otherwise compile them at every start.
-compile_key="compile-1 $engine_key"
+compile_key="compile-2 $engine_key $(digest "$root/tools/renpy/compile_common.rpy")"
 if ! fresh compile "$compile_key"; then
     echo "==> [renpy] Ren'Py's common scripts, compiled"
-    find "$out/assets/renpy8/renpy/common" -name '*.rpyc' -delete
+    find "$out/assets/renpy8/renpy/common" \( -name '*.rpyc' -o -name '*.rpymc' \) -delete
     rm -rf "$out/work/compile"
     mkdir -p "$out/work/compile/game/game"
-    printf 'label start:\n    return\n' >"$out/work/compile/game/game/script.rpy"
+    cp "$root/tools/renpy/compile_common.rpy" "$out/work/compile/game/game/script.rpy"
     DULCAMARA_RENPY_COMMAND=compile "$check/renpy-headless" "$out/assets" compile "$out/work/compile/game" \
         "$out/work/compile/data" >"$log/compile.log" 2>&1 || fail compile
-    missing=$(find "$out/assets/renpy8/renpy/common" -name '*.rpy' | while read -r f; do [[ -f ${f}c ]] || echo "$f"; done)
+    missing=$(find "$out/assets/renpy8/renpy/common" \( -name '*.rpy' -o -name '*.rpym' \) | while read -r f; do [[ -f ${f}c ]] || echo "$f"; done)
     [[ -z $missing ]] || { echo "Ren'Py did not compile: $missing" >&2; exit 1; }
     stamp compile "$compile_key"
 fi

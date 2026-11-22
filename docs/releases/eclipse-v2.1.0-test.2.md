@@ -10,9 +10,11 @@ The Shelf now shows creator-labeled Windows and Linux downloads such as **CoR 0.
 
 ## Compatibility
 
-- **Summertime Saga 0.20.16** can call its original save serializer. **21.0.0-wip.8194** can import its compiled Python package from the game archive. Library scanning also recognizes nested scripts and `_ren.py`, skips unfinished `.ava-part` transfers and reports rescan progress.
+- **Summertime Saga 0.20.16** can call its original save serializer. **21.0.0-wip.8194** can import its compiled Python package from the game archive. The publisher’s complete preview reached its menu on the host. Library scanning also recognizes nested scripts and `_ren.py`, skips unfinished `.ava-part` transfers and reports rescan progress.
 - **My New Family** requires you to finish 0.14 and save when the game prompts. Install the 0.14 PC and Epilogue PC downloads separately. Both use the same Ren’Py save directory. A fresh ending save made with the publisher’s 0.14 scripts resumed in Epilogue chapter 10 on the host. Keep a copy of your existing saves. [Creator’s handoff instructions](https://killahseven.itch.io/my-new-family)
-- **Champion of Realms 0.113** has a full **CoR 0.113 PC** download. Install it to a fresh game folder. The clean download’s 103 indexed RPA archives and its loose game files contain no copy of the launcher script named in the earlier FreeBSD error. The game defines its own particle displayable. The creator also lists a separate two-archive bugfix download, which requires the base game. [Creator’s downloads](https://projectwill.itch.io/champion-of-realms)
+- **Champion of Realms 0.113** has a full **CoR 0.113 PC** download. Install it to a fresh game folder. The clean download’s 103 indexed RPA archives and its loose game files contain no copy of the launcher script named in the earlier FreeBSD error. The complete game reached its startup warning on the host, where its own particle displayable accepted the reported three arguments and created 200 particles. The creator also lists a separate two-archive bugfix download, which requires the base game. [Creator’s downloads](https://projectwill.itch.io/champion-of-realms)
+
+Both engines now include compiled copies of all 33 optional Ren’Py screen layouts. This lets games open menus with read-only app assets.
 
 ## Install and test
 
