@@ -114,3 +114,10 @@ A second core (ScummVM's libretro core is next) is a static archive built like E
 renamed `<core>_retro_*`, and one entry in `src/core/cores.c`'s table; `src/core/cores.h` lists the steps.
 
 Starting with Eclipse 2.1.3, install the new title separately the first time. Preserve the old `PPSA99010` folder shared with vkQuake. [Installation and title-specific saves](releases/2.1.3.md)
+
+
+### Privacy and one-handed visual novel controls
+
+Open Settings → Ren’Py. Turn on **Privacy shortcut** to reserve R3 throughout Dulcamara. Press R3 to show a neutral pause screen and mute audio. Release the controls, press R3 by itself, then release it to return.
+
+Set **One-handed controls** to **Left hand** to use L1 for dialogue and selection, L2 to go back, and the D-pad to choose. With **Right hand**, R1 advances, Circle goes back, and the right stick moves between choices. The aliases follow each game’s existing Cross, Circle and D-pad bindings. Choose **Standard** to restore the original shoulder controls.

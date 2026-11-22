@@ -373,6 +373,9 @@ static void selection(const char *dir)
     Settings settings;
     config_defaults(&settings);
     config_load(&settings, path);
+    assert(!settings.privacy_shortcut && settings.vn_hand == VN_STANDARD);
+    settings.privacy_shortcut = true;
+    settings.vn_hand = VN_RIGHT_HAND;
     assert(settings.game_volume == 6 && settings.button_map[CORE_RENPY][0] == 9 &&
            settings.automatic_backups);
     Game games[3] = {{.id = "a"}, {.id = "b"}, {.id = "c"}};
@@ -390,6 +393,7 @@ static void selection(const char *dir)
     assert(config_save(&settings, path));
     config_defaults(&settings);
     config_load(&settings, path);
+    assert(settings.privacy_shortcut && settings.vn_hand == VN_RIGHT_HAND);
     assert(!strcmp(settings.selected_game_id, "c"));
     lib.count = 0;
     assert(library_restore_selection(&lib, &settings) == 0);

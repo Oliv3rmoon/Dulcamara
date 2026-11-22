@@ -117,6 +117,10 @@ void config_load(Settings *s, const char *path)
             s->stick_dpad = v != 0;
         else if (!strcmp(key, "show_fps"))
             s->show_fps = v != 0;
+        else if (!strcmp(key, "privacy_shortcut"))
+            s->privacy_shortcut = v != 0;
+        else if (!strcmp(key, "vn_hand"))
+            s->vn_hand = clamp(v, VN_STANDARD, VN_RIGHT_HAND);
         else if (!strcmp(key, "renpy_skip_unseen"))
             s->renpy_skip_unseen = v != 0;
         else if (!strcmp(key, "ui_sound"))
@@ -164,6 +168,7 @@ bool config_save(const Settings *s, const char *path)
     fprintf(f, "version = %s\n", NP_VERSION);
     fprintf(f, "integer_scale = %d\nsmooth = %d\nshader = %d\naspect = %d\nupscale = %d\nupscale_filter = %d\n",
             s->integer_scale, s->smooth, s->shader, s->aspect, s->upscale, s->upscale_filter);
+    fprintf(f, "privacy_shortcut = %d\nvn_hand = %d\n", s->privacy_shortcut, s->vn_hand);
     fprintf(f, "ff_speed = %d\nff_toggle = %d\nstick_dpad = %d\nshow_fps = %d\nrenpy_skip_unseen = %d\n", s->ff_speed,
             s->ff_toggle, s->stick_dpad, s->show_fps, s->renpy_skip_unseen);
     for (int core = 0; core < CORE_COUNT; ++core)

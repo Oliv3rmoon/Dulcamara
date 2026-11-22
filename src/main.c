@@ -8,6 +8,7 @@
  * ps5-native-app-boilerplate).
  */
 #include "app.h"
+#include "core/vn_controls.h"
 
 #include "config.h"
 #include "core/cores.h"
@@ -997,6 +998,8 @@ static void game_screen(PadState *pads, uint32_t pressed)
         options_frames = 0;
         game_pad = (PadState){.connected = p->connected};
     }
+    if (own_options)
+        vn_one_hand_input(&game_pad, app_game_settings()->vn_hand);
     host_set_input(&game_pad, app_game_settings());
 
     /* Ren'Py's cores skip at Ren'Py's own pace: 0.2.5 ran one up to 8 times a frame, each a picture drawn on the GPU
@@ -1208,6 +1211,7 @@ int main(int argc, char **argv)
     bool update_offered = false;
     bool in_background = false;
     bool previously_active = false;
+    bool privacy_armed = false, privacy_resuming = false;
 #if defined(NP_PREVIEW)
     /* Optional host-clock receipt. Buffered writes are outside the measured
      * interval; deterministic preview time never supplies these durations. */
@@ -1254,6 +1258,7 @@ int main(int argc, char **argv)
             if (!in_background)
             {
                 in_background = true;
+                privacy_armed = privacy_resuming = false;
                 previously_active = false;
                 np_log("app: another app has the screen: the game, drawing and sound stop");
                 reset_transient();
@@ -1292,7 +1297,7 @@ int main(int argc, char **argv)
                 if (!library_mark_played(&app.library, app.game, app.paths.played))
                     app_toast("Last-played time could not be saved");
             }
-            if (previously_active)
+            if (previously_active && !app.privacy_active)
                 active_seconds += app.dt;
             previously_active = true;
         }
@@ -1342,6 +1347,47 @@ int main(int argc, char **argv)
                 pads[p].touching = false;
         }
         memcpy(app.pads, pads, sizeof(app.pads));
+        const PadState *nav = &pads[app_nav_pad()];
+        /* Hide before handling dialogs, game input or drawing any game or library overlays. */
+        if (!nav->connected)
+            privacy_armed = privacy_resuming = false;
+        else if (!nav->buttons && nav->l2 < 40 && nav->r2 < 40 &&
+                 abs(nav->lx) < 8000 && abs(nav->ly) < 8000 && abs(nav->rx) < 8000 &&
+                 abs(nav->ry) < 8000 && !nav->touching)
+        {
+            if (privacy_resuming)
+            {
+                reset_transient();
+                plat_audio_privacy(false);
+                app.privacy_active = privacy_resuming = false;
+            }
+            privacy_armed = true;
+        }
+        else if (privacy_armed && (nav->buttons & BIT(BTN_R3)) && app.settings.privacy_shortcut)
+        {
+            privacy_armed = false;
+            if (!app.privacy_active)
+            {
+                app.privacy_active = true;
+                plat_audio_privacy(true);
+                reset_transient();
+            }
+            else if (nav->buttons == BIT(BTN_R3))
+                privacy_resuming = true;
+        }
+        if (app.privacy_active)
+        {
+            previously_active = false;
+            plat_begin_frame(0xff101014u);
+            plat_fill_rect(0, 0, plat_width(), plat_height(), 0xff101014u);
+            text_draw(plat_width() / 2, plat_height() / 2, 30, FONT_REGULAR, 0xffdddddfu,
+                      ALIGN_CENTER, tr("Paused"));
+            text_draw(plat_width() / 2, plat_height() / 2 + 48, 22, FONT_REGULAR, 0xffa6a6aau,
+                      ALIGN_CENTER, tr("Press R3 to resume"));
+            plat_end_frame();
+            last_frame_start = now;
+            continue;
+        }
         uint32_t pressed = nav_pressed(pads);
 #if defined(NP_PREVIEW)
         preview_surface_input(&pressed);

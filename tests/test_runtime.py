@@ -30,5 +30,5 @@ class RuntimeTest(unittest.TestCase):
     def test_restart_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / 'restart'
-            subprocess.run([os.environ.get('CC', 'cc'), '-std=c11', '-g', '-O1', '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-Wall', '-Wextra', '-Werror', '-I'+str(ROOT/'src'), str(ROOT/'tests/runtime_restart_check.c'), str(ROOT/'src/restart.c'), str(ROOT/'src/storage.c'), '-o', str(binary)], check=True)
+            subprocess.run([os.environ.get('CC', 'cc'), '-std=c11', '-g', '-O1', '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-Wall', '-Wextra', '-Werror', '-I'+str(ROOT/'src'), str(ROOT/'tests/runtime_restart_check.c'), str(ROOT/'src/restart.c'), str(ROOT/'src/storage.c'), str(ROOT/'src/util.c'), '-o', str(binary)], check=True)
             subprocess.run([str(binary), str(Path(directory)/'restart.txt')], check=True, timeout=30)

@@ -82,6 +82,7 @@ void plat_audio_close(void);
 void plat_audio_push(const int16_t *frames, size_t frame_count);
 size_t plat_audio_queued_frames(void);
 void plat_audio_clear(void);
+void plat_audio_privacy(bool hidden);
 void plat_audio_set_ratio(double ratio); /* >1 plays the sound a little faster (it takes more input per output), 1 untouched */
 double plat_display_hz(void);            /* the screen's refresh rate, 0 when unknown */
 

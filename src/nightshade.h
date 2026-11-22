@@ -19,7 +19,7 @@
 #define NP_CODENAME "Eclipse"
 #define NP_TITLE NP_NAME " " NP_CODENAME /* what is shown on screen: "Dulcamara Eclipse" */
 #define NP_TITLE_ID "PPSA75483"
-#define NP_VERSION "2.1.3"
+#define NP_VERSION "2.1.4"
 #define NP_DATA "/data/dulcamara" /* the data folder on the console */
 #define NP_PATH_MAX 512
 
@@ -62,6 +62,8 @@ typedef struct
     uint16_t touch_x, touch_y; /* 0..1919, 0..1079 */
     int16_t mouse_dx, mouse_dy;
 } PadState;
+
+enum VnHand { VN_STANDARD, VN_LEFT_HAND, VN_RIGHT_HAND };
 
 enum UpscaleFilter
 {
@@ -117,6 +119,8 @@ typedef struct
     int ff_toggle;      /* 1: R2 turns fast-forward on and off; 0: while it is held */
     bool stick_dpad;    /* the left stick moves like the D-pad */
     bool show_fps;
+    bool privacy_shortcut; /* R3 hides the app and silences audio until deliberately resumed */
+    int vn_hand;            /* Ren'Py one-handed layout, from enum VnHand */
     bool renpy_skip_unseen; /* Ren'Py: fast-forward skips unread text too (its skip_unseen preference) */
     /* each core's (CORE_*): each controller button (BTN_*) the game's button it presses (PAD_*), or -1 */
     int8_t button_map[NP_CORES][MAP_BUTTONS];

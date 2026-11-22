@@ -85,6 +85,7 @@ static const char *const UPSCALES[] = {"Off", "2x", "3x"};
 static const int UPSCALE_VALUES[] = {1, 2, 3};
 static const char *const FILTERS[] = {"Sharp pixels", "Smooth pixels (Scale2x)", "xBR"};
 static const char *const SPEEDS[] = {"x2", "x3", "x4", "x6", "x8"};
+static const char *const VN_HANDS[] = {"Standard", "Left hand", "Right hand"};
 static const char *const FF_MODES[] = {"While R2 is held", "R2 turns it on and off"};
 static const char *const VOLUMES[] = {"Off", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"};
 static const char *const UI_SOUNDS[] = {"Soft", "Wood", "Pop", "Chime", "Classic", "Off"};
@@ -165,6 +166,10 @@ static const Row CONTROLS[] = {
 };
 
 static const Row RENPY_ROWS[] = {
+    {"Privacy shortcut", "Press R3 to hide the picture and mute Dulcamara. Release it, then press R3 alone to resume. The shortcut works throughout the app.",
+     K_TOGGLE, FIELD(privacy_shortcut), NULL, 0, NULL, A_NONE, -1},
+    {"One-handed controls", "Left hand uses L1 to advance, L2 to go back and the D-pad for choices. Right hand uses R1 to advance, Circle to go back and the right stick for choices. Uses your game's Cross, Circle and D-pad bindings.",
+     K_CHOICE, FIELD(vn_hand), VN_HANDS, N(VN_HANDS), NULL, A_NONE, -1},
     {"Fast-forward skips unread text too", "R2 skips text not read yet as well as what was read, whatever the game's "
                                             "own Skip setting says. Off: the game's setting decides. From the next "
                                             "Ren'Py game started.",

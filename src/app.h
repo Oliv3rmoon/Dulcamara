@@ -42,6 +42,7 @@ typedef struct
     char sandbox_reason[200];
     float dt;                 /* seconds since the last frame */
     float fps;                /* the game's frames a second */
+    bool privacy_active;       /* transient, independent of the screen the player will return to */
     bool fast_forward;        /* running faster now */
     bool fast_latched;        /* turned on from the menu: stays on until turned off there */
     int8_t keys[MAP_BUTTONS]; /* the running Ren'Py game's keys: each RetroPad button's KEY_ACTIONS index (config.h) */

@@ -52,6 +52,29 @@ class PreviewTest(unittest.TestCase):
         reason=build_preview()
         if reason:raise unittest.SkipTest(reason)
 
+    def test_privacy_hides_library_and_game_and_pauses_audio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            (work / 'settings.ini').write_text(
+                'privacy_shortcut = 1\ncommunity_seen = 1\nupdate_check = 0\nlibrary_view = 1\n')
+            (work / 'games').mkdir()
+            shutil.copytree(self.pinned_testgame() / 'TestGame-2000', work / 'games' / 'Demo')
+            steps = ['wait 65', 'assert screen library', 'press r3', 'wait 12',
+                     'assert privacy 1', 'assert private_audio 1', 'shot covered-library',
+                     'press cross', 'press start', 'assert screen library', 'assert privacy 1',
+                     'press r3', 'wait 8', 'assert privacy 0', 'press cross', 'wait 190',
+                     'assert runtime running', 'press r3', 'wait 12', 'assert privacy 1',
+                     'assert private_audio 1', 'shot covered-game', 'press menu', 'assert screen game',
+                     'press r3', 'wait 10', 'assert privacy 0', 'assert private_audio 0',
+                     'assert runtime running', 'shot resumed-game', 'quit']
+            code, log = run_preview(work, steps, env_extra={'NP_SHOTS': str(work)})
+            self.assertEqual(code, 0, log[-3000:])
+            self.assertNotIn('ASSERT FAIL', log)
+            self.assertEqual(log.count('ASSERT PASS'), sum(s.startswith('assert ') for s in steps))
+            covered = next(work.glob('covered-library.*')).read_bytes()
+            self.assertEqual(covered, next(work.glob('covered-game.*')).read_bytes())
+            self.assertNotEqual(covered, next(work.glob('resumed-game.*')).read_bytes())
+
     def test_denied_library_and_missing_font_folder(self):
         with tempfile.TemporaryDirectory() as td:
             work = Path(td)

@@ -59,6 +59,7 @@ static int game_w = 320, game_h = 240;
 static int out_w = 1920, out_h = 1080;
 static SDL_AudioDeviceID audio_device;
 static int audio_rate;
+static bool audio_private;
 
 static SDL_GameController *controllers[NP_MAX_PADS];
 static uint16_t rumble_strong[NP_MAX_PADS], rumble_weak[NP_MAX_PADS];
@@ -251,6 +252,11 @@ static void preview_assert(const char *line)
                                  : app.settings.selected_game_id;
     const char *names[] = {"library", "game",    "menu",    "settings", "keys",
                            "sounds",  "details", "profile", "backups"};
+    if (!strcmp(key, "privacy"))
+        snprintf(actual, sizeof(actual), "%d", app.privacy_active);
+    if (!strcmp(key, "private_audio"))
+        snprintf(actual, sizeof(actual), "%d", audio_private && audio_device &&
+                 SDL_GetAudioDeviceStatus(audio_device) == SDL_AUDIO_PAUSED && !SDL_GetQueuedAudioSize(audio_device));
     if (!strcmp(key, "screen"))
         snprintf(actual, sizeof(actual), "%s", names[app.screen]);
     if (!strcmp(key, "selected"))
@@ -1081,7 +1087,7 @@ bool plat_audio_open(int sample_rate)
         return false;
     }
     audio_rate = sample_rate;
-    SDL_PauseAudioDevice(audio_device, 0);
+    SDL_PauseAudioDevice(audio_device, audio_private ? 1 : 0);
     np_log("audio: %d Hz", sample_rate);
     return true;
 }
@@ -1104,7 +1110,7 @@ void plat_audio_set_ratio(double ratio)
 
 void plat_audio_push(const int16_t *frames, size_t frame_count)
 {
-    if (!audio_device || !frame_count)
+    if (!audio_device || !frame_count || audio_private)
         return;
     if (audio_ratio > 0.9999 && audio_ratio < 1.0001)
     {
@@ -1151,6 +1157,20 @@ void plat_audio_push(const int16_t *frames, size_t frame_count)
 size_t plat_audio_queued_frames(void)
 {
     return audio_device ? SDL_GetQueuedAudioSize(audio_device) / 4 : 0;
+}
+
+void plat_audio_privacy(bool hidden)
+{
+    audio_private = hidden;
+    if (audio_device)
+    {
+        SDL_PauseAudioDevice(audio_device, 1);
+        SDL_ClearQueuedAudio(audio_device);
+        audio_pos = 0;
+        audio_last[0] = audio_last[1] = 0;
+        if (!hidden)
+            SDL_PauseAudioDevice(audio_device, 0);
+    }
 }
 
 void plat_audio_clear(void)

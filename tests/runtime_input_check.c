@@ -1,5 +1,6 @@
 /* Real SDL events through production input and focus handling. */
 #include "core/renpy/input.h"
+#include "core/vn_controls.h"
 #include "platform/focus.h"
 #include <assert.h>
 #include <stdio.h>
@@ -18,6 +19,22 @@ void log_queue(int level, const char *format, ...)
     (void)level;
     (void)format;
 }
+static void expect_hand_key(PadState pad, int layout, uint32_t buttons, SDL_Keycode key)
+{
+    vn_one_hand_input(&pad, layout);
+    assert(pad.buttons == buttons);
+    /* The default Ren'Py button map uses the same position for these physical and RetroPad bits. */
+    input_set((uint16_t)pad.buttons, 0, 0);
+    SDL_Event event;
+    bool matched = false;
+    while (SDL_PollEvent(&event))
+        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == key)
+            matched = true;
+    assert(matched);
+    input_set(0, 0, 0);
+    while (SDL_PollEvent(&event)) {}
+}
+
 int main(void)
 {
     assert(SDL_Init(SDL_INIT_EVENTS) == 0);
@@ -52,6 +69,19 @@ int main(void)
     while (SDL_PollEvent(&e))
         background = plat_focus_event(background, &e);
     assert(!background);
+    assert(input_bind(PAD_B, "return"));
+    assert(input_bind(PAD_A, "escape"));
+    assert(input_bind(PAD_DOWN, "down"));
+    assert(input_bind(PAD_LEFT, "left"));
+    expect_hand_key((PadState){.buttons=BIT(BTN_L1)}, VN_LEFT_HAND, BIT(BTN_CROSS), SDLK_RETURN);
+    expect_hand_key((PadState){.l2=200}, VN_LEFT_HAND, BIT(BTN_CIRCLE), SDLK_ESCAPE);
+    expect_hand_key((PadState){.buttons=BIT(BTN_DOWN)}, VN_LEFT_HAND, BIT(BTN_DOWN), SDLK_DOWN);
+    expect_hand_key((PadState){.buttons=BIT(BTN_R1)}, VN_RIGHT_HAND, BIT(BTN_CROSS), SDLK_RETURN);
+    expect_hand_key((PadState){.rx=-22000}, VN_RIGHT_HAND, BIT(BTN_LEFT), SDLK_LEFT);
+    expect_hand_key((PadState){.buttons=BIT(BTN_CIRCLE)}, VN_RIGHT_HAND, BIT(BTN_CIRCLE), SDLK_ESCAPE);
+    PadState unchanged = {.buttons=BIT(BTN_R1), .ry=18000};
+    vn_one_hand_input(&unchanged, VN_STANDARD);
+    assert(unchanged.buttons == BIT(BTN_R1) && unchanged.ry == 18000);
     input_detach();
     SDL_Quit();
     puts("PASS real SDL release/repeat reset and background/foreground events");

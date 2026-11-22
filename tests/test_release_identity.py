@@ -21,10 +21,10 @@ import release_metadata  # noqa: E402
 class ReleaseIdentityTest(unittest.TestCase):
     def test_eclipse_identity_comes_from_the_shared_metadata(self):
         meta = release_metadata.read(ROOT)
-        self.assertEqual(meta.version, "2.1.3")
+        self.assertEqual(meta.version, "2.1.4")
         self.assertEqual(meta.codename, "Eclipse")
         self.assertEqual(meta.display_title, "Dulcamara Eclipse")
-        self.assertEqual(meta.content_version, "02.001.003")
+        self.assertEqual(meta.content_version, "02.001.004")
 
     def test_dedicated_title_and_shared_game_data(self):
         meta = release_metadata.read(ROOT)
@@ -55,7 +55,7 @@ class ReleaseIdentityTest(unittest.TestCase):
             release_metadata.sync_param(param, meta)
             release_metadata.check_param(param, meta)
             synced = json.loads(param.read_text(encoding="utf-8"))
-            self.assertEqual(synced["contentVersion"], "02.001.003")
+            self.assertEqual(synced["contentVersion"], "02.001.004")
             self.assertEqual(synced["localizedParameters"]["en-US"]["titleName"], "Dulcamara Eclipse")
             self.assertEqual(synced["titleId"], "PPSA75483")
 

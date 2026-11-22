@@ -3,10 +3,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-void str_copy(char *out, size_t size, const char *in)
-{
-    snprintf(out, size, "%s", in);
-}
 int main(int argc, char **argv)
 {
     assert(argc == 2);
