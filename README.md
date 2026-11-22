@@ -1,140 +1,104 @@
 <p align="center">
-  <img src="docs/images/herbarium-header.jpg" width="100%" alt="Specimen N° 02, Dulcamara (Solanum dulcamara): RPG Maker and Ren'Py games on a PS5">
-</p>
-
-<h1 align="center">Dulcamara</h1>
-
-<p align="center">
-  <strong>RPG Maker 2000 and 2003 games, and Ren'Py visual novels, on PS5 homebrew. Made for the controller, in Nightshade's black and red.</strong>
+  <img src="docs/images/eclipse-2.1.5-header.jpg" width="100%" alt="Dulcamara Eclipse 2.1.5 — RPG Maker & Ren'Py for PS5 (PPSA75483)">
 </p>
 
 <p align="center">
-  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases"><img src="https://img.shields.io/github/v/release/Oliv3rmoon/Dulcamara?include_prereleases" alt="Archived public release"></a>
-  <a href="https://discord.gg/pSqgRU3YP9"><img src="https://img.shields.io/badge/discord-join%20nightly-5865F2?logo=discord&logoColor=white" alt="Discord: join nightly"></a>
+  <strong>RPG Maker 2000/2003 games and Ren'Py visual novels on PS5 — built for a DualSense, a couch, and a big screen.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases/tag/v2.1.5"><img src="https://img.shields.io/github/v/release/Oliv3rmoon/Dulcamara?include_prereleases&color=e61e3a&label=eclipse" alt="Latest release"></a>
+  <a href="https://discord.gg/pSqgRU3YP9"><img src="https://img.shields.io/badge/discord-nightly-5865F2?logo=discord&logoColor=white" alt="Discord: nightly"></a>
   <a href="https://github.com/Oliv3rmoon/Dulcamara/stargazers"><img src="https://img.shields.io/github/stars/Oliv3rmoon/Dulcamara?style=social" alt="GitHub stars"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue" alt="License: GPL-3.0-or-later"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-222222" alt="License: GPL-3.0-or-later"></a>
   <a href="https://buymeacoffee.com/oliv3rmoon"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-e5484d?logo=buymeacoffee&logoColor=white" alt="Buy me a coffee"></a>
 </p>
 
 <p align="center">
-  <a href="https://nightly-insider.nightly-ps5.workers.dev"><strong>New releases: nightly insider</strong></a><br>
-  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases">Browse the archived public releases</a>
+  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases/tag/v2.1.5"><strong>Download Eclipse 2.1.5 (PS5)</strong></a> ·
+  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases">All releases</a> ·
+  <a href="https://discord.gg/pSqgRU3YP9">Join nightly</a>
 </p>
+
+---
 
 <p align="center">
-  <img src="docs/images/eclipse-2.0-announcement.jpg" width="100%" alt="Dulcamara Eclipse 2.0: Story mode. Thursday 12 November, 9:21:21 PM Pacific, insiders first">
+  <img src="docs/images/eclipse-2.1.5-promo.jpg" width="100%" alt="Dulcamara Eclipse 2.1.5 — Sandbox unlocked, zero-stall Vulkan rendering, instant updates, USB and extended storage">
 </p>
 
 > [!NOTE]
-> **Dulcamara Eclipse 2.0 arrives Thursday 12 November 2026 at 9:21:21 PM Pacific, for nightly insiders.** New in 2.0: **Story mode**, a library that looks like an old RPG menu and talks to you like a visual novel; adding a game from a direct link; automatic save backups; and a scanner that finds games it used to miss. The picture above is a preview. The countdown is in [nightly on Discord](https://discord.gg/pSqgRU3YP9), and the download appears on [nightly insider](https://nightly-insider.nightly-ps5.workers.dev) at zero.
+> **Dulcamara Eclipse 2.1.5 (`PPSA75483`)** is out as a PS5 test build. It restores startup `/data` unlock (with a dedicated `PPSA75483` `lapy.elf` helper), moves CPU-rendered Ren'Py & EasyRPG frames onto a persistent ring-buffered Vulkan image to eliminate black flashes, saves settings immediately on toggle, fixes updater lockouts, and extends portable libraries to `/mnt/ext0`–`/mnt/ext1`. Host tests and upgrade checks have passed; physical PS5 verification is ongoing. Grab **[PPSA75483.zip](https://github.com/Oliv3rmoon/Dulcamara/releases/download/v2.1.5/PPSA75483.zip)** (with [matching source](https://github.com/Oliv3rmoon/Dulcamara/releases/download/v2.1.5/Dulcamara-Eclipse-2.1.5-source.tar.zst) and [SHA-256 sums](https://github.com/Oliv3rmoon/Dulcamara/releases/download/v2.1.5/SHA256SUMS)) and share console reports in [nightly](https://discord.gg/pSqgRU3YP9).
 
-> [!IMPORTANT]
-> **The next chapter is insider only.** New Dulcamara releases will no longer be published here, including after a waiting period. Existing public releases and source stay available. Follow [nightly on Discord](https://discord.gg/pSqgRU3YP9) and [nightly insider](https://nightly-insider.nightly-ps5.workers.dev) for upcoming builds.
+<p align="center">
+  <img src="docs/images/eclipse-2.1.5-story.jpg" width="32.5%" alt="Dulcamara Eclipse 2.1.5 Story mode library">
+  <img src="docs/images/eclipse-2.1.5-backups.jpg" width="32.5%" alt="Automatic and manual save backup slots">
+  <img src="docs/images/eclipse-2.1.5-controls.jpg" width="32.5%" alt="Ren'Py one-handed controls and R3 privacy screen settings">
+</p>
+<p align="center"><sub>Story mode, automatic save backups, and Ren'Py couch controls — captured from Dulcamara Eclipse 2.1.5's host preview with sample titles.</sub></p>
 
-<p align="center">If Dulcamara works for you, a ⭐ helps other PS5 owners find it.</p>
+## What's inside
 
-Dulcamara, named after *Solanum dulcamara*, the bittersweet nightshade, is a PS5 homebrew app by **[Oliv3rmoon](https://github.com/Oliv3rmoon)** for story games and RPGs: a library that finds your RPG Maker 2000 and 2003 games and plays them, with the Nightshade look, CRT shaders and a Vulkan screen. The latest release is **0.1.0**; what changed is in the [changelog](docs/CHANGELOG.md).
-
-> [!NOTE]
-> **0.2.3 is a test release.** It adds Ren'Py visual novels; 0.2.3 fixes the crash 0.2.0 to 0.2.2 had when a Ren'Py game started on a console. It is checked on the build machine and in CI by tests that play a test game, and it is marked pre-release on the [Releases](https://github.com/Oliv3rmoon/Dulcamara/releases) page, so the updater skips it: [download 0.2.3](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/0.2.3) to try it, and tell me what breaks.
-
-## Why Dulcamara
-
-- **RPG Maker 2000 and 2003 games.** The original engines' events, battles, pictures and sound (MIDI, WAV, Ogg Vorbis and MP3), the Maniac Patch and the extensions the engine supports, and Japanese, Korean, Chinese, Cyrillic and Western games with their text in their own encoding.
-- **Ren'Py visual novels** *(test release 0.2.3)*. Version 8.5 is built in (with Python 3.12 and FFmpeg for music, voice and movies), and 7.8 (with Python 2.7) for games made with 7 or 6; the library picks the one a game was made with. Cross moves the story on, Circle opens the game's menu, L1 and R1 roll back and forward, R2 fast-forwards and skips text already read, and the touchpad is the mouse. Only one game runs each time the app starts, so opening a second one starts the app again.
-- **A library that finds your games.** Copy a game's folder (or a `.zip` / `.easyrpg` of it) and it shows up with its title and its own title screen as the cover. Sort by title or by the last played; Square looks for new games without restarting.
-- **Made for the controller.** Cross confirms, Circle cancels, Triangle opens the game's menu, and every button can be mapped again in Settings. The touchpad opens Dulcamara's menu at any time. Hold R2 (or press it once) to fast-forward from x2 to x8, for grinding and long cutscenes.
-- **CRT and LCD shaders.** CRT Royale, CRT Lottes, CRT Pi, Newpixie, Hyllian NTSC, Mattias, NTSC signals, LCD3x, zfast LCD and Game Boy LCD, or sharp square pixels, whole-number scaling and the game's own shape.
-- **Updates from its own releases.** It asks this repository for a newer release and installs it, after checking `PPSA99010.zip` against the release's `SHA256SUMS`.
-- **Free software, no bundled games.** Dulcamara remains under the GPL and includes no ads. Copy your own games; it ships and downloads none. New insider builds require an eligible account; archived public builds keep their existing behavior.
-
-## nightly insider
-
-**New releases are now nightly insider only.** There will be no new public releases and no delayed public drop. This repository keeps the previously published source and downloads available as an archive. Eligible insiders receive new builds through [nightly insider](https://nightly-insider.nightly-ps5.workers.dev), with the matching source, build instructions and license notices. Existing licenses and recipients' source rights remain unchanged.
-
-Join [nightly on Discord](https://discord.gg/pSqgRU3YP9), complete verification and the tester requirements, then sign in at [nightly insider](https://nightly-insider.nightly-ps5.workers.dev). Access depends on current eligibility and the release's testing window.
-
-### What is coming
-
-**Dulcamara Eclipse** is being built around a smoother, more reliable session: better game startup and cleanup, safer save handling, rendering fixes, a refreshed interface and new artwork. The focus is on making RPG Maker games and Ren'Py visual novels easier to start, play and return to.
-
-Private testing is also gaining **approved updates while idle and automatic app diagnostics**, with clear tester consent, account controls and a dashboard for failures and performance. Encrypted package storage and authenticated downloads are being prepared for the new delivery. Limited trials have a stated access window and can stop new game launches when it ends; saves and files are preserved.
-
-Eclipse is still in development. The final combined build and physical PS5 checks are pending, so these previews are not a claim that the new release is already available. Follow Discord for the finished build and its exact release notes.
+- **Story mode & Shelf view.** Browse your library like a classic RPG menu with a visual-novel dialogue box, or switch back to the cover shelf anytime in `Settings → Library`.
+- **Ren'Py 8, 7 & 6 + RPG Maker 2000/2003 in one app.** Drop a game folder or `.zip` into `games/` and Dulcamara picks the right engine automatically — Ren'Py 8.5 (Python 3.12 + FFmpeg), Ren'Py 7.8 (Python 2.7), or EasyRPG Player (Maniac Patch + Japanese, Korean, Chinese, Cyrillic, and Western encodings).
+- **itch.io from the couch.** Install the bundled **itch.io Shelf 1.1** from `Settings → Library` to browse and install free Ren'Py games straight on PS5, or queue direct `.zip` links through `links.txt` or the on-screen keyboard.
+- **One-handed controls & instant privacy.** Play visual novels with standard bindings or switch to **Left-hand** / **Right-hand** mode (`Settings → Ren'Py`). Press **R3** anywhere in the app to hide the screen, pause the game, and mute audio. Includes touchpad mouse, R2 fast-forward (x2–x8), per-game key remapping, and per-game sound muting.
+- **Zero-stall Vulkan & classic shaders.** Persistent ring-buffered Vulkan frames keep 1080p Ren'Py clean even with shaders off — or layer on CRT Royale, CRT Lottes, CRT Pi, Newpixie, Hyllian NTSC, LCD3x, zfast LCD, or sharp integer scaling.
+- **Saves you don't lose.** Five automatic snapshots per game, a verified recovery copy before every restore, and reset-safe portable libraries (`dulcamara/portable.txt`) on USB or extended storage (`/mnt/ext0`, `/mnt/ext1`).
+- **Its own slot (`PPSA75483`).** Dedicated PS5 title ID beside vkQuake and every other Nightshade app, single-threaded `/data` unlock via etaHEN / LegacyJB / OnionHEN or the bundled `lapy.elf` helper, live storage diagnostics in `Settings → About`, and SHA-256-verified in-app updates.
 
 ## Install
 
-These instructions describe the archived public builds. New insider builds include their own installation, account and testing-window instructions.
+1. Download **`PPSA75483.zip`** from the [Eclipse 2.1.5 release](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/v2.1.5) and extract it.
+2. Copy the **`PPSA75483`** folder to `/data/homebrew/` on your PS5 over FTP and set permissions to `777` recursively. *(If you have an older `PPSA99010` folder or vkQuake installed, leave it untouched.)*
+3. Restart ShadowMountPlus (or the console) and open **Dulcamara Eclipse** from the home screen.
+4. Copy your RPG Maker or Ren'Py game folders (or `.zip` archives) into `/data/dulcamara/games/`, then press **Square** to scan.
 
-1. Download `PPSA99010.zip` from the [latest release](https://github.com/Oliv3rmoon/Dulcamara/releases/latest) and unzip it. For Ren'Py visual novels, take it from the [0.2.3 test release](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/0.2.3) instead.
-2. Copy its `PPSA99010` folder to `/data/homebrew/` on the PS5 over FTP, as you install the other Nightshade apps, and set its permissions to `777` (in FileZilla: right-click the folder, *File permissions*, `777`, recurse into subdirectories). Without them the PS5 says *"Can't start the game or app"*. Nightshade's **Settings > Apps** can install it for you instead.
-3. Restart ShadowMountPlus (or the console). **Dulcamara** appears on the home screen.
-4. Start it once: it makes its folders in `/data/dulcamara/` and shows an empty library that says where games go. Copy your games to `/data/dulcamara/games/`, one folder (or `.zip`) each.
+> [!TIP]
+> **Keep your library off internal storage (USB or extended drive):** extract [`Dulcamara-USB-library.zip`](https://github.com/Oliv3rmoon/Dulcamara/releases/download/v2.1.5/Dulcamara-USB-library.zip) to the root of one USB or extended drive (creating `dulcamara/portable.txt` and `dulcamara/games/`), connect it, and press **Square** in the library.
 
-Its title ID, `PPSA99010`, is its own: it sits beside the other Nightshade apps.
+<details>
+<summary>Controls quick reference</summary>
 
-Like the other Nightshade apps, it needs `/data` unlocked to look into its games folder: LegacyJB, etaHEN's *Legacy CMD server* or the Lapy helper it carries all do it (see [Unlocking /data](https://github.com/Oliv3rmoon/Mandrake/blob/main/docs/GUIDE.md#unlocking-data-so-swanstationps5-can-see-your-games)).
+| Context | Input | Action |
+| --- | --- | --- |
+| **Library** | `Cross` / `Square` / `Triangle` / `OPTIONS` | Open game · Rescan / retry storage · Sort · Settings |
+| **RPG Maker** | `Cross` / `Circle` / `Triangle` / `Touchpad` | Decision · Cancel · Game menu · Dulcamara menu |
+| **Ren'Py** | `Cross` / `Circle` / `L1` `R1` / `Square` | Advance · Game menu & back · Rollback / forward · Hide text |
+| **Ren'Py** | `L3` / `Touchpad` / `R2` / Hold `OPTIONS` | Toggle cursor · Move & click · Fast-forward · Dulcamara menu |
+| **Anywhere** | `R3` *(when enabled in `Settings → Ren'Py`)* | Hide picture, pause gameplay, and mute audio |
 
-## Docs
+</details>
 
-- **[Guide](docs/GUIDE.md):** [where games go](docs/GUIDE.md#where-games-go), [controls](docs/GUIDE.md#controls), [settings](docs/GUIDE.md#settings), [updates](docs/GUIDE.md#updates) and [building from source](docs/GUIDE.md#building-from-source).
-- **[Changelog](docs/CHANGELOG.md)**, [Privacy policy](PRIVACY.md), [Third-party notices](THIRD_PARTY_NOTICES.md) and [Contributing](CONTRIBUTING.md).
+<details>
+<summary>Docs, bugs & building from source</summary>
 
-## Requests, bugs and support
+- **[Guide](docs/GUIDE.md):** where games go, controls, settings, updates, and building from source.
+- **[Changelog](docs/CHANGELOG.md)** · [Privacy policy](PRIVACY.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Contributing](CONTRIBUTING.md)
+- **Bug reports & requests:** [open an issue](https://github.com/Oliv3rmoon/Dulcamara/issues/new/choose) or drop by [nightly on Discord](https://discord.gg/pSqgRU3YP9). Attach `/data/dulcamara/logs/dulcamara.log` (never attach games).
 
-- **Ask for a fix or a feature:** [open an issue](https://github.com/Oliv3rmoon/Dulcamara/issues/new/choose), or ask in **[nightly on Discord](https://discord.gg/pSqgRU3YP9)**.
-- **Bugs:** open an issue with `/data/dulcamara/logs/dulcamara.log`, copied right after the problem, and which game it was. Never attach games or their files.
-- **A game that doesn't run right:** check it on a PC with the engine's own player first (see [Thanks](#thanks)); if it fails there too, that project's issues are the place.
-- **If my work helps you,** you can [buy me a coffee](https://buymeacoffee.com/oliv3rmoon).
+</details>
 
 ## The Nightshade family
 
-Dulcamara is one of seven repositories in the Nightshade family, all by [Oliv3rmoon](https://github.com/Oliv3rmoon): the same black-and-red look, one Discord.
+Seven PS5 homebrew repositories by **[Oliv3rmoon](https://github.com/Oliv3rmoon)** — one visual language, one Discord.
 
-| App | What it is |
+| App | What it does |
 | --- | --- |
-| [**Nightshade**](https://github.com/Oliv3rmoon/Nightshade) | The Switch emulator for PS5 homebrew |
-| [**Physalis**](https://github.com/Oliv3rmoon/Physalis) | Live TV, movies and Plex on the PS5 |
-| [**Datura**](https://github.com/Oliv3rmoon/Datura) | Game streaming from your PC to the PS5 |
-| [**Mandrake**](https://github.com/Oliv3rmoon/Mandrake) | PS1 emulation, with two emulators |
-| **Dulcamara** (this repo) | RPG Maker 2000 and 2003 games, and Ren'Py visual novels |
-| [**Solanum**](https://github.com/Oliv3rmoon/Solanum) | A store for open-source PS5 homebrew, with its catalog [on the web](https://oliv3rmoon.github.io/Solanum-Catalog/) |
-| [**Belladonna**](https://github.com/Oliv3rmoon/Belladonna) | Nightshade's PS5 Vulkan driver |
+| [**Nightshade**](https://github.com/Oliv3rmoon/Nightshade) | Switch emulation on PS5 homebrew |
+| [**Dulcamara**](https://github.com/Oliv3rmoon/Dulcamara) | RPG Maker 2000/2003 games and Ren'Py visual novels *(this repo)* |
+| [**Mandrake**](https://github.com/Oliv3rmoon/Mandrake) | PlayStation 1 emulation with dual cores |
+| [**Physalis**](https://github.com/Oliv3rmoon/Physalis) | Live TV, movies, and Plex on PS5 |
+| [**Datura**](https://github.com/Oliv3rmoon/Datura) | PC game streaming to PS5 |
+| [**Solanum**](https://github.com/Oliv3rmoon/Solanum) | Open-source PS5 homebrew store ([web catalog](https://oliv3rmoon.github.io/Solanum-Catalog/)) |
+| [**Belladonna**](https://github.com/Oliv3rmoon/Belladonna) | Nightshade's PS5 Vulkan (RADV) driver |
 
-## Built on
+## Credits & license
 
-[EasyRPG Player](https://easyrpg.org) for RPG Maker 2000 and 2003 games and [Ren'Py](https://www.renpy.org) for visual novels, on the frontend of [Mandrake](https://github.com/Oliv3rmoon/Mandrake).
+Built on **[EasyRPG Player](https://easyrpg.org)** & **liblcf**, **[Ren'Py](https://www.renpy.org)** (8.5 & 7.8), **[Mandrake](https://github.com/Oliv3rmoon/Mandrake)** (**darkxex**'s SwanStationPS5, **SynoPiia**'s PSXS5, **BlackBearReloaded**'s ps5-native-app-boilerplate), **[ps5-payload-dev](https://github.com/ps5-payload-dev)**, and **Mihawk-99**'s RADV port. Huge thanks to **Nahida** and the testers in [nightly](https://discord.gg/pSqgRU3YP9) who test builds, catch edge cases, and send logs.
 
-## Thanks
+Free software under **[GPL-3.0-or-later](LICENSE)**. Every bundled component keeps its own license in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and inside the app's `licenses/` folder. No games, RTPs, or system files are included or downloaded; play games you have the right to use. Unofficial project — not affiliated with EasyRPG, Ren'Py, Enterbrain/Kadokawa, or Sony.
 
-Thanks to the testers in the nightly Discord who try every test build and send logs.
-
-- **[EasyRPG](https://easyrpg.org)**, the team behind EasyRPG Player and liblcf, who made RPG Maker 2000
-  and 2003 games playable everywhere as free software. Dulcamara only puts their work on the PS5;
-  how well a game runs is theirs to credit. Check a game on EasyRPG Player on a PC first; if it fails
-  there too, the [EasyRPG Player issues](https://github.com/EasyRPG/Player/issues) are the place.
-- **[Ren'Py](https://www.renpy.org)**, by Tom Rothamel and the Ren'Py contributors, the visual novel
-  engine built into the app as two cores (Ren'Py 8, and Ren'Py 7 for older games).
-- **[Mandrake (formerly Nightshade Station)](https://github.com/Oliv3rmoon/Mandrake)** and the work it is made of:
-  **[SwanStationPS5](https://github.com/darkxex/SwanStationPS5)** by **darkxex**, whose frontend this is,
-  **[PSXS5](https://github.com/SynoPiia/PSXS5)** by **SynoPiia**, and **BlackBearReloaded**'s
-  ps5-native-app-boilerplate.
-- **[ps5-payload-dev](https://github.com/ps5-payload-dev)** for the SDK and PacBrew, **Mihawk-99** for the
-  RADV port, and everyone in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-## License
-
-Dulcamara is free software under the GNU General Public License, version 3 or later
-([LICENSE](LICENSE)). EasyRPG Player is GPL-3.0-or-later and liblcf MIT; Ren'Py is MIT, with
-LGPL-derived parts; every component keeps its own licence, listed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the app folder carries their texts in `licenses/`.
-
-## Disclaimer
-
-Dulcamara is an unofficial project: neither the EasyRPG team, the Ren'Py project, Enterbrain / Kadokawa nor
-Sony endorse it. RPG Maker is a trademark of its owners. No game, RTP, key or system file is included or
-downloaded: use games you have the right to play.
-
-## Help it grow
-
-Like Dulcamara? **[Star it](https://github.com/Oliv3rmoon/Dulcamara)** and **[join the Discord](https://discord.gg/pSqgRU3YP9)**.
+<p align="center">
+  <img src="docs/images/dulcamara-eclipse-logo.png" width="76" alt="Dulcamara Eclipse"><br>
+  <sub>If Dulcamara works for you, a ⭐ helps other PS5 owners find it.</sub>
+</p>
