@@ -9,7 +9,6 @@
 <p align="center">
   <a href="https://github.com/Oliv3rmoon/Dulcamara/releases/tag/v2.1.5"><img src="https://img.shields.io/github/v/release/Oliv3rmoon/Dulcamara?include_prereleases&color=e61e3a&label=eclipse" alt="Latest release"></a>
   <a href="https://discord.gg/pSqgRU3YP9"><img src="https://img.shields.io/badge/discord-nightly-5865F2?logo=discord&logoColor=white" alt="Discord: nightly"></a>
-  <a href="https://github.com/Oliv3rmoon/Dulcamara/stargazers"><img src="https://img.shields.io/github/stars/Oliv3rmoon/Dulcamara?style=social" alt="GitHub stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-222222" alt="License: GPL-3.0-or-later"></a>
   <a href="https://buymeacoffee.com/oliv3rmoon"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-e5484d?logo=buymeacoffee&logoColor=white" alt="Buy me a coffee"></a>
 </p>
