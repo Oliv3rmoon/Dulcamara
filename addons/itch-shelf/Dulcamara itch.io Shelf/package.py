@@ -15,7 +15,7 @@ def build(destination):
     try:
         with ZipFile(path, "w") as archive:
             for name in FILES:
-                entry = ZipInfo("Dulcamara itch.io Shelf/" + name, date_time=(2026, 11, 21, 0, 0, 0))
+                entry = ZipInfo("Dulcamara itch.io Shelf 1.1/" + name, date_time=(2026, 11, 21, 0, 0, 0))
                 entry.create_system = 3
                 entry.external_attr = 0o100644 << 16
                 archive.writestr(entry, (source / name).read_bytes(), compress_type=ZIP_DEFLATED)

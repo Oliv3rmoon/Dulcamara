@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-define config.name = "Dulcamara itch.io Shelf"
-define config.version = "1.0"
+define config.name = "Dulcamara itch.io Shelf 1.1"
+define config.version = "1.1"
 define config.screen_width = 1280
 define config.screen_height = 720
 define config.save_directory = "dulcamara-itch-shelf"

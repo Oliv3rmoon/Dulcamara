@@ -20,8 +20,8 @@ from xml.etree import ElementTree
 
 FEED = "https://itch.io/games/free/made-with-renpy/platform-linux.xml"
 MIB = 1024 * 1024
-MAX_DOWNLOAD = 2 * 1024 * MIB
-MAX_GAME = 6 * 1024 * MIB
+MAX_DOWNLOAD = 8 * 1024 * MIB
+MAX_GAME = 12 * 1024 * MIB
 RESERVE = 32 * MIB
 CHUNK = 256 * 1024
 SLUG = r"[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?"
@@ -66,7 +66,7 @@ class Session:
     def open(self, url, data=None, referer=None):
         if not self.allowed(url):
             raise ShelfError("This address is outside the store.")
-        headers = {"User-Agent": "Dulcamara-Itch-Shelf/1.0"}
+        headers = {"User-Agent": "Dulcamara-Itch-Shelf/1.1"}
         if referer:
             headers.update({"Referer": referer, "X-Requested-With": "XMLHttpRequest"})
         return self.opener.open(Request(url, data=data, headers=headers), timeout=12)
@@ -99,6 +99,8 @@ class StorePage(HTMLParser):
         self.csrf = ""
         self.free_button = False
         self.upload = None
+        self.upload_name = ""
+        self.upload_depth = 0
         self.files = []
         self.feed(body.decode("utf-8"))
         self.close()
@@ -110,16 +112,31 @@ class StorePage(HTMLParser):
             self.csrf = a.get("value", "")
         if tag == "a" and "direct_download_btn" in classes:
             self.free_button = True
-        if tag == "div" and "upload" in classes:
-            self.upload = None
+        if tag == "div":
+            if "upload" in classes:
+                self.upload_depth = 1
+                self.upload = None
+                self.upload_name = ""
+            elif self.upload_depth:
+                self.upload_depth += 1
+        if not self.upload_depth:
+            return
         if tag == "a" and "download_btn" in classes:
             value = a.get("data-upload_id", "")
             self.upload = value if re.fullmatch(r"[0-9]{1,16}", value) else None
-        if tag == "strong" and "name" in classes and self.upload:
-            name = a.get("title") or ""
-            if name.lower().endswith(".zip") and len(name) <= 180:
-                self.files.append((name, self.upload))
+        if tag == "strong" and "name" in classes:
+            self.upload_name = a.get("title") or ""
+        if not self.upload or not 0 < len(self.upload_name) <= 180:
+            return
+        desktop = tag == "span" and ("icon-tux" in classes or "icon-windows8" in classes)
+        name = self.upload_name.lower()
+        if name.endswith(".zip") or (desktop and not name.endswith((".exe", ".msi", ".7z", ".rar", ".apk", ".tar.gz", ".dmg"))):
+            self.files.append((self.upload_name, self.upload))
             self.upload = None
+
+    def handle_endtag(self, tag):
+        if tag == "div" and self.upload_depth:
+            self.upload_depth -= 1
 
 
 class Project:
@@ -239,24 +256,41 @@ def install(project, upload, shelf_dir):
     """Cooperative transfer. Closing the iterator cancels and removes all staged data."""
     shelf_dir = Path(shelf_dir).resolve()
     author, slug = project_parts(project.page)
-    dest = shelf_dir.parent / (slug + " (" + author + ")")
-    if os.path.lexists(dest):
-        raise ShelfError("This game already has a library folder.")
+    if not re.fullmatch(r"[0-9]{1,16}", upload):
+        raise ShelfError("Choose a file from this project first.")
+    base = shelf_dir.parent / (slug + " (" + author + ")")
+    alternate = base.with_name(base.name + " [" + upload + "]")
+    receipt = ".itch-upload-" + upload
     with staging(shelf_dir) as stage:
+        dest = base
+        if os.path.lexists(alternate):
+            raise ShelfError("This download already has a library folder.")
+        if os.path.lexists(base):
+            if base.is_symlink() or not base.is_dir():
+                raise ShelfError("This game's library path is already in use.")
+            if (base / receipt).exists() or len(project.files) <= 1:
+                raise ShelfError("This game already has a library folder.")
+            dest = alternate
         archive_path = stage / "download.zip"
         with project.archive(upload) as response, archive_path.open("xb") as sink:
             length = int(response.headers.get("Content-Length") or 0)
             if length < 0 or length > MAX_DOWNLOAD:
-                raise ShelfError("Choose a ZIP smaller than 2 GiB.")
+                raise ShelfError("Choose a ZIP of 8 GiB or less.")
             free_space(stage, length)
-            done = 0
+            signature = response.read(4)
+            if signature != b"PK\x03\x04":
+                raise ShelfError("This download is not a game ZIP. Choose a PC or Linux ZIP.")
+            sink.write(signature)
+            done = len(signature)
             while True:
                 chunk = response.read(CHUNK)
                 if not chunk:
                     break
                 done += len(chunk)
                 if done > MAX_DOWNLOAD:
-                    raise ShelfError("The download exceeds 2 GiB.")
+                    raise ShelfError("The download exceeds 8 GiB.")
+                if not length and done // (16 * MIB) != (done - len(chunk)) // (16 * MIB):
+                    free_space(stage, 16 * MIB)
                 sink.write(chunk)
                 yield "Downloading", done, length
             if length and length != done:
@@ -285,6 +319,7 @@ def install(project, upload, shelf_dir):
                             yield "Installing", done, size
         if os.path.lexists(dest):
             raise ShelfError("This game already has a library folder.")
+        (game / receipt).touch(exist_ok=False)
         game.rename(dest)
     return dest.name
 

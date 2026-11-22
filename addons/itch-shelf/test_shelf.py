@@ -19,6 +19,7 @@ class File(io.BytesIO):
 
 class TestProject:
     page = "https://creator.itch.io/a-game"
+    files = [("PC.zip", "42")]
 
     def __init__(self, entries):
         with io.BytesIO() as stream:
@@ -92,6 +93,33 @@ class InstallTests(unittest.TestCase):
         page = shelf.StorePage(html)
         self.assertEqual(page.files, [("pc.zip", "7")])
         self.assertFalse(page.free_button)
+
+    def test_platform_label_with_no_zip_extension_stays_in_its_own_row(self):
+        html = b'''<div class="upload"><a class="download_btn" data-upload_id="7"></a>
+            <div><strong class="name" title="CoR 0.113 PC"></strong><span class="icon icon-tux"></span>
+            <span class="icon icon-windows8"></span></div></div>
+            <div class="upload"><a class="download_btn" data-upload_id="8"></a>
+            <strong class="name" title="Android downloader"></strong></div><span class="icon icon-tux"></span>'''
+        self.assertEqual(shelf.StorePage(html).files, [("CoR 0.113 PC", "7")])
+
+    def test_chapters_install_side_by_side_and_retries_preserve_both(self):
+        self.project.files = [("0.14", "42"), ("Epilogue", "43")]
+        list(self.install())
+        first = self.dest / "game/script.rpy"
+        first.write_text("saved original")
+        list(shelf.install(self.project, "43", self.shelf))
+        second = self.dest.with_name(self.dest.name + " [43]")
+        self.assertTrue((second / "game/script.rpy").is_file())
+        for upload in ("42", "43"):
+            with self.assertRaises(shelf.ShelfError):
+                list(shelf.install(self.project, upload, self.shelf))
+        self.assertEqual(first.read_text(), "saved original")
+
+    def test_rejects_non_zip_payload_behind_desktop_label(self):
+        self.project.data = b"MZ" + b"0" * 100
+        with self.assertRaisesRegex(shelf.ShelfError, "not a game ZIP"):
+            list(self.install())
+        self.assertFalse(self.dest.exists())
 
     def test_only_creator_pages_and_store_download_hosts(self):
         self.assertEqual(shelf.project_parts(self.project.page), ("creator", "a-game"))

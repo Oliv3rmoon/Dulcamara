@@ -565,7 +565,11 @@ class GameLinksTest(unittest.TestCase):
         subprocess.run([sys.executable, str(ROOT / "addons/itch-shelf/Dulcamara itch.io Shelf/package.py"),
                         str(expected)], check=True)
         self.assertEqual(asset.read_bytes(), expected.read_bytes())
-        folder = self.games / "Dulcamara itch.io Shelf"
+        legacy = self.games / "Dulcamara itch.io Shelf"
+        legacy.mkdir()
+        sentinel = legacy / "keep.txt"
+        sentinel.write_text("user copy")
+        folder = self.games / "Dulcamara itch.io Shelf 1.1"
         damaged = self.work / "damaged.zip"
         damaged.write_bytes(b"interrupted")
         for source, flags in [(damaged, []), (asset, ["busy"])]:
@@ -579,7 +583,8 @@ class GameLinksTest(unittest.TestCase):
         result = self.run_check("shelf", self.games, asset)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((folder / "marker").read_text(), "keep")
-        self.assertEqual(list(self.games.iterdir()), [folder])
+        self.assertEqual(set(self.games.iterdir()), {folder, legacy})
+        self.assertEqual(sentinel.read_text(), "user copy")
 
     def test_rpg_maker_game(self):
         r = self.add(self.base + "/rpgmaker/pocket-quest.zip")

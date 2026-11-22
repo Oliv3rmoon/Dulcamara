@@ -224,10 +224,11 @@ bool link_add(const char *games_in, const char *url, const LinkObserver *observe
 
 bool links_install_shelf(const char *games_in, const char *asset, LinkResult *r)
 {
+    static const char shelf_folder[] = "Dulcamara itch.io Shelf 1.1";
     memset(r, 0, sizeof(*r));
     char games[MT_PATH_MAX], staging[MT_PATH_MAX];
     if (!mt_canonical(games_in, games) ||
-        snprintf(r->folder, sizeof(r->folder), "%s/Dulcamara itch.io Shelf", games) >= (int)sizeof(r->folder))
+        snprintf(r->folder, sizeof(r->folder), "%s/%s", games, shelf_folder) >= (int)sizeof(r->folder))
         return link_fail(r, LINK_IO, "The games folder can't be used.");
     if (!maintenance_acquire(MAINT_LINKS))
         return link_fail(r, LINK_BUSY, "The library is busy. Try again after the current operation finishes.");
@@ -235,11 +236,11 @@ bool links_install_shelf(const char *games_in, const char *asset, LinkResult *r)
     struct stat st;
     bool ok;
     if (!lstat(r->folder, &st))
-        ok = link_fail(r, LINK_IO, "Dulcamara itch.io Shelf already exists in your games folder.");
+        ok = link_fail(r, LINK_IO, "Dulcamara itch.io Shelf 1.1 already exists in your games folder.");
     else if (errno != ENOENT || !staging_dir(games, staging, sizeof(staging)))
         ok = link_fail(r, LINK_IO, "Couldn't create the shelf in the games folder.");
     else {
-        ok = link_unpack(games, staging, asset, "bundled-shelf", "Dulcamara itch.io Shelf", NULL, r);
+        ok = link_unpack(games, staging, asset, "bundled-shelf", shelf_folder, NULL, r);
         rmdir(staging);
     }
     maintenance_release(MAINT_LINKS, false);
