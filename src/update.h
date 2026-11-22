@@ -19,10 +19,40 @@ enum UpdateState
     UPDATE_FAILED,    /* update_message() says why */
 };
 
-void update_check(void);   /* in the background */
-void update_install(void); /* in the background; needs UPDATE_AVAILABLE */
+typedef enum
+{
+    UPDATE_DOWNLOADING,
+    UPDATE_WAITING,
+    UPDATE_VERIFYING,
+    UPDATE_APPLYING,
+    UPDATE_ROLLING_BACK,
+    UPDATE_RECOVERING
+} UpdatePhase;
+typedef struct
+{
+    int state;
+    UpdatePhase phase;
+    char version[32], message[256];
+    uint64_t size, done, total;
+    bool test_build, can_retry;
+} UpdateStatus;
+/* Main initializes once before worker startup; NULL discovers native installation. */
+bool update_init(const char *installed);
+/* Narrow save-worker callback; caller holds MAINT_RECOVERY. */
+bool update_recover_startup(void *unused, bool *restart, char *error, size_t size);
+void update_poll(UpdateStatus *out);
+void update_check(void); /* in the background */
+/* In the background; needs UPDATE_AVAILABLE, or UPDATE_FAILED after an install that failed
+ * (update_can_retry()), which it tries again. */
+void update_install(void);
 int update_state(void);
 const char *update_version(void);
 const char *update_message(void);
+bool update_test_build(void); /* what is offered is a test build (a pre-release) */
+uint64_t update_size(void);   /* the download's size in bytes as GitHub lists it, or 0 */
+bool update_can_retry(
+    void); /* UPDATE_FAILED, and it was the install that failed: update_install() tries again */
+/* While UPDATE_INSTALLING: the bytes downloaded so far and how many there are (0 until known). */
+void update_progress(uint64_t *done, uint64_t *total);
 
 #endif

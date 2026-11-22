@@ -1,0 +1,13 @@
+--- a/Objects/obmalloc.c
++++ b/Objects/obmalloc.c
+@@ -22,7 +22,9 @@
+ 
+ #ifdef HAVE_MMAP
+  #include <sys/mman.h>
+- #ifdef MAP_ANONYMOUS
++ /* Dulcamara: on the PS5 an arena comes from malloc, the app's heap of direct memory: mmap takes the console's small
++  * system memory, where threads' stacks are made too, and a long session left no room for one */
++ #if defined(MAP_ANONYMOUS) && !defined(__PROSPERO__)
+   #define ARENAS_USE_MMAP
+  #endif
+ #endif

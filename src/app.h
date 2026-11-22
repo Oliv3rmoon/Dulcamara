@@ -14,14 +14,25 @@ enum Screen
     SCREEN_GAME,
     SCREEN_MENU,     /* the in-game menu (the touchpad) */
     SCREEN_SETTINGS,
+    SCREEN_KEYS,     /* Keys for this game: a Ren'Py game's buttons, from its menu or Settings > Ren'Py */
+    SCREEN_SOUNDS,   /* Sounds for this game: a Ren'Py game's sounds, on or off, from the same two places */
+    SCREEN_DETAILS,
+    SCREEN_PROFILE,
+    SCREEN_BACKUPS,
     SCREEN_COUNT
 };
 
 typedef struct
 {
     Paths paths;
-    Settings settings;
+    Settings settings;  /* global defaults, never replaced by a game profile */
+    Settings effective; /* gameplay only */
     Library library;
+    LibraryView library_view; /* indexes into library; UI order never reorders games */
+    LibraryFilter library_filter;
+    UserMetadata metadata; /* main-thread mutations only; retain absent IDs */
+    LibraryScanner *scanner;
+    LibraryScanStatus scan_status;
     int game;                 /* the running game's library index, -1 on the shelf */
     bool renpy_ran;           /* a Ren'Py game (8 or 7) has run since the app started: the next needs a restart */
     enum Screen screen;
@@ -33,12 +44,14 @@ typedef struct
     float fps;                /* the game's frames a second */
     bool fast_forward;        /* running faster now */
     bool fast_latched;        /* turned on from the menu: stays on until turned off there */
+    int8_t keys[MAP_BUTTONS]; /* the running Ren'Py game's keys: each RetroPad button's KEY_ACTIONS index (config.h) */
     PadState pads[NP_MAX_PADS];
     bool quit_requested;
 } App;
 
 extern App app;
 
+void app_clear_toasts(void);
 void app_toast(const char *message);                 /* a notice for 2.5 s */
 void app_toast_for(const char *message, float seconds);
 /* A message in a box in the middle of the screen, until Cross is pressed. */
@@ -48,12 +61,34 @@ void app_draw_game(uint8_t dim);
 /* The controller that moves through the app: player 1's, else the first one connected. */
 int app_nav_pad(void);
 void app_rescan(void);
+/* Rebuild after main-thread filter/metadata changes; selection ID is retained. */
+bool app_rebuild_library_view(void);
+/* Sandboxed (app.sandboxed: /data wasn't unlocked as the app started, so no game can be listed): starts the app again,
+ * which asks for the unlock again. Does not return on the PS5. */
+void app_unlock_again(void);
 void app_start_game(int index);
 void app_stop_game(void);
+/* Explicit Task5 save-error actions; errors hold the exact native checkpoint. */
+bool app_save_retry(void);
+bool app_save_lifecycle_busy(void);
+bool app_save_failure_is_poststop(void);
+bool app_save_skip_protection(void);
 void app_save_settings(void);
 void app_open_settings(enum Screen back_to);
 /* The settings changed what the platform layer or the sounds use: applied now. */
 void app_apply_settings(void);
+const Settings *app_game_settings(void);
+/* The running Ren'Py game's keys (app.keys) to its core, which reads them at its next frame. */
+void app_apply_keys(void);
+/* The keys of the library's game index (each RetroPad button's KEY_ACTIONS index, config.h) from its keys file, and
+ * into it. */
+void app_load_keys(int index, int8_t keys[MAP_BUTTONS]);
+bool app_save_keys(int index, const int8_t keys[MAP_BUTTONS]);
+/* The sounds of the library's game index from its two files (config.h): false, and none, when the game has no list
+ * of them yet; and the ones off into its file. */
+struct SoundList;
+bool app_load_sounds(int index, struct SoundList *sounds);
+bool app_save_sounds(int index, const struct SoundList *sounds);
 
 /* The bottom hint bar: pairs of (PadGlyph, label), then an optional right-hand text. */
 void app_draw_hints(const int *glyphs, const char *const *labels, int count, const char *right);
@@ -67,5 +102,21 @@ void menu_open(void);
 void menu_screen(uint32_t pressed);
 void settings_screen(uint32_t pressed);
 void settings_opened(void);
+/* Keys for this game, for the library's Ren'Py game index (the running one's from its menu); Circle goes back to
+ * back_to (SCREEN_MENU or SCREEN_SETTINGS). */
+void keys_open(int index, enum Screen back_to);
+void keys_screen(uint32_t pressed);
+/* Sounds for this game, likewise. */
+void sounds_open(int index, enum Screen back_to);
+void sounds_screen(uint32_t pressed);
+/* The on-screen keyboard (ui/keyboard.c), each frame of the game screen, while the game wants text typed (a Ren'Py
+ * game's name entry): pad is the controller, pressed its presses with the menus' repeats, options_tapped a short
+ * press of Options let go (Done; held, Options is still Dulcamara's menu). True while the keyboard has the
+ * controller: the game gets none of it meanwhile. Otherwise it takes out of game_pad what is still held from the
+ * keyboard (a button, the stick, a finger on the touchpad), which the game gets once that has been let go. */
+bool keyboard_frame(const PadState *pad, uint32_t pressed, bool options_tapped, PadState *game_pad);
+/* Over the game: the keyboard, at the other end of the screen from the game's input; or, put away with Circle while
+ * the game still wants text, a reminder that R3 brings it back. */
+void keyboard_draw(void);
 
 #endif

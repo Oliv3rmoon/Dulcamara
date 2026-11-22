@@ -5,8 +5,9 @@
 """Builds tests/library_check.c with src/library.c, src/rpgmaker.c and miniz under the address and
 undefined-behaviour sanitizers, warnings as errors, and runs it: a games folder of made-up games (folders, names in
 any case, a folder of games, .zip and .easyrpg archives, titles in windows-1252, Shift-JIS and windows-1251, title
-pictures named by the database, XYZ pictures, things that are not games), then EasyRPG's TestGame when
-tools/fetch-testgame.sh can fetch it. CC names another compiler (default: clang)."""
+pictures named by the database, XYZ pictures, things that are not games), Ren'Py's games, the library's sections
+(RPG Maker's games, then Ren'Py's, each in its own order), then EasyRPG's TestGame when tools/fetch-testgame.sh can
+fetch it. CC names another compiler (default: clang)."""
 
 import os
 import platform
@@ -20,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FLAGS = ["-std=c11", "-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
          "-fno-omit-frame-pointer", "-Wall", "-Wextra", "-Werror", "-UNDEBUG", "-D_DEFAULT_SOURCE"]
 LIBRETRO = "third_party/easyrpg-player/builds/libretro/libretro-common/include"
-SOURCES = ["tests/library_check.c", "src/library.c", "src/rpgmaker.c", "src/util.c"]
+SOURCES = ["tests/library_check.c", "src/library.c", "src/rpgmaker.c", "src/util.c", "src/storage.c"]
 
 
 class LibraryTest(unittest.TestCase):
@@ -55,9 +56,31 @@ class LibraryTest(unittest.TestCase):
 
     def test_the_app_is_dulcamara(self):
         header = (ROOT / "src/nightshade.h").read_text(encoding="utf-8")
-        self.assertIn('#define NP_TITLE "Dulcamara"', header)
+        self.assertIn('#define NP_NAME "Dulcamara"', header)
         self.assertIn('#define NP_TITLE_ID "PPSA99010"', header)
         self.assertIn('#define NP_DATA "/data/dulcamara"', header)
+
+    def test_a_sandboxed_start_says_why_there_are_no_games(self):
+        # The tester's "it sometimes shows 0 games when there are games": her log had
+        # "storage: sandboxed (no unlock service answered ...)" and then "library: 0 game(s)" at every Look again.
+        # A sandboxed app can't list folders, and /data is unlocked only first thing in main(), so Look again could
+        # never find them. Now the library says why, and Square starts the app again, which asks again.
+        shelf = (ROOT / "src/ui/shelf.c").read_text(encoding="utf-8")
+        self.assertIn("if (app.sandboxed)\n    {\n        draw_sandboxed();", shelf)
+        self.assertIn("Dulcamara can't see your games", shelf)
+        # Square's library action is shared by the shelf and Story mode (shelf_square, called by both views); Story's
+        # use of it is checked by behaviour: test_ui_preview's Story rescan must find a game added after the first scan
+        self.assertIn("if (app.sandboxed && app.library.count == 0)", shelf[shelf.index("void shelf_square(void)"):])
+        self.assertIn("if (pressed & BIT(BTN_SQUARE))\n        shelf_square();", shelf)
+        self.assertIn("app_unlock_again();", shelf)
+        self.assertIn('"Start again"', shelf)
+        main = (ROOT / "src/main.c").read_text(encoding="utf-8")
+        unlock = main[main.index("void app_unlock_again(void)"):]
+        unlock = unlock[:unlock.index("\n}\n")]
+        self.assertIn("start_again();", unlock)  # the PS5 starts again: the unlock is asked before any thread
+        self.assertIn("sandboxed, so its folders can't be listed", main)
+        # the unlock itself stays where it was: first thing in main(), before SDL starts a thread
+        self.assertLess(main.index("app.sandboxed = !plat_prepare_storage("), main.index("if (!plat_init())"))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Dulcamara - Draw the home-screen pictures: the icon, the background and the launch picture.
+# Dulcamara - Draw the home-screen pictures: the background and the launch picture.
 # SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Draw Dulcamara's home-screen pictures in Nightshade's style.
@@ -12,9 +12,8 @@ message window in place of Mandrake's disc: the same nightshade flower (five red
 black berries and dark leaves, on near black with a red glow and faint stars, in Nightshade's palette (its
 "nightly" theme). The name is set in Inter (assets/fonts, SIL Open Font License).
 
-Writes, in sce_sys/:
-  icon0.png                     512x512: an RPG's menu window, the cursor at its first entry, with the
-                                nightshade blooming over it
+Writes, in sce_sys/ (icon0.png is no longer drawn here: it is Dulcamara's logo, resized from
+assets/branding/dulcamara-logo-1024.png; --preview still draws the old one):
   background-source.png         3840x2160 (pic0, on the home screen): the window of a title screen at the
                                 right with the name in it, the nightshade climbing to flower over its corner
   launch-background-source.png  3840x2160 (pic1, while the app starts): the flower over a window holding
@@ -474,7 +473,7 @@ def main():
         to_image(background(960, 540)).save(out / 'background.png')
         to_image(launch(960, 540)).save(out / 'launch.png')
         return
-    pictures = {'icon0.png': to_image(icon())}
+    pictures = {}  # icon0.png is the logo (assets/branding/dulcamara-logo-1024.png), not drawn here
     for source, name, draw in (('background-source.png', 'pic0.dds', background),
                                ('launch-background-source.png', 'pic1.dds', launch)):
         picture = to_image(draw(), 'RGB')

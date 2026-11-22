@@ -27,7 +27,6 @@ app_source_dir=${APP_SOURCE_DIR:-src}
 app_param=${APP_PARAM:-sce_sys/param.json}
 app_sce_sys=${APP_SCE_SYS:-sce_sys}
 app_assets=${APP_ASSETS-assets}
-app_lapy_helper=${APP_LAPY_HELPER:-0}
 for path in "$app_source_dir" "$app_param" "$app_sce_sys"; do
     [[ $path =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$ ]] || {
         echo "invalid application input path: $path" >&2
@@ -45,10 +44,6 @@ if [[ -n $app_assets ]]; then
         exit 2
     }
 fi
-[[ $app_lapy_helper == 0 || $app_lapy_helper == 1 ]] || {
-    echo "APP_LAPY_HELPER must be 0 or 1" >&2
-    exit 2
-}
 
 param="$root/$app_param"
 title_id=$(python3 - "$param" <<'PY'
@@ -102,6 +97,10 @@ companion_sdk=0x08050001
 fself_magic=0x1D3D154F
 
 bash "$root/tools/validate-assets.sh" "$root/$app_sce_sys"
+# Dulcamara's package title and contentVersion must be the ones src/nightshade.h derives (never a stale copy).
+if [[ $app_source_dir == src && $app_param == sce_sys/param.json ]]; then
+    python3 "$root/tools/release_metadata.py" --check "$param"
+fi
 
 sdk_root="$root/.deps/native/ps5-payload-sdk"
 
@@ -119,7 +118,7 @@ target_compiler=$(command -v "${PS5_CLANG:-clang-18}")
 # its own libraries.
 mapfile -d '' -t source_paths < <(
     find "$root/$app_source_dir" -type f \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' \) \
-        -not -path "$root/$app_source_dir/core/renpy/*" -print0 | sort -z
+        -not -path "$root/$app_source_dir/core/renpy/*" -print0 | LC_ALL=C sort -z
 )
 sources=()
 for source in "${source_paths[@]}"; do
@@ -129,16 +128,29 @@ done
 
 definitions=()
 includes=()
+python3 "$root/tools/gen-watermark.py" "$build/generated/watermark_config.h"
 archives=()
 pacbrew_packages=()
 pacbrew_includes=()
 pacbrew_archives=()
 [[ -z ${APP_DEFINITIONS:-} ]] || read -r -a definitions <<< "$APP_DEFINITIONS"
 [[ -z ${APP_INCLUDE_PATHS:-} ]] || read -r -a includes <<< "$APP_INCLUDE_PATHS"
+includes+=("build/generated")
 [[ -z ${APP_STATIC_ARCHIVES:-} ]] || read -r -a archives <<< "$APP_STATIC_ARCHIVES"
 [[ -z ${PACBREW_PACKAGES:-} ]] || read -r -a pacbrew_packages <<< "$PACBREW_PACKAGES"
 [[ -z ${PACBREW_INCLUDE_PATHS:-} ]] || read -r -a pacbrew_includes <<< "$PACBREW_INCLUDE_PATHS"
 [[ -z ${PACBREW_STATIC_ARCHIVES:-} ]] || read -r -a pacbrew_archives <<< "$PACBREW_STATIC_ARCHIVES"
+
+# nightly's insider service (src/insider.h): make INSIDER_URL=https://... gives the compiler its address as a C string,
+# which APP_DEFINITIONS' plain names can't be. Empty or unset: no insider builds.
+insider_definitions=()
+if [[ -n ${INSIDER_URL:-} ]]; then
+    [[ $INSIDER_URL =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*$ ]] || {
+        echo "invalid INSIDER_URL: an https:// address without a / at its end, such as https://nightly-insider.<account>.workers.dev" >&2
+        exit 2
+    }
+    insider_definitions=("-DINSIDER_URL=\"$INSIDER_URL\"")
+fi
 
 # Link-time wrappers: each symbol S resolves to the app's __wrap_S, and
 # __real_S to the original (for example fcntl, which libcurl needs wrapped).
@@ -197,6 +209,7 @@ for source in "${sources[@]}"; do
         }
         args+=("-D$definition")
     done
+    args+=(${insider_definitions[@]+"${insider_definitions[@]}"})
     for include in "${includes[@]}"; do
         [[ $include =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$ && -d $root/$include ]] || {
             echo "invalid include path: $include" >&2; exit 2;
@@ -233,15 +246,20 @@ done
 if (( ${#pacbrew_libs[@]} > 0 )); then
     link_inputs+=(--start-group "${pacbrew_libs[@]}" --end-group)
 fi
+# The SDK's stubs in byte order, never the shell's own glob: its order follows the builder's locale, and the first
+# stub that defines a function is the module the app imports it from (tools/sdk-stubs.sh).
+source "$root/tools/sdk-stubs.sh"
+mapfile -t sdk_stubs < <(sdk_stub_libraries "$sdk_root/target/lib")
+(( ${#sdk_stubs[@]} > 0 )) || { echo "no stub libraries in $sdk_root/target/lib" >&2; exit 1; }
 ninja_inputs=("$native/ps5-pie.ld" "$native/app-symbols.map" "$sdk_root/bin/prospero-lld")
-for input in "${link_inputs[@]}" "$sdk_root"/target/lib/*.so; do
+for input in "${link_inputs[@]}" "${sdk_stubs[@]}"; do
     [[ $input == -* ]] || ninja_inputs+=("$input")
 done
 if [[ -n ${pacbrew_root:-} ]]; then
     # pkg-config can return -l flags: track the libraries those flags search.
     while IFS= read -r -d '' input; do
         ninja_inputs+=("$input")
-    done < <(find "$pacbrew_root" -type f \( -name '*.a' -o -name '*.so' \) -print0 | sort -z)
+    done < <(find "$pacbrew_root" -type f \( -name '*.a' -o -name '*.so' \) -print0 | LC_ALL=C sort -z)
 fi
 # SwanStationPS5 v2: APP_VULKAN=1 links RADV, Mihawk-99's PS5 port of Mesa's AMD Vulkan
 # driver (a title can't load a driver library at run time), the way PS5
@@ -315,12 +333,18 @@ fi
 ninja_edge LINK "$build/llvm-pie.elf" "$sdk_root/bin/prospero-lld" "${linker_options[@]}" --eh-frame-hdr \
     "${wrap_options[@]}" --version-script "$native/app-symbols.map" \
     -e _start -o "$build/llvm-pie.elf" -L "$sdk_root/target/lib" --as-needed "${link_inputs[@]}" \
-    "$sdk_root"/target/lib/*.so
-ninja_inputs=("$build/llvm-pie.elf" "$tool" "$sdk_root"/target/lib/*.so)
-ninja_edge CONVERT "$build/eboot.elf" "$tool" link --in "$build/llvm-pie.elf" --out "$build/eboot.elf" \
+    "${sdk_stubs[@]}"
+ninja_inputs=("$build/llvm-pie.elf" "$root/tools/release-diagnostic-paths.py")
+ninja_edge PATHS "$build/release-pie.elf" python3 "$root/tools/release-diagnostic-paths.py" "$build/llvm-pie.elf" "$build/release-pie.elf"
+ninja_inputs=("$build/release-pie.elf" "$tool" "${sdk_stubs[@]}")
+ninja_edge CONVERT "$build/eboot.elf" "$tool" link --in "$build/release-pie.elf" --out "$build/eboot.elf" \
     --stub-dir "$sdk_root/target/lib" "${stub_options[@]}" --module-sdk "$module_sdk" \
     --companion-sdk "$companion_sdk" --file-name eboot.elf
 ninja_run
+# No console-proven build imports anything weakly (tools/check-weak-imports.sh).
+weak_nm=${LLVM_NM:-$(command -v llvm-nm-18 || command -v llvm-nm || true)}
+[[ -n $weak_nm ]] || { echo "llvm-nm is needed to check the app's imports (set LLVM_NM)" >&2; exit 2; }
+bash "$root/tools/check-weak-imports.sh" "$weak_nm" "$build/llvm-pie.elf"
 
 app="$dist/$title_id"
 rm -rf -- "$app"
@@ -350,23 +374,6 @@ for source in "${root_files[@]}"; do
     }
     cp "$root/$source" "$app/${source##*/}"
 done
-
-if [[ $app_lapy_helper == 1 ]]; then
-    helper="$build/lapy-helper/$title_id"
-    python3 "$root/tools/build-lapy-helper.py" "$title_id" "$helper"
-    cp "$helper/lapy.elf" "$app/lapy.elf"
-    cp "$helper/lapy-manifest.json" "$app/lapy-manifest.json"
-    mkdir -p "$app/licenses"
-    cp "$helper/Lapy-MIT.txt" "$app/licenses/Lapy-MIT.txt"
-    python3 - "$app" <<'PY'
-import hashlib, json, pathlib, sys
-app = pathlib.Path(sys.argv[1])
-manifest = json.loads((app / "lapy-manifest.json").read_text())
-actual = hashlib.sha256((app / "lapy.elf").read_bytes()).hexdigest()
-assert manifest["elf_sha256"] == actual
-assert manifest["target_title"] == app.name and manifest["mode"] == "elf-helper"
-PY
-fi
 
 # Licences of Dulcamara and what it's built from (GPL: the texts travel with it).
 mkdir -p "$app/licenses"
@@ -416,7 +423,11 @@ PY
     "$tool" self --inspect --file "$app/sce_module/$name"
 done
 "$tool" self --inspect --file "$app/eboot.bin"
+# Every build, not only the CI's: an eboot.bin bound to a module a title does not have crashes at launch.
+python3 "$root/tools/check-imports.py" "$app/eboot.bin"
 
+# Eclipse installer completeness gate; refresh again after any release source archive is inserted.
+if [[ $app_source_dir == src ]]; then python3 "$root/tools/update_payload.py" "$app"; fi
 printf '==> [zip] Archiving the application folder\n'
 (cd "$dist" && python3 -m zipfile -c "$title_id.zip" "$title_id")
 

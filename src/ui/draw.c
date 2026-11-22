@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "draw.h"
+#include "eclipse.h"
 
 #include "../platform/platform.h"
 #include "text.h"
@@ -55,6 +56,11 @@ uint32_t argb_lerp(uint32_t a, uint32_t b, float t)
 
 void anim_approach(float *v, float target, float dt, float speed)
 {
+    if (eclipse_still())
+    {
+        *v = target;
+        return;
+    }
     float k = 1.0f - expf(-dt * speed);
     *v += (target - *v) * k;
     if (fabsf(target - *v) < 0.002f * (fabsf(target) + 1.0f))
@@ -75,7 +81,7 @@ int list_top_row(int top, int cursor, int rows, int count)
 /* ---------------------------------------------------------------- rounded shapes */
 
 /* A white anti-aliased disc (128 px): its quarters are the corners of every
- * rounded rectangle. Rings for outlines are cached per (radius, thickness). */
+ * rounded rectangle. Rings for outlines are cached per (radius, thickness), at most RING_CACHE of them. */
 #define DISC 128
 static PlatTexture *disc_texture(void)
 {
@@ -109,16 +115,37 @@ typedef struct
     PlatTexture *tex;
 } Ring;
 
+/* Every outline size in use (Story's halos alone take 24; all screens together about 34): room to spare. */
+#define RING_CACHE 64
+static int rings_created; /* outline textures made: each is kept (cached) for the app's lifetime */
+
+void draw_outline_textures(int *created, int *live)
+{
+    *created = rings_created;
+    *live = rings_created; /* none is freed */
+}
+
 static PlatTexture *ring_texture(int radius, int thickness)
 {
-    static Ring rings[24];
+    static Ring rings[RING_CACHE];
     static int count;
+    static bool overflow_logged;
     for (int i = 0; i < count; ++i)
         if (rings[i].radius == radius && rings[i].thickness == thickness)
             return rings[i].tex;
     int size = radius * 2;
     if (size <= 0 || size > 512)
         return NULL;
+    if (count == RING_CACHE)
+    {
+        /* full: never a texture that is not kept (it would be made again, and never freed, every frame); the
+         * caller draws the plain-rectangle outline instead */
+        if (!overflow_logged)
+            np_log("draw: outline ring cache full (%d sizes); radius %d thickness %d drawn square", RING_CACHE, radius,
+                   thickness);
+        overflow_logged = true;
+        return NULL;
+    }
     uint8_t *px = malloc((size_t)size * size * 4);
     if (!px)
         return NULL;
@@ -136,12 +163,20 @@ static PlatTexture *ring_texture(int radius, int thickness)
         }
     PlatTexture *tex = plat_texture_create(px, size, size, false);
     free(px);
-    if (count < 24)
+    rings_created += tex != NULL;
+    if (tex)
         rings[count++] = (Ring){radius, thickness, tex};
     return tex;
 }
 
 void draw_rrect(float x, float y, float w, float h, float r, uint32_t argb)
+{
+    if (eclipse_surface(x, y, w, h, argb))
+        return;
+    draw_rrect_flat(x, y, w, h, r, argb);
+}
+
+void draw_rrect_flat(float x, float y, float w, float h, float r, uint32_t argb)
 {
     if (w <= 0 || h <= 0 || (argb >> 24) == 0)
         return;
@@ -301,7 +336,7 @@ static const char *glyph_label(enum PadGlyph g)
     case GLYPH_L3: return "L3";
     case GLYPH_R3: return "R3";
     case GLYPH_START: return "OPTIONS";
-    case GLYPH_SELECT: return "SELECT";
+    case GLYPH_SELECT: return "CREATE"; /* the DualSense's name for it */
     case GLYPH_PS1_START: return "START";
     default: return NULL;
     }
@@ -327,6 +362,8 @@ void draw_set_glyph_alpha(float alpha)
 
 float draw_pad_glyph(enum PadGlyph glyph, float cx, float cy, float size)
 {
+    if (eclipse_glyph(glyph, cx, cy, size, glyph_alpha))
+        return pad_glyph_width(glyph, size);
     float r = size * 0.36f, t = size * 0.11f;
     float w = pad_glyph_width(glyph, size);
     const char *label = glyph_label(glyph);

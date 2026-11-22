@@ -61,9 +61,13 @@ uint32_t argb_lerp(uint32_t a, uint32_t b, float t);
 
 /* Rounded shapes, built from fills and a cached circle texture (fast path). */
 void draw_rrect(float x, float y, float w, float h, float radius, uint32_t argb);
+/* The same fill without the Eclipse skin's panel texture: Story mode's own windows and boxes. */
+void draw_rrect_flat(float x, float y, float w, float h, float radius, uint32_t argb);
 void draw_rrect_outline(float x, float y, float w, float h, float radius, float thickness,
                         uint32_t argb);
 void draw_circle(float cx, float cy, float radius, uint32_t argb);
+/* The rounded outlines' ring textures: how many were ever created, and how many are alive now. */
+void draw_outline_textures(int *created, int *live);
 /* An on/off switch; t animates 0 (off) .. 1 (on). Width is 2.1 x height. */
 void draw_switch(float x, float y, float h, float t);
 /* Pill with text; returns its width. */

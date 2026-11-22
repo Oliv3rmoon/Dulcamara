@@ -60,14 +60,17 @@ build_python_ps5() {
         ac_cv_have_long_long_format=yes ac_cv_little_endian_double=yes ac_cv_x87_double_rounding=no \
         ac_cv_tanh_preserves_zero_sign=yes ac_cv_wchar_t_signed=yes ac_cv_rshift_extends_sign=yes \
         ac_cv_have_size_t_format=yes >"$src/config.site"
-    # PacBrew's zlib and bzip2 headers, and no others: its expat.h would come before Python's own expat (whose
-    # names pyexpat's build changes), as Setup.local's flags follow CFLAGS
-    local headers="$out/work/python/pacbrew-include" h
-    mkdir -p "$headers"
+    # the SDK's stdio.h with its character macros made the console's functions (tools/renpy7/include/stdio.h), copied
+    # where the build's flags can name it (the checkout's path may have spaces); and PacBrew's zlib and bzip2 headers,
+    # and no others: its expat.h would come before Python's own expat (whose names pyexpat's build changes), as
+    # Setup.local's flags follow CFLAGS
+    local stdio="$out/work/python/stdio-include" headers="$out/work/python/pacbrew-include" h
+    mkdir -p "$stdio" "$headers"
+    cp "$root/tools/renpy7/include/stdio.h" "$stdio/stdio.h"
     for h in zlib.h zconf.h bzlib.h; do ln -sf "$hb/include/$h" "$headers/$h"; done
     (cd "$src" && CONFIG_SITE=config.site ./configure --host=x86_64-unknown-freebsd11 --build="$(./config.guess)" \
         --prefix="$out/python" --disable-shared --enable-unicode=ucs4 --without-ensurepip --disable-ipv6 \
-        CC="$cc" CFLAGS="$ps5_flags -I$headers" LDFLAGS="-L$hb/lib" AR="$ar" RANLIB="$ranlib" \
+        CC="$cc" CFLAGS="$ps5_flags -I$stdio -I$headers" LDFLAGS="-L$hb/lib" AR="$ar" RANLIB="$ranlib" \
         PYTHON_FOR_BUILD="$hostpy") >>"$log/python.log" 2>&1 || fail python
     make -C "$src" -j"$jobs" libpython2.7.a >>"$log/python.log" 2>&1 || fail python
     mkdir -p "$out/python/include/python2.7" "$out/python/lib"
@@ -76,8 +79,22 @@ build_python_ps5() {
     cp "$src/libpython2.7.a" "$out/python/lib/"
 }
 python_key="python-ps5-3 $python_version $toolchain_key $(recipe build_python_ps5) $(
-    digest "$root/tools/renpy7/Setup.local" "$root"/tools/patches/python-2.7.18-*.diff)"
+    digest "$root/tools/renpy7/Setup.local" "$root/tools/renpy7/include/stdio.h" \
+        "$root"/tools/patches/python-2.7.18-*.diff)"
 fresh python "$python_key" || { build_python_ps5; stamp python "$python_key"; }
+# FreeBSD's stdio internals, which the SDK's character macros call (tools/renpy7/include/stdio.h): the console's
+# __srget ended Ren'Py 7 at the first .py file Python read (0.2.9). ps5-opengl's Mesa takes __srget too, in flex
+# lexers that only scan strings.
+if "$nm" -u "$out/python/lib/libpython2.7.a" | grep -qwE '__srget|__swbuf'; then
+    echo "CPython 2.7 for the PS5 calls FreeBSD's stdio internals, which end the app on the console" >&2
+    exit 1
+fi
+# and its arenas come from the app's heap (tools/patches/python-2.7.18-arenas-heap.diff): mmap takes the console's
+# small system memory, where threads' stacks are made too, and 0.2.10's Ren'Py 7 could not start its autosave's
+if "$nm" -A "$out/python/lib/libpython2.7.a" 2>/dev/null | grep -qE 'obmalloc\.o:[[:space:]]+U mmap$'; then
+    echo "CPython 2.7 for the PS5 takes its arenas with mmap" >&2
+    exit 1
+fi
 
 # ---- Ren'Py's and pygame_sdl2's modules: the host build's generated C, compiled for the PS5 with the renamed SDL
 # calls.
@@ -118,7 +135,7 @@ core_flags=($ps5_flags -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -DDR_ENG
     $(pc_cflags))
 objects=()
 : >"$log/core.log"
-for f in core python2 hooks input log handoff frames audio gl gl_egl ps5_libc; do
+for f in core python2 hooks input log handoff frames audio gl gl_egl ps5_libc ps5_gl_output ps5_console ps5_threads ps5_trace ps5_memory; do
     "$cc" "${core_flags[@]}" -c "$root/src/core/renpy/$f.c" -o "$core/$f.o" >>"$log/core.log" 2>&1 ||
         { cat "$log/core.log" >&2; exit 1; }
     objects+=("$core/$f.o")
@@ -137,8 +154,22 @@ done
 work="$out/isolate"
 rm -rf "$work"
 mkdir -p "$work"
-# chdir goes through the core's own (ps5_libc.c), which keeps the working folder that its getcwd answers with
-"$lld" -r -o "$work/renpy7.o" --wrap=chdir -u ps5_agc_gate2_run "${objects[@]}" --whole-archive "$out/librenpy7-modules.a" \
+# chdir goes through the core's own (ps5_libc.c), which keeps the working folder that its getcwd answers with;
+# ps5-opengl's TV output is the core's stand-in (ps5_gl_output.c), so the app keeps the screen; what the core's
+# libraries print goes to dulcamara.log too (ps5_console.c); their threads get room and a signal stack
+# (ps5_threads.c); what ends the app and FFmpeg's steps are traced (ps5_trace.c); the direct memory ps5-opengl
+# holds is counted (ps5_memory.c)
+wraps=()
+for f in Open Close SetFlipRate RegisterBuffers2 UnregisterBuffers SubmitFlip IsFlipPending WaitVblank GetFlipStatus \
+    AddFlipEvent DeleteFlipEvent IsOutputSupported ConfigureOutput GetOutputStatus GetResolutionStatus; do
+    wraps+=("--wrap=sceVideoOut$f")
+done
+for f in printf puts fprintf fputs fwrite pthread_create abort exit _exit _Exit avformat_open_input \
+    avformat_find_stream_info avcodec_open2 avcodec_send_packet avcodec_receive_frame av_read_frame swr_convert_frame \
+    avcodec_free_context avformat_close_input swr_free sceKernelAllocateDirectMemory sceKernelReleaseDirectMemory; do
+    wraps+=("--wrap=$f")
+done
+"$lld" -r -o "$work/renpy7.o" --wrap=chdir "${wraps[@]}" -u ps5_agc_gate2_run "${objects[@]}" --whole-archive "$out/librenpy7-modules.a" \
     --no-whole-archive --start-group "${libraries[@]}" --end-group >"$log/isolate.log" 2>&1 || fail isolate
 "$nm" --defined-only --extern-only "$work/renpy7.o" | awk '{print $NF}' | grep -E '^retro_' | sort -u >"$work/api.txt"
 [[ -s $work/api.txt ]] || { echo "no retro_* symbols in the Ren'Py 7 core" >&2; exit 1; }
@@ -173,7 +204,7 @@ grep -ohE '\bsceAgc[A-Za-z0-9_]+[[:space:]]*\(' "$root"/tooling/ps5-stubs/*.c | 
     sed 's/^ps5_//' >>"$work/console.txt"
 echo __emutls_get_address >>"$work/console.txt"
 LC_ALL=C sort -u -o "$work/console.txt" "$work/console.txt"
-LC_ALL=C comm -23 "$work/undefined.txt" "$work/console.txt" | grep -vxE 'dirfd|nl_langinfo|uselocale|strcasestr|___mb_cur_max|__dso_handle' \
+LC_ALL=C comm -23 "$work/undefined.txt" "$work/console.txt" | grep -vxE 'dirfd|nl_langinfo|uselocale|strcasestr|___mb_cur_max|__dso_handle|ps5_heap_mapped_bytes' \
     >"$work/unresolved.txt" || true
 
 # ---- the engine: the host's

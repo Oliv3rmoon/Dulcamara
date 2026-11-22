@@ -1,0 +1,12 @@
+--- a/Modules/threadmodule.c	2026-11-10 19:19:40
++++ b/Modules/threadmodule.c	2026-11-10 19:19:40
+@@ -698,6 +698,9 @@
+         Py_DECREF(args);
+         Py_XDECREF(keyw);
+         PyThreadState_Clear(boot->tstate);
++        /* Dulcamara: and taken off the interpreter's threads, as Python 3 does: a refused thread's state stayed there
++         * for good, as one more thread still running, and the core waits for every one before Python ends */
++        PyThreadState_Delete(boot->tstate);
+         PyMem_DEL(boot);
+         return NULL;
+     }

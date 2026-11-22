@@ -17,6 +17,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define DR_TEST_SAVES 1
+#include "runtime_probe.h"
+extern bool test_native_save(void);
+extern void test_native_load(void);
+extern bool test_native_loaded(void);
 
 static const char *system_dir;
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
@@ -47,6 +52,8 @@ static bool environment(unsigned cmd, void *data)
 {
     switch (cmd)
     {
+    case DR_ENVIRONMENT_RUNTIME:
+        return probe_environment(data);
     case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
         pixel_format = *(const enum retro_pixel_format *)data;
         return pixel_format == RETRO_PIXEL_FORMAT_XRGB8888;
@@ -200,17 +207,22 @@ int main(int argc, char **argv)
     retro_init();
 
     struct retro_game_info game_info = {game, NULL, 0, NULL};
+    double load_started = probe_now();
     if (!retro_load_game(&game_info))
     {
         printf("FAIL: the core did not load %s\n", game);
         return 1;
     }
+    printf("runtime: load call %.3f ms\n", (probe_now() - load_started) * 1000);
+    probe_tick();
     struct retro_system_av_info av;
     retro_get_system_av_info(&av);
     printf("loaded: %s\n", game);
-    printf("av: %ux%u (max %ux%u), %.2f fps, %.0f Hz sound; audio callback %s, frame time callback %s\n",
-           av.geometry.base_width, av.geometry.base_height, av.geometry.max_width, av.geometry.max_height,
-           av.timing.fps, av.timing.sample_rate, audio_cb_set ? "yes" : "no", frame_time_set ? "yes" : "no");
+    printf("av: %ux%u (max %ux%u), %.2f fps, %.0f Hz sound; audio callback %s, frame time callback "
+           "%s\n",
+           av.geometry.base_width, av.geometry.base_height, av.geometry.max_width,
+           av.geometry.max_height, av.timing.fps, av.timing.sample_rate,
+           audio_cb_set ? "yes" : "no", frame_time_set ? "yes" : "no");
     if (audio_cb_set && audio_cb.set_state)
         audio_cb.set_state(true);
 
@@ -235,15 +247,37 @@ int main(int argc, char **argv)
             audio_cb.callback();
     }
     const bool moved_on = frames > 600 && last_hash != hash_at_title;
-    printf("frames: %d run, %u with a picture, %u without; last picture %ux%u, %s, %u%s colours; %llu different "
+    printf("frames: %d run, %u with a picture, %u without; last picture %ux%u, %s, %u%s colours; "
+           "%llu different "
            "pictures\n",
            ran, frames_drawn, frames_null, last_w, last_h,
-           pixel_format == RETRO_PIXEL_FORMAT_XRGB8888 ? "XRGB8888" : "another pixel format", last_colours,
-           last_colours >= 256 ? "+" : "", (unsigned long long)distinct_pictures);
-    printf("input: the picture %s after Decision on the title screen\n", moved_on ? "changed" : "did not change");
-    printf("audio: %llu frames of sound (%.1f s), %llu batches with sound in them\n", (unsigned long long)audio_frames,
-           av.timing.sample_rate > 0 ? audio_frames / av.timing.sample_rate : 0.0, (unsigned long long)audio_loud);
+           pixel_format == RETRO_PIXEL_FORMAT_XRGB8888 ? "XRGB8888" : "another pixel format",
+           last_colours, last_colours >= 256 ? "+" : "", (unsigned long long)distinct_pictures);
+    printf("input: the picture %s after Decision on the title screen\n",
+           moved_on ? "changed" : "did not change");
+    printf("audio: %llu frames of sound (%.1f s), %llu batches with sound in them\n",
+           (unsigned long long)audio_frames,
+           av.timing.sample_rate > 0 ? audio_frames / av.timing.sample_rate : 0.0,
+           (unsigned long long)audio_loud);
+    if (getenv("DULCAMARA_EASY_SAVE"))
+        assert(test_native_save());
+    if (probe_runtime.version)
+        probe_stop(false);
     retro_unload_game();
+    if (getenv("DULCAMARA_EASY_SAVE"))
+    {
+        struct dr_save_layout layout;
+        probe_runtime.copy_layout(&layout);
+        char slot[MT_PATH_MAX];
+        assert(mt_path(slot, layout.entries[0].path, "Save01.lsd"));
+        FILE *broken = fopen(slot, "wb");
+        assert(broken);
+        assert(fputs("damaged", broken) >= 0);
+        assert(!fclose(broken));
+        SaveResult restored;
+        assert(save_restore(getenv("DULCAMARA_SAVE_STORE"), "native-fixture", probe_saved_id, true,
+                            NULL, &restored));
+    }
 
     /* the first game's verdict, before a second one changes the counts */
     bool ok = true;
@@ -267,6 +301,8 @@ int main(int argc, char **argv)
         shutdown_asked = false;
         struct retro_game_info next = {argv[4], NULL, 0, NULL};
         second_ok = retro_load_game(&next);
+        if (second_ok)
+            probe_tick();
         if (second_ok && audio_cb_set && audio_cb.set_state)
             audio_cb.set_state(true);
         for (int f = 0; second_ok && f < 300 && !shutdown_asked; ++f)
@@ -277,6 +313,18 @@ int main(int argc, char **argv)
             retro_run();
             if (audio_cb_set)
                 audio_cb.callback();
+        }
+        if (second_ok && getenv("DULCAMARA_EASY_SAVE"))
+        {
+            test_native_load();
+            for (int frame = 0; frame < 300; ++frame)
+            {
+                retro_run();
+                if (audio_cb_set)
+                    audio_cb.callback();
+            }
+            assert(test_native_loaded());
+            puts("native slot restored and loaded with variable 999 = 4242");
         }
         second_ok = second_ok && frames_drawn >= 270 && distinct_pictures >= 2 && !last_uniform;
         printf("second game: %s, %u pictures, %llu different\n", second_ok ? "loaded and ran" : "FAILED", frames_drawn,

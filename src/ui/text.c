@@ -22,7 +22,7 @@
 
 #define FIRST_CP 32
 #define CP_COUNT 224 /* U+0020..U+00FF */
-#define MAX_ATLASES 16
+#define MAX_ATLASES 24
 #define MAX_EXTRA 1024
 
 typedef struct
@@ -35,9 +35,9 @@ typedef struct
     PlatTexture *texture;
 } Atlas;
 
-static unsigned char *font_data[3]; /* regular, bold (the theme's), mono */
-static stbtt_fontinfo font_info[3];
-static bool font_ok[3];
+static unsigned char *font_data[4]; /* regular, bold (the theme's), mono, pixel (Story mode) */
+static stbtt_fontinfo font_info[4];
+static bool font_ok[4];
 static Atlas atlases[MAX_ATLASES];
 static int atlas_count;
 
@@ -132,6 +132,18 @@ bool text_init(void)
         free(font_data[FONT_MONO]);
         font_data[FONT_MONO] = NULL;
     }
+    char pixel_path[NP_PATH_MAX];
+    plat_asset_path(pixel_path, sizeof(pixel_path), "fonts/DotGothic16-Regular.ttf");
+    font_data[FONT_PIXEL] = read_file(pixel_path);
+    font_ok[FONT_PIXEL] = font_data[FONT_PIXEL] &&
+                          stbtt_InitFont(&font_info[FONT_PIXEL], font_data[FONT_PIXEL],
+                                         stbtt_GetFontOffsetForIndex(font_data[FONT_PIXEL], 0));
+    if (!font_ok[FONT_PIXEL])
+    {
+        np_log("font missing or invalid: %s (Story mode uses the regular face)", pixel_path);
+        free(font_data[FONT_PIXEL]);
+        font_data[FONT_PIXEL] = NULL;
+    }
     char jp_path[NP_PATH_MAX];
     plat_asset_path(jp_path, sizeof(jp_path), "fonts/NotoSansJP-subset.ttf");
     jp_data = read_file(jp_path);
@@ -155,7 +167,7 @@ static void free_atlases(void)
 void text_shutdown(void)
 {
     free_atlases();
-    for (int w = 0; w < 3; ++w)
+    for (int w = 0; w < 4; ++w)
         free(font_data[w]);
     free(jp_data);
 }
@@ -177,8 +189,8 @@ void text_want(const char *utf8)
     bool beyond_latin1 = false;
     for (size_t i = 0; i < n && !beyond_latin1; ++i)
         beyond_latin1 = (unsigned char)utf8[i] >= 0xC4; /* a lead byte past U+00FF */
-    if (!beyond_latin1)
-        return;
+    if (!beyond_latin1 || (wanted && strstr(wanted, utf8)))
+        return; /* nothing beyond Latin-1, or wanted already (Sounds for this game, opened again) */
     char *grown = realloc(wanted, wanted_len + n + 2);
     if (!grown)
         return;
@@ -217,7 +229,10 @@ static void collect_extra(void)
         while (*s)
         {
             int cp = decode(&s);
-            if (cp <= 0xff || extra_count == MAX_EXTRA || !stbtt_FindGlyphIndex(&jp_info, cp))
+            /* the Japanese face's, or the pixel face's own (its atlases only; the others show '?' as before) */
+            if (cp <= 0xff || extra_count == MAX_EXTRA ||
+                !(stbtt_FindGlyphIndex(&jp_info, cp) ||
+                  (font_ok[FONT_PIXEL] && stbtt_FindGlyphIndex(&font_info[FONT_PIXEL], cp))))
                 continue;
             bool seen = false;
             for (int k = 0; k < extra_count && !seen; ++k)
@@ -249,9 +264,56 @@ static int bucket_for(float size)
     return buckets[sizeof(buckets) / sizeof(buckets[0]) - 1];
 }
 
+/* The characters beyond Latin-1 into a->extra (parallel to extra_cp): the pixel face's own for its atlases, then the
+ * Japanese face's; any other is '?' (as when it was not collected). */
+static void pack_extra(stbtt_pack_context *pc, Atlas *a, int weight, int px)
+{
+    int *cps = malloc((size_t)extra_count * sizeof(int)), *slot = malloc((size_t)extra_count * sizeof(int));
+    stbtt_packedchar *packed = calloc((size_t)extra_count, sizeof(stbtt_packedchar));
+    bool *done = calloc((size_t)extra_count, sizeof(bool));
+    if (cps && slot && packed && done)
+        for (int pass = weight == FONT_PIXEL ? 0 : 1; pass < 2; ++pass)
+        {
+            const stbtt_fontinfo *face = pass ? &jp_info : &font_info[FONT_PIXEL];
+            if (pass && !jp_ok)
+                continue;
+            int n = 0;
+            for (int i = 0; i < extra_count; ++i)
+                if (!done[i] && stbtt_FindGlyphIndex(face, extra_cp[i]))
+                {
+                    cps[n] = extra_cp[i];
+                    slot[n++] = i;
+                }
+            if (!n)
+                continue;
+            stbtt_pack_range r = {0};
+            r.font_size = pass ? STBTT_POINT_SIZE(jp_em_px(&font_info[weight], (float)px)) : (float)px;
+            r.array_of_unicode_codepoints = cps;
+            r.num_chars = n;
+            r.chardata_for_range = packed;
+            stbtt_PackFontRanges(pc, pass ? jp_data : font_data[FONT_PIXEL], 0, &r, 1);
+            for (int k = 0; k < n; ++k)
+            {
+                a->extra[slot[k]] = packed[k];
+                done[slot[k]] = true;
+            }
+        }
+    for (int i = 0; i < extra_count; ++i)
+        if (!done || !done[i])
+            a->extra[i] = a->chars['?' - FIRST_CP];
+    free(cps);
+    free(slot);
+    free(packed);
+    free(done);
+}
+
 static Atlas *get_atlas(int weight, float size)
 {
-    weight = weight == FONT_MONO && font_ok[FONT_MONO] ? FONT_MONO : weight ? FONT_BOLD : FONT_REGULAR;
+    weight = weight == FONT_MONO && font_ok[FONT_MONO]     ? FONT_MONO
+             : weight == FONT_PIXEL && font_ok[FONT_PIXEL] ? FONT_PIXEL
+             : weight == FONT_PIXEL                        ? FONT_REGULAR
+             : weight                                      ? FONT_BOLD
+                                                           : FONT_REGULAR;
     if (!font_ok[weight])
         return NULL;
     int px = bucket_for(size);
@@ -289,14 +351,7 @@ static Atlas *get_atlas(int weight, float size)
     stbtt_PackFontRange(&pc, font_data[weight] ? font_data[weight] : font_data[0], 0,
                         (float)px, FIRST_CP, CP_COUNT, a->chars);
     if (a->extra)
-    {
-        stbtt_pack_range r = {0};
-        r.font_size = STBTT_POINT_SIZE(jp_em_px(&font_info[weight], (float)px));
-        r.array_of_unicode_codepoints = extra_cp;
-        r.num_chars = extra_count;
-        r.chardata_for_range = a->extra;
-        stbtt_PackFontRanges(&pc, jp_data, 0, &r, 1);
-    }
+        pack_extra(&pc, a, weight, px);
     stbtt_PackEnd(&pc);
 
     uint8_t *rgba = malloc((size_t)a->width * a->height * 4);
@@ -413,7 +468,10 @@ float text_width(float size, int weight, const char *s)
     float scale = size / (float)a->px, w = 0.0f, extra = 0.0f;
     while (*s)
     {
-        int len, tag = glyph_tag(s, &len);
+        const bool literal = *s == TEXT_LITERAL; /* the next character is text, not a {Glyph} tag */
+        if (literal && !*++s)
+            break;
+        int len, tag = literal ? -1 : glyph_tag(s, &len);
         if (tag >= 0)
         {
             extra += pad_glyph_width((enum PadGlyph)tag, tag_size(size)) + size * 0.12f;
@@ -442,7 +500,10 @@ void text_draw(float x, float y, float size, int weight, uint32_t argb, int alig
     float scale = size / (float)a->px, pen = 0.0f, extra = 0.0f;
     while (*s)
     {
-        int len, tag = glyph_tag(s, &len);
+        const bool literal = *s == TEXT_LITERAL;
+        if (literal && !*++s)
+            break;
+        int len, tag = literal ? -1 : glyph_tag(s, &len);
         if (tag >= 0)
         {
             float gs = tag_size(size), gw = pad_glyph_width((enum PadGlyph)tag, gs);

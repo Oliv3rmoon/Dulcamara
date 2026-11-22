@@ -1,0 +1,31 @@
+Dulcamara: a new sound channel is made while the mixer waits.
+
+check_channel grows the channels (realloc) as a game first uses one, a movie's or its mask's among them, without
+the audio lock, while the mixer (callback) goes through them on its own thread: when realloc moves them, the mixer
+reads freed memory. Dulcamara's own host tests crashed on it as they made many channels at once while sound played.
+The growth now takes the audio lock (LOCK_AUDIO, SDL's: recursive). Applied to Ren'Py 8's src/renpysound_core.c and
+Ren'Py 7's module/renpysound_core.c, the same there.
+
+--- a/renpysound_core.c
++++ b/renpysound_core.c
+@@ -610,8 +610,12 @@
+     }
+ 
+     if (c >= num_channels) {
++        /* Dulcamara: the mixer (callback) goes through the channels as it plays, on its own thread: they may move
++         * (realloc) only while it waits. SDL's mutexes are recursive, so a caller that holds it already may call. */
++        LOCK_AUDIO();
+         struct Channel *extended_channels = realloc(channels, sizeof(struct Channel) * (c + 1));
+         if (extended_channels == NULL) {
++            UNLOCK_AUDIO();
+             error(RPS_ERROR);
+             error_msg = "Unable to allocate additional channels.";
+             return -1;
+@@ -632,6 +636,7 @@
+         }
+ 
+         num_channels = c + 1;
++        UNLOCK_AUDIO();
+     }
+ 
+     return 0;

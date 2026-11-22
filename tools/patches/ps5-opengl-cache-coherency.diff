@@ -1,0 +1,45 @@
+--- a/src/gallium/ps5/ps5_screen.c
++++ b/src/gallium/ps5/ps5_screen.c
+@@ -5179,2 +5179,7 @@
+    resource->depth_staging_size = depth_staging_size;
++   /* All creation paths (including arena and stencil-first) have backing here.
++    * Publish CPU initialization before the first GPU write owns these lines. */
++   ps5_flush_gpu_data(resource->data, resource->allocation_size);
++   if (resource->stencil_data)
++      ps5_flush_gpu_data(resource->stencil_data, resource->stencil_allocation_size);
+    if (PS5_ENABLE_SHARED_RENDER_POOL_CANDIDATE &&
+@@ -6916 +6921,9 @@
++   /* The drain above retired GPU users. Invalidate graphics-written backing
++    * before raw or staged partial CPU writes preserve neighbouring cache bytes. */
++   if (base->target != PIPE_BUFFER && (usage & (PIPE_MAP_READ | PIPE_MAP_WRITE))) {
++      ps5_flush_gpu_data(resource->data, resource->allocation_size);
++      if (resource->stencil_data)
++         ps5_flush_gpu_data(resource->stencil_data, resource->stencil_allocation_size);
++   }
++
+    if (usage & PIPE_MAP_PERSISTENT)
+@@ -6972,6 +6985,2 @@
+       if (usage & PIPE_MAP_READ) {
+-         ps5_flush_gpu_data(resource->data, resource->allocation_size);
+-         if (packed)
+-            ps5_flush_gpu_data(resource->stencil_data,
+-                               resource->stencil_allocation_size);
+          for (unsigned z = 0; z < (unsigned)box->depth; ++z) {
+@@ -7062,2 +7071 @@
+-         ps5_flush_gpu_data(resource->data, resource->allocation_size);
+          for (y = 0; y < (unsigned)box->height; ++y) {
+@@ -7097,6 +7105,12 @@
+ {
+-   if (!transfer || transfer->resource->target != PIPE_BUFFER ||
+-       !(transfer->usage & PIPE_MAP_WRITE))
++   if (!transfer || !(transfer->usage & PIPE_MAP_WRITE))
+       return;
+    struct ps5_resource *resource = (struct ps5_resource *)transfer->resource;
++   if (resource->base.target != PIPE_BUFFER) {
++      /* Tiled staging is published by unmap already. Raw linear texture writes
++       * must reach memory before a later GPU copy, mipmap or draw uses them. */
++      if (!((struct ps5_transfer *)transfer)->staging)
++         ps5_flush_gpu_data(resource->data, resource->allocation_size);
++      return;
++   }
+    const int x = box ? box->x : 0;

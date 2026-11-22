@@ -6,6 +6,19 @@
  * test build, so emulator behaviour can be debugged on a PC first.
  */
 #include "platform.h"
+#if defined(NP_PREVIEW)
+#include "../app.h"
+#include "../core/host.h"
+#include "../profile.h"
+#include "../saves.h"
+#include "../ui/draw.h"
+#include "../ui/panels.h"
+#include "../ui/preview.h"
+#include "../ui/story.h"
+#endif
+
+#include "focus.h"
+static bool sdl_background;
 #include "../i18n.h"
 
 #include "xbr.h"
@@ -17,14 +30,14 @@
 
 #if defined(__PROSPERO__)
 #include "blit.h"
-#include "ps5_unlock.h"
+#include <dirent.h>
+#include <errno.h>
 #include "ps5_video.h"
 #include "vk/vk_present.h"
 #include <sys/mman.h>
 #include <sys/stat.h>
 int sceKernelSendNotificationRequest(uint32_t device, void *request, size_t size, int blocking);
 int sceSystemServiceHideSplashScreen(void);
-int np_elevate(const char **route); /* elevation_shim.cpp */
 #else
 static bool init_desktop_window(void);
 #if defined(NP_PREVIEW)
@@ -216,14 +229,95 @@ static SDL_Surface *preview_surface;
 static uint64_t preview_clock;
 static FILE *preview_script;
 static uint32_t preview_buttons;
+static int16_t preview_lx, preview_ly; /* the left stick, for "stick LX LY" */
 static int preview_hold;
 static bool preview_quit, preview_release;
+
+/* Read-only assertions exercise the same controller routes as an actual user. */
+static void preview_assert(const char *line)
+{
+    char key[64], expected[160], actual[160] = "unknown";
+    if (sscanf(line, "assert %63s %159[^\n]", key, expected) != 2)
+    {
+        np_log("preview ASSERT FAIL malformed");
+        preview_quit = true;
+        return;
+    }
+    int selected_row = library_view_selection(&app.library_view, &app.library, &app.settings);
+    const char *visible_id = selected_row >= 0
+                                 ? app.library.games[app.library_view.indices[selected_row]].id
+                                 : app.settings.selected_game_id;
+    const char *names[] = {"library", "game",    "menu",    "settings", "keys",
+                           "sounds",  "details", "profile", "backups"};
+    if (!strcmp(key, "screen"))
+        snprintf(actual, sizeof(actual), "%s", names[app.screen]);
+    if (!strcmp(key, "selected"))
+        snprintf(actual, sizeof(actual), "%s",
+                 selected_row >= 0 ? app.library.games[app.library_view.indices[selected_row]].title
+                                   : "<none>");
+    if (!strcmp(key, "games"))
+        snprintf(actual, sizeof(actual), "%d", app.library.count);
+    if (!strcmp(key, "query"))
+        snprintf(actual, sizeof(actual), "%s",
+                 app.library_filter.search[0] ? app.library_filter.search : "<empty>");
+    if (!strcmp(key, "filtered"))
+        snprintf(actual, sizeof(actual), "%d", app.library_view.count);
+    if (!strcmp(key, "favorite"))
+    {
+        const GameUserData *d = user_metadata_find(&app.metadata, visible_id);
+        snprintf(actual, sizeof(actual), "%d", d && d->favorite);
+    }
+    if (!strcmp(key, "profile_volume"))
+    {
+        char name[40], path[NP_PATH_MAX];
+        GameProfile profile;
+        Settings resolved;
+        snprintf(name, sizeof(name), "%s.ini", visible_id);
+        path_join(path, sizeof(path), app.paths.profiles, name);
+        profile_load(&profile, path);
+        profile_resolve(&app.settings, &profile, &resolved);
+        snprintf(actual, sizeof(actual), "%d", resolved.game_volume);
+    }
+    if (!strcmp(key, "confirmation"))
+        snprintf(actual, sizeof(actual), "%d", backup_panel_confirming());
+    if (!strcmp(key, "save_state"))
+    {
+        SavesStatus status;
+        saves_poll(&status);
+        const char *states[] = {"idle", "working", "done", "error", "cancelled"};
+        snprintf(actual, sizeof(actual), "%s", states[status.state]);
+    }
+    if (!strcmp(key, "global_volume"))
+        snprintf(actual, sizeof(actual), "%d", app.settings.game_volume);
+    if (!strcmp(key, "effective_volume"))
+        snprintf(actual, sizeof(actual), "%d", app_game_settings()->game_volume);
+    if (!strcmp(key, "still"))
+        snprintf(actual, sizeof(actual), "%d", app.settings.still_background);
+    if (!strcmp(key, "view"))
+        snprintf(actual, sizeof(actual), "%s", app.settings.library_view ? "shelf" : "story");
+    if (!strcmp(key, "sort"))
+        snprintf(actual, sizeof(actual), "%d", app.settings.sort_mode);
+    if (!strcmp(key, "runtime"))
+    {
+        const char *states[] = {"idle", "loading", "running", "stopping", "restart", "failure"};
+        snprintf(actual, sizeof(actual), "%s", states[host_state()]);
+    }
+    bool ok = !strcmp(actual, expected);
+    np_log("preview ASSERT %s %s expected=%s actual=%s", ok ? "PASS" : "FAIL", key, expected,
+           actual);
+    if (!ok)
+        preview_quit = true;
+}
+static uint64_t preview_frame_begin, preview_poll_begin;
+static double preview_frame_ms, preview_poll_ms;
+static unsigned preview_frames;
 
 static void preview_step(void)
 {
     /* script lines: "wait N", "press BUTTONS [N]", "hold BUTTONS N", "shot NAME", "quit"
      * BUTTONS: names joined by + (cross circle square triangle up down left right
-     * l1 r1 l2 r2 l3 r3 start select menu) */
+     * l1 r1 l2 r2 l3 r3 start select menu); "probe NAME" logs a read-only figure; "stick LX LY" pushes the
+     * left stick for a frame */
     static const struct { const char *name; int bit; } names[] = {
         {"cross", BTN_CROSS}, {"circle", BTN_CIRCLE}, {"square", BTN_SQUARE},
         {"triangle", BTN_TRIANGLE}, {"up", BTN_UP}, {"down", BTN_DOWN}, {"left", BTN_LEFT},
@@ -240,9 +334,11 @@ static void preview_step(void)
         /* one frame with nothing held between commands, so presses register */
         preview_release = false;
         preview_buttons = 0;
+        preview_lx = preview_ly = 0;
         return;
     }
     preview_buttons = 0;
+    preview_lx = preview_ly = 0;
     char line[256];
     while (preview_script && fgets(line, sizeof(line), preview_script))
     {
@@ -260,6 +356,43 @@ static void preview_step(void)
             preview_hold = atoi(arg) - 1;
             return;
         }
+        if (!strcmp(cmd, "fixture"))
+        {
+            preview_surface_open(arg);
+            return;
+        }
+        if (!strcmp(cmd, "assert"))
+        {
+            preview_assert(line);
+            if (preview_quit)
+                return;
+            continue;
+        }
+        if (!strcmp(cmd, "probe"))
+        {
+            /* read-only figures for the tests, logged, not asserted */
+            if (!strcmp(arg, "outline_textures"))
+            {
+                int created, live;
+                draw_outline_textures(&created, &live);
+                np_log("preview PROBE outline_textures created=%d live=%d", created, live);
+            }
+            if (!strcmp(arg, "story_backup_count"))
+            {
+                const int row = library_view_selection(&app.library_view, &app.library, &app.settings);
+                char text[128];
+                story_backup_count_text(row >= 0 ? app.library.games[app.library_view.indices[row]].id : "", text,
+                                        sizeof(text));
+                np_log("preview PROBE story_backup_count [%s]", text);
+            }
+            if (!strcmp(arg, "story_text"))
+            {
+                char text[640];
+                story_visible_text(text, sizeof(text));
+                np_log("preview PROBE story_text [%s]", text);
+            }
+            continue;
+        }
         if (!strcmp(cmd, "shot"))
         {
             char path[300];
@@ -271,6 +404,16 @@ static void preview_step(void)
             SDL_FreeSurface(out);
             np_log("preview: %s", path);
             continue;
+        }
+        if (!strcmp(cmd, "stick"))
+        {
+            /* "stick LX LY": the left stick pushed for one frame, then centred for one */
+            int lx = 0, ly = 0;
+            sscanf(line, "%*s %d %d", &lx, &ly);
+            preview_lx = (int16_t)(lx < -32768 ? -32768 : lx > 32767 ? 32767 : lx);
+            preview_ly = (int16_t)(ly < -32768 ? -32768 : ly > 32767 ? 32767 : ly);
+            preview_release = true;
+            return;
         }
         if (!strcmp(cmd, "press") || !strcmp(cmd, "hold"))
         {
@@ -371,137 +514,28 @@ const char *plat_sandbox_probe(void)
     return sandbox_probe;
 }
 
-/* Settings > System > "Unlock /data with etaHEN": stored as a marker file so
- * it can be read before any unlock (paths that may work while sandboxed). */
-static const char *const NO_UNLOCK_MARKERS[] = {"/download0/dulcamara_no_unlock", NP_DATA "/no_unlock"};
-
-bool plat_unlock_disabled(void)
-{
-    for (size_t i = 0; i < 2; ++i)
-        if (path_exists(NO_UNLOCK_MARKERS[i]))
-            return true;
-    return false;
-}
-
-void plat_set_unlock_disabled(bool disabled)
-{
-    for (size_t i = 0; i < 2; ++i)
-    {
-        if (disabled)
-        {
-            FILE *f = fopen(NO_UNLOCK_MARKERS[i], "w");
-            if (f)
-                fclose(f);
-        }
-        else
-            remove(NO_UNLOCK_MARKERS[i]);
-    }
-}
-
-#if defined(__PROSPERO__)
-/* How the storage was unlocked, remembered between starts: the way that worked last time goes first. */
-enum { UNLOCK_ROUTE_NONE, UNLOCK_ROUTE_HEN, UNLOCK_ROUTE_LAPY };
-#define UNLOCK_ROUTE_FILE NP_DATA "/cache/unlock-route"
-
-static int unlock_route_remembered(void)
-{
-    char word[16] = "";
-    FILE *f = fopen(UNLOCK_ROUTE_FILE, "r");
-    if (!f)
-        return UNLOCK_ROUTE_NONE;
-    if (!fgets(word, sizeof(word), f))
-        word[0] = 0;
-    fclose(f);
-    return strncmp(word, "lapy", 4) == 0 ? UNLOCK_ROUTE_LAPY : strncmp(word, "hen", 3) == 0 ? UNLOCK_ROUTE_HEN : UNLOCK_ROUTE_NONE;
-}
-
-static void unlock_route_remember(int route)
-{
-    if (route == UNLOCK_ROUTE_NONE)
-    {
-        remove(UNLOCK_ROUTE_FILE);
-        return;
-    }
-    if (unlock_route_remembered() == route)
-        return;
-    mkdir(NP_DATA, 0777); /* the folders may not exist yet at the very first start */
-    mkdir(NP_DATA "/cache", 0777);
-    FILE *f = fopen(UNLOCK_ROUTE_FILE, "w");
-    if (!f)
-        return;
-    fputs(route == UNLOCK_ROUTE_LAPY ? "lapy\n" : "hen\n", f);
-    fclose(f);
-}
-#endif
-
 bool plat_prepare_storage(char *error, size_t size)
 {
 #if defined(__PROSPERO__)
-    {
-        FILE *r = fopen(NP_DATA "/settings.ini", "r");
-        FILE *w = fopen(NP_DATA "/.sandbox-test", "w");
-        snprintf(sandbox_probe, sizeof(sandbox_probe), "sandboxed read %s, write %s, list %s",
-                 r ? "ok" : "no", w ? "ok" : "no", ps5_data_listable() ? "ok" : "no");
-        if (r)
-            fclose(r);
-        if (w)
-        {
-            fclose(w);
-            remove(NP_DATA "/.sandbox-test");
-        }
+    /* Use only the directory access already available to this process. */
+    DIR *data = opendir(NP_DATA);
+    if (!data && errno == ENOENT && (mkdir(NP_DATA, 0755) == 0 || errno == EEXIST))
+        data = opendir(NP_DATA);
+    if (!data) {
+        snprintf(error, size, "Cannot open " NP_DATA " (%s)", strerror(errno));
+        return false;
     }
-    if (plat_unlock_disabled())
-    {
-        snprintf(error, size, "unlock turned off in Settings");
-        return ps5_data_listable();
-    }
-    /* The way that worked at the last start goes first, so a console that always answers the same way does not wait
-     * for the others to stay silent (each takes a second or more). If it fails, the usual order runs. */
-    const bool lapy_first = !ps5_data_listable() && unlock_route_remembered() == UNLOCK_ROUTE_LAPY;
-    const char *route = "none";
-    int status = -1;
-    bool lapy_tried = false;
-    if (lapy_first)
-    {
-        /* a loaded LegacyJB / etaHEN answers a short request at once, and is faster than the helper */
-        if (ps5_unlock_quick() == UNLOCK_OK)
-        {
-            unlock_route_remember(UNLOCK_ROUTE_HEN);
-            return true;
-        }
-        status = np_elevate(&route);
-        lapy_tried = true;
-        if (status == 0 && ps5_data_listable())
-            return true;
-    }
-    /* 1. etaHEN's jailbreak-on-demand (answered on 13.60). */
-    UnlockResult hen = ps5_unlock_etahen();
-    if (hen == UNLOCK_ALREADY)
-        return true;
-    if (hen == UNLOCK_OK)
-    {
-        unlock_route_remember(UNLOCK_ROUTE_HEN);
-        return true;
-    }
-    /* 2. The boilerplate's Lapy helper through the ELF loader (6.02/12.70). A request is made once per process, so
-     * not again when it already went first. */
-    if (!lapy_tried)
-    {
-        status = np_elevate(&route);
-        if (status == 0 && ps5_data_listable())
-        {
-            unlock_route_remember(UNLOCK_ROUTE_LAPY);
-            return true;
-        }
-    }
-    unlock_route_remember(UNLOCK_ROUTE_NONE); /* nothing answered: forget the old way */
-    /* 3. Sandboxed: files in /data still open and save, folders can't be listed. */
-    snprintf(error, size, "%s; Lapy code %d via %s", ps5_unlock_describe(hen), status,
-             route);
-    return false;
+    closedir(data);
+    str_copy(sandbox_probe, sizeof(sandbox_probe), "application data folder is available");
+    return true;
 #else
-    (void)error;
-    (void)size;
+    /* The desktop build: NP_SANDBOXED=<a reason> starts it as the PS5 does when nothing unlocks /data, to see that. */
+    const char *sandboxed = SDL_getenv("NP_SANDBOXED");
+    if (sandboxed && *sandboxed)
+    {
+        snprintf(error, size, "%s", sandboxed);
+        return false;
+    }
 #endif
     return true;
 }
@@ -650,8 +684,11 @@ void plat_poll(PadState pads[NP_MAX_PADS], bool *quit)
     SDL_Event event;
     bool devices_changed = false;
     while (SDL_PollEvent(&event))
+    {
+        sdl_background = plat_focus_event(sdl_background, &event);
         if (event.type == SDL_JOYDEVICEADDED || event.type == SDL_JOYDEVICEREMOVED)
             devices_changed = true;
+    }
     (void)quit;
     static bool first = true;
     if (devices_changed || first)
@@ -692,6 +729,10 @@ void plat_poll(PadState pads[NP_MAX_PADS], bool *quit)
             {
                 memcpy(p->quat, b.d.quat, sizeof(p->quat));
                 p->motion = motion_on && (b.d.quat[0] || b.d.quat[1] || b.d.quat[2] || b.d.quat[3]);
+                /* the touchpad's click, from the pad itself: SDL's button for it is not the touchpad on every pad
+                 * ("Touchpad isn't a button!", 0.2.6, in a Ren'Py game) */
+                if (touch_on && (b.d.buttons & 0x00100000u)) /* SCE_PAD_BUTTON_TOUCH_PAD */
+                    p->buttons |= BIT(BTN_MENU);
                 /* touch: a finger count, then points of x, y (16 bits each), finger id */
                 p->touching = touch_on && b.d.touch[0] > 0;
                 p->touch_x = (uint16_t)(b.d.touch[8] | b.d.touch[9] << 8);
@@ -901,6 +942,7 @@ void plat_poll(PadState pads[NP_MAX_PADS], bool *quit)
     bool devices_changed = false;
     while (SDL_PollEvent(&event))
     {
+        sdl_background = plat_focus_event(sdl_background, &event);
         if (event.type == SDL_QUIT && quit)
             *quit = true;
         if (event.type == SDL_CONTROLLERDEVICEADDED || event.type == SDL_CONTROLLERDEVICEREMOVED)
@@ -938,9 +980,14 @@ void plat_poll(PadState pads[NP_MAX_PADS], bool *quit)
     order_pads(pads);
 
 #if defined(NP_PREVIEW)
+    preview_poll_begin = SDL_GetPerformanceCounter();
     preview_step();
+    preview_poll_ms +=
+        (SDL_GetPerformanceCounter() - preview_poll_begin) * 1000.0 / SDL_GetPerformanceFrequency();
     pads[0].connected = true;
     pads[0].buttons = preview_buttons;
+    pads[0].lx = preview_lx;
+    pads[0].ly = preview_ly;
     if (preview_quit && quit)
         *quit = true;
 #endif
@@ -1123,6 +1170,9 @@ int plat_height(void)
 
 void plat_begin_frame(uint32_t clear_argb)
 {
+#if defined(NP_PREVIEW)
+    preview_frame_begin = SDL_GetPerformanceCounter();
+#endif
     if (gpu_ui)
     {
         vkp_ui_begin(clear_argb); /* the clear is the render pass's: the game's picture is drawn over it */
@@ -1245,6 +1295,7 @@ static bool ensure_game_texture(int format, int w, int h)
 /* PS5: the latest game picture, kept in SwanStationPS5's memory and scaled straight
  * into the canvas by blit.c (SDL's software stretch was the bottleneck). */
 static const uint32_t *game_image;
+static bool game_image_new; /* game_image changed since the interface's texture last took it */
 static int game_image_w, game_image_h;
 static size_t game_image_pitch;
 #endif
@@ -1526,6 +1577,7 @@ void plat_upload_game(const void *pixels, int width, int height, size_t pitch, i
             prescale_sharp(src, width, height, pitch_px, out, k);
         grade_pixels(out, width * (k > 1 ? k : 1), height * (k > 1 ? k : 1), (size_t)width * (k > 1 ? k : 1));
         game_image = out;
+        game_image_new = true;
         game_image_w = width * (k > 1 ? k : 1);
         game_image_h = height * (k > 1 ? k : 1);
         game_image_pitch = (size_t)game_image_w;
@@ -1707,13 +1759,19 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
     }
     if (game_image && gpu_ui)
     {
-        /* the picture of the software renderer as a texture of the GPU interface, updated every frame */
+        /* the picture of the software renderer as a texture of the GPU interface, updated for each new picture */
         static int soft_tex = -1, soft_w, soft_h;
         static bool soft_smooth;
         static uint8_t *rgba;
         const int cut = (int)(game_image_h * crop), vis_h = game_image_h - 2 * cut;
+        /* Dulcamara: the texture is made again only for a new picture. Each time costs a pass over every pixel, a
+         * staging buffer and an image the size of the picture, and a wait for the GPU (ui_upload): up to 0.2.11 it
+         * was made 60 times a second for a 1920x1080 Ren'Py game's 16 to 22 pictures, and its tester saw black bars
+         * whenever the app ran below 60. */
+        bool fresh = game_image_new;
         if (soft_tex < 0 || soft_w != game_image_w || soft_h != game_image_h || soft_smooth != settings->smooth)
         {
+            fresh = true;
             if (soft_tex >= 0)
                 vkp_ui_texture_free(soft_tex);
             free(rgba);
@@ -1728,8 +1786,9 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
             soft_h = game_image_h;
             soft_smooth = settings->smooth;
         }
-        if (soft_tex >= 0 && rgba)
+        if (soft_tex >= 0 && rgba && fresh)
         {
+            game_image_new = false;
             for (int y = 0; y < game_image_h; ++y)
             {
                 const uint32_t *src = game_image + (size_t)y * game_image_pitch;
@@ -1744,9 +1803,10 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
                 }
             }
             vkp_ui_texture_update(soft_tex, rgba);
+        }
+        if (soft_tex >= 0 && rgba)
             gpu_quad(soft_tex, (float)dx, (float)dy, (float)(dx + dw), (float)(dy + dh), 0.0f, (float)cut / game_image_h, 1.0f,
                      (float)(cut + vis_h) / game_image_h, 0xff000000u | (uint32_t)dim << 16 | (uint32_t)dim << 8 | dim);
-        }
         return;
     }
     if (game_image)
@@ -1968,31 +2028,25 @@ void plat_end_frame(void)
         SDL_RenderPresent(renderer);
 #if defined(NP_PREVIEW)
     preview_clock += 16667;
+    preview_frame_ms += (SDL_GetPerformanceCounter() - preview_frame_begin) * 1000.0 /
+                        SDL_GetPerformanceFrequency();
+    if (++preview_frames == 120)
+    {
+        np_log("preview real costs: screen=%d still=%d draw/present_ms=%.3f input_ms=%.3f (120 "
+               "frames; visual clock fixed 60Hz)",
+               app.screen, app.settings.still_background, preview_frame_ms / 120,
+               preview_poll_ms / 120);
+        preview_frames = 0;
+        preview_frame_ms = preview_poll_ms = 0;
+    }
 #endif
 #if defined(__PROSPERO__)
-    static uint64_t frame_start, draw_us, present_us;
-    static int frames;
-    uint64_t drawn = plat_ticks_us();
     if (use_vulkan && gpu_ui)
         vkp_present_ui(); /* the interface's list over the game; waits for vblank */
     else if (use_vulkan)
         vkp_present(canvas->pixels, (size_t)canvas->pitch); /* waits for vblank */
     else
         ps5_video_present(canvas->pixels, (size_t)canvas->pitch);
-    uint64_t shown = plat_ticks_us();
-    if (frame_start)
-    {
-        draw_us += drawn - frame_start;
-        present_us += shown - drawn;
-        if (++frames == 120)
-        {
-            /* np_log("ui: draw %.1f ms, present %.1f ms per frame (avg of 120)",
-                      draw_us / 120 / 1000.0, present_us / 120 / 1000.0); */
-            frames = 0;
-            draw_us = present_us = 0;
-        }
-    }
-    frame_start = shown;
 #endif
 }
 
@@ -2264,6 +2318,33 @@ uint64_t plat_ticks_us(void)
 void plat_sleep_us(uint32_t us)
 {
     SDL_Delay(us / 1000);
+}
+
+#if defined(__PROSPERO__)
+/* sceSystemServiceGetStatus's answer: the PS4 layout, with room to spare (as Physalis reads it). */
+typedef struct
+{
+    int32_t event_count;
+    uint8_t system_ui_overlaid;
+    uint8_t in_background;
+    uint8_t cpu_mode7_normal;
+    uint8_t live_streaming;
+    uint8_t out_of_vr_area;
+    uint8_t reserved[251];
+} SystemStatus;
+
+int sceSystemServiceGetStatus(SystemStatus *status);
+#endif
+
+bool plat_in_background(void)
+{
+#if defined(__PROSPERO__)
+    SystemStatus status;
+    memset(&status, 0, sizeof(status));
+    return (sceSystemServiceGetStatus(&status) == 0 && status.in_background) || sdl_background;
+#else
+    return sdl_background;
+#endif
 }
 
 void plat_notify(const char *message)

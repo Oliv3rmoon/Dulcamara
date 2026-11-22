@@ -14,16 +14,11 @@ const char *plat_screen_info(void);
 void plat_shutdown(void);
 void plat_release(void);
 
-/* PS5: asks the HEN to let SwanStationPS5 list /data. Call before plat_init, while the
- * process is single-threaded. Returns false (with the reason) when SwanStationPS5 stays
- * sandboxed: files still open and save, but folders can't be listed, so the
- * library comes from the index the sync tool writes. Desktop: always true. */
+/* Check that the process can open its application data directory. */
 bool plat_prepare_storage(char *error, size_t size);
-/* "sandboxed read ok, write no, list no": measured before unlocking (PS5). */
+/* Result of the startup directory check. */
 const char *plat_sandbox_probe(void);
-/* Settings > System > Unlock /data with etaHEN (PS5); takes effect next launch. */
-bool plat_unlock_disabled(void);
-void plat_set_unlock_disabled(bool disabled);
+/* Default application data root. */
 void plat_default_root(char *out, size_t size);
 
 /* Reads controllers. `quit` is set when the desktop window is closed. */
@@ -143,6 +138,9 @@ void plat_asset_path(char *out, size_t size, const char *relative);
 
 uint64_t plat_ticks_us(void);
 void plat_sleep_us(uint32_t us);
+/* Whether another app has the console's screen (the PS5 switched to it, or to its home screen): the app is not to run
+ * its game, draw or present until it is back. Always false on the desktop. */
+bool plat_in_background(void);
 void plat_notify(const char *message); /* PS5 system notification; desktop log */
 
 #endif

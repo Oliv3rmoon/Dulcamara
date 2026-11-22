@@ -1,0 +1,79 @@
+--- a/renpy/importer.py
++++ b/renpy/importer.py
+@@ -139,6 +139,14 @@
+
+
+ # Module Loading
++class RenpyBytecodeLoader(importlib.machinery.SourcelessFileLoader):
++    """Read a compiled game module through Ren'Py, with CPython's normal bytecode validation."""
++
++    def get_data(self, path):
++        with renpy.loader.load(path, tl=False) as f:
++            return f.read()
++
++
+ class RenpyImporter(importlib.abc.MetaPathFinder, importlib.abc.InspectLoader):
+     """
+     A meta-path importer, that tries to load pure Python modules from the places
+@@ -188,14 +196,14 @@
+                 continue
+
+             mod_name = ".".join(path)
+-            if path and fn == "__init__.py":
++            if path and fn in ("__init__.py", "__init__.pyc"):
+                 seen_init = True
+                 is_package = True
+             else:
+                 if mod_name:
+-                    mod_name += "." + fn[:-3]
++                    mod_name += "." + fn.rsplit(".", 1)[0]
+                 else:
+-                    mod_name = fn[:-3]
++                    mod_name = fn.rsplit(".", 1)[0]
+
+                 is_package = False
+
+@@ -216,9 +224,12 @@
+         if not renpy.loader.game_files:
+             renpy.loader.scandirfiles()
+
+-        self._finder_cache = dict(
+-            self._visit_dir(files=(fn for _, fn in renpy.loader.game_files if fn.endswith(".py") if not fn.endswith("_ren.py")))
+-        )
++        modules = {fn for _, fn in renpy.loader.game_files
++                   if fn.endswith((".py", ".pyc")) and not fn.endswith(("_ren.py", "_ren.pyc"))
++                   and "__pycache__" not in fn.split("/")}
++        # Prefer source when both forms ship. Keep the original file suffix for the loader.
++        self._finder_cache = dict(self._visit_dir(files=(fn for fn in sorted(modules)
++                                                        if not fn.endswith(".pyc") or fn[:-1] not in modules)))
+         return self._finder_cache
+
+     def _get_module_info(self, fullname: str) -> _ModuleInfo | None:
+@@ -261,7 +272,7 @@
+
+             if not module_info.is_namespace:
+                 spec.origin = filename
+-                spec.cached = filename + "c"
++                spec.cached = filename if filename.endswith(".pyc") else filename + "c"
+
+             return spec
+
+@@ -295,7 +306,7 @@
+         if module_info is None:
+             raise ImportError
+
+-        if module_info.is_namespace:
++        if module_info.is_namespace or module_info.filename.endswith(".pyc"):
+             return None
+
+         with renpy.loader.load(module_info.filename, tl=False) as f:
+@@ -311,7 +322,8 @@
+         if module_info.is_namespace:
+             return compile("", module_info.filename, "exec", dont_inherit=True)
+
+-        # TODO: add bytecode handling?
++        if module_info.filename.endswith(".pyc"):
++            return RenpyBytecodeLoader(fullname, module_info.filename).get_code(fullname)
+
+         with renpy.loader.load(module_info.filename, tl=False) as f:
+             source = f.read()

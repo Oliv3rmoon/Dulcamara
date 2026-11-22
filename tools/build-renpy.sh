@@ -235,6 +235,14 @@ build_generate() {
     rm -rf "$src" "$out/gen"
     mkdir -p "$src" "$out/gen"
     git -C "$renpy" archive HEAD | tar -x -C "$src"
+    # Dulcamara's fixes to Ren'Py's C: a movie or sound the system gives no thread for is ready with nothing in it,
+    # not waited for forever; Python ends only once the decode threads have closed their files; a new sound channel
+    # is made while the mixer waits
+    patch -s "$src/src/ffmedia.c" <"$root/tools/patches/renpy-ffmedia-no-thread.diff" >>"$log/generate.log" 2>&1 &&
+        patch -s "$src/src/ffmedia.c" <"$root/tools/patches/renpy-ffmedia-close-before-python-ends.diff" \
+            >>"$log/generate.log" 2>&1 &&
+        patch -s "$src/src/renpysound_core.c" <"$root/tools/patches/renpy-renpysound-channels.diff" \
+            >>"$log/generate.log" 2>&1 || fail generate
     (cd "$src" && RENPY_STATIC=1 RENPY_REGENERATE_CYTHON=1 RENPY_CYTHON="$out/bin/cython" PYTHONPATH="$out/tools" \
         CC="$cc" CXX="$cxx" CFLAGS="-O2" "$py" setup.py generate) >"$log/generate.log" 2>&1 || fail generate
     generated="$src/tmp/gen3-static"
@@ -301,6 +309,9 @@ build_engine() {
     find "$engine/renpy" \( -name '*.pyx' -o -name '*.pxd' -o -name '*.pxi' -o -name '*.c' -o -name '*.c.dynamic' \
         -o -name '*.cc' -o -name '*.h' \) -delete
     cp "$src/renpy.py" "$engine/renpy.py"
+    patch -s -d "$engine" -p1 <"$root/tools/patches/renpy8-savepaths.patch"
+    patch -s -d "$engine" -p1 <"$root/tools/patches/renpy8-archive-bytecode.patch"
+    cp "$root/src/core/renpy/savepaths.py" "$engine/dulcamara_savepaths.py"
     # what Ren'Py's own distribution writes: without it Ren'Py looks for its version in a git checkout
     printf "branch = 'fix'\nnightly = False\nofficial = False\nversion = '%s'\nversion_name = '%s'\n" \
         "$renpy_version" "$renpy_version_name" >"$engine/renpy/vc_version.py"
@@ -326,13 +337,14 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as z, tempfile.Temporary
 PY
 }
 
-generate_key="generate-2 $(git -C "$renpy" rev-parse HEAD) $python_key $(recipe build_generate)"
+generate_key="generate-2 $(git -C "$renpy" rev-parse HEAD) $python_key $(recipe build_generate) $(
+    digest "$root"/tools/patches/renpy-*.diff)"
 if ! fresh generate "$generate_key"; then
     build_generate
     stamp generate "$generate_key"
 fi
 engine_key="engine-3 $renpy_version $generate_key $(recipe build_engine) $(
-    digest "$root"/src/core/renpy/{boot,errors}.py "$root/tools/renpy/wheels.txt")"
+    digest "$root/tools/patches/renpy8-savepaths.patch" "$root/tools/patches/renpy8-archive-bytecode.patch" "$root/src/core/renpy/savepaths.py" "$root"/src/core/renpy/{boot,errors}.py "$root/tools/renpy/wheels.txt")"
 if ! fresh engine "$engine_key"; then
     build_engine
     stamp engine "$engine_key"
@@ -373,6 +385,11 @@ for f in core python hooks input log handoff frames audio gl; do
     "$cc" "${own_flags[@]}" -I"$libretro" $("$out/python/bin/python3.12-config" --includes) $(sdl_cflags) \
         -c "$root/src/core/renpy/$f.c" -o "$check/$f.o" >>"$log/core.log" 2>&1 || fail core
     objects+=("$check/$f.o")
+done
+# The headless native-save integration uses the production background service.
+for f in maintenance saves sha256; do
+    "$cc" "${own_flags[@]}" -c "$root/src/$f.c" -o "$check/save_$f.o" >>"$log/core.log" 2>&1 || fail core
+    objects+=("$check/save_$f.o")
 done
 "$cc" "${own_flags[@]}" -c "$gl_backend" -o "$check/gl_backend.o" >>"$log/core.log" 2>&1 || fail core
 "$cc" -O1 -g -w $("$out/python/bin/python3.12-config" --includes) -c "$out/gen/inittab.c" -o "$check/inittab.o" \

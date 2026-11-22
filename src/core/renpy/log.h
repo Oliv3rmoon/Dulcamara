@@ -15,5 +15,7 @@ void log_flush(void (*emit)(int level, const char *line));
  * how far a start got. */
 void log_set_direct(void (*emit)(int level, const char *line));
 void log_step(const char *fmt, ...);
+/* Any line written at once in the same way: what a library prints just before it ends the app (ps5_console.c). */
+void log_now(int level, const char *fmt, ...);
 
 #endif

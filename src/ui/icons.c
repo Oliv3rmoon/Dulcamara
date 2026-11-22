@@ -6,6 +6,7 @@
  * tools/make_icon_font.py). Each size used gets one small atlas.
  */
 #include "icons.h"
+#include "eclipse.h"
 
 #include "../platform/platform.h"
 #include "stb_truetype.h"
@@ -111,6 +112,8 @@ static IconAtlas *atlas_for(float size)
 
 void icon_draw(int icon, float x, float y, float size, uint32_t argb)
 {
+    if (eclipse_icon(icon, x, y, size, argb))
+        return;
     IconAtlas *a = atlas_for(size);
     if (!a || !a->texture)
         return;

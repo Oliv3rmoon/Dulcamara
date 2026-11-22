@@ -338,11 +338,10 @@ uint8_t *rpgm_decode_xyz(const uint8_t *data, size_t len, int *width, int *heigh
     if (w <= 0 || h <= 0 || w > 4096 || h > 4096)
         return NULL;
     const size_t want = 768 + (size_t)w * h;
-    size_t got = 0;
-    uint8_t *raw = tinfl_decompress_mem_to_heap(data + 8, len - 8, &got, TINFL_FLAG_PARSE_ZLIB_HEADER);
-    if (!raw)
-        return NULL;
-    uint8_t *rgba = got >= want ? malloc((size_t)w * h * 4) : NULL;
+    uint8_t *raw = malloc(want);
+    if (!raw) return NULL;
+    size_t got = tinfl_decompress_mem_to_mem(raw, want, data + 8, len - 8, TINFL_FLAG_PARSE_ZLIB_HEADER);
+    uint8_t *rgba = got == want ? malloc((size_t)w * h * 4) : NULL;
     if (rgba)
     {
         const uint8_t *palette = raw, *pixels = raw + 768;
@@ -357,6 +356,6 @@ uint8_t *rpgm_decode_xyz(const uint8_t *data, size_t len, int *width, int *heigh
         *width = w;
         *height = h;
     }
-    mz_free(raw);
+    free(raw);
     return rgba;
 }

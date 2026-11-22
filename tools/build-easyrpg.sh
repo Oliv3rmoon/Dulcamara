@@ -61,10 +61,15 @@ if ! git -C "$lcf" apply --reverse --check "$patch" 2>/dev/null; then
     git -C "$lcf" apply "$patch"
 fi
 
+runtime_patch="$root/tools/patches/easyrpg-runtime.patch"
+if ! git -C "$player" apply --reverse --check "$runtime_patch" 2>/dev/null; then
+    git -C "$player" apply "$runtime_patch"
+fi
+
 # Rebuild only when a source revision, this script or the patch changed.
 stamp="$out/.stamp"
 want="$(git -C "$player" rev-parse HEAD) $(git -C "$lcf" rev-parse HEAD) $(git -C "$inih" rev-parse HEAD) $pixman_version $(
-    cat "$0" "$patch" "$root"/tests/core/* | sha256 | cut -c1-16)"
+    cat "$0" "$patch" "$runtime_patch" "$root/src/core/runtime_protocol.h" "$root"/tests/core/* | sha256 | cut -c1-16)"
 result="$out/libeasyrpg.a"
 [[ $target == host ]] && result="$out/core-check/easyrpg-headless"
 if [[ -f $result && -f $stamp && $(cat "$stamp") == "$want" ]]; then

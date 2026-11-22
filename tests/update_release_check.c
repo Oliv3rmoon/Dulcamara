@@ -4,9 +4,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Built and run by tests/test_update_release.py: the answers are shaped like GitHub's
- * releases/latest, the files like the release workflow's (.github/workflows/build.yml).
+ * releases/latest and releases?per_page=20 (Test builds on), the files like the release workflow's
+ * (.github/workflows/build.yml).
  */
 #include "update_release.h"
+#include "nightshade.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -83,6 +85,47 @@ static void both(char *out, size_t size, const char *repo, const char *tag, cons
 static ReleaseVerdict evaluate(const char *json, const char *installed, Release *r)
 {
     return release_evaluate(json, strlen(json), installed, r);
+}
+
+static const char *const PRERELEASE = "\"draft\": false, \"prerelease\": true";
+static const char *const DRAFT = "\"draft\": true, \"prerelease\": false";
+
+/* A release of ours at tag with both files (malloc'd). */
+static char *ours(const char *tag, const char *flags)
+{
+    char files[4096];
+    both(files, sizeof(files), OURS, tag, SHA_A);
+    return release(tag, flags, files, "");
+}
+
+/* A releases?per_page=20 answer: the releases, most recent first as GitHub lists them (malloc'd). */
+static char *list(char *const *releases, size_t count)
+{
+    size_t size = 3;
+    for (size_t i = 0; i < count; ++i)
+        size += strlen(releases[i]) + 1;
+    char *out = malloc(size);
+    strcpy(out, "[");
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (i)
+            strcat(out, ",");
+        strcat(out, releases[i]);
+    }
+    strcat(out, "]");
+    return out;
+}
+
+static void discard(char **releases, size_t count, char *json)
+{
+    for (size_t i = 0; i < count; ++i)
+        free(releases[i]);
+    free(json);
+}
+
+static ReleaseVerdict evaluate_list(const char *json, const char *installed, bool allow_prerelease, Release *r)
+{
+    return release_evaluate_list(json, strlen(json), installed, allow_prerelease, r);
 }
 
 static void test_versions(void)
@@ -261,6 +304,181 @@ static void test_unreadable(void)
     free(json);
 }
 
+static void test_list_test_builds(void)
+{
+    Release r;
+    /* the newest that passes is a test build: offered with Test builds on, not with it off */
+    char *rel[] = {ours("0.2.10", PRERELEASE), ours("0.2.9", PUBLISHED)};
+    char *json = list(rel, 2);
+    CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_OFFER);
+    CHECK(!strcmp(r.version, "0.2.10") && r.prerelease);
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/PPSA99010.zip"));
+    CHECK(!strcmp(r.sums_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/SHA256SUMS"));
+    CHECK(!strcmp(r.zip_digest, SHA_A) && r.zip_size == 18267896u);
+    CHECK(evaluate_list(json, "0.2.9", false, &r) == RELEASE_NOT_NEWER);
+    CHECK(!strcmp(r.version, "0.2.9") && r.zip_url[0] == '\0');
+    /* full releases still count: with it off, the full one when it is newer */
+    CHECK(evaluate_list(json, "0.2.8", false, &r) == RELEASE_OFFER && !strcmp(r.version, "0.2.9") && !r.prerelease);
+    /* not newer: this version, or an older one */
+    CHECK(evaluate_list(json, "0.2.10", true, &r) == RELEASE_NOT_NEWER && !strcmp(r.version, "0.2.10"));
+    CHECK(evaluate_list(json, "0.3.0", true, &r) == RELEASE_NOT_NEWER && r.zip_url[0] == '\0');
+    discard(rel, 2, json);
+
+    /* with it on, a full release newer than every test build */
+    char *full[] = {ours("0.2.11", PRERELEASE), ours("0.3.0", PUBLISHED), ours("0.2.10", PRERELEASE)};
+    json = list(full, 3);
+    CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_OFFER && !strcmp(r.version, "0.3.0") && !r.prerelease);
+    discard(full, 3, json);
+
+    /* a test build on its own, one release object: release_evaluate() still never offers it */
+    char *one = ours("0.2.10", PRERELEASE);
+    CHECK(evaluate(one, "0.2.9", &r) == RELEASE_NOT_PUBLISHED);
+    free(one);
+}
+
+static void test_list_passes_over(void)
+{
+    Release r;
+    char files[4096], zip[1024], sums[1024];
+    /* newer test builds that fail a check are passed over for an older one that passes them all: darkxex's files,
+     * a ZIP on another host, a ZIP of another tag, no SHA256SUMS */
+    char *rel[5];
+    both(files, sizeof(files), "darkxex/SwanStationPS5", "0.2.14", SHA_A);
+    rel[0] = release("0.2.14", PRERELEASE, files, "");
+    asset(zip, sizeof(zip), "Oliv3rmoon/Dulcamara.evil.example/x", "0.2.13", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(sums, sizeof(sums), OURS, "0.2.13", "SHA256SUMS", "uploaded", NULL);
+    snprintf(files, sizeof(files), "%s,%s", zip, sums);
+    rel[1] = release("0.2.13", PRERELEASE, files, "");
+    asset(zip, sizeof(zip), OURS, "0.2.10", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(sums, sizeof(sums), OURS, "0.2.12", "SHA256SUMS", "uploaded", NULL);
+    snprintf(files, sizeof(files), "%s,%s", zip, sums);
+    rel[2] = release("0.2.12", PRERELEASE, files, "");
+    asset(zip, sizeof(zip), OURS, "0.2.11", "PPSA99010.zip", "uploaded", SHA_A);
+    rel[3] = release("0.2.11", PRERELEASE, zip, "");
+    rel[4] = ours("0.2.10", PRERELEASE);
+    char *json = list(rel, 5);
+    CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_OFFER);
+    CHECK(!strcmp(r.version, "0.2.10"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/PPSA99010.zip"));
+    CHECK(!strcmp(r.sums_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/SHA256SUMS"));
+    /* with nothing to fall back on, nothing is offered, and the newest says why */
+    CHECK(evaluate_list(json, "0.2.10", true, &r) == RELEASE_FOREIGN_FILE);
+    CHECK(!strcmp(r.version, "0.2.14") && r.zip_url[0] == '\0' && r.sums_url[0] == '\0');
+    discard(rel, 5, json);
+}
+
+static void test_list_drafts(void)
+{
+    Release r;
+    /* a draft is never offered, however new, a pre-release or not */
+    char *rel[] = {ours("0.2.12", DRAFT), ours("0.2.11", "\"draft\": true, \"prerelease\": true"),
+                   ours("0.2.10", PRERELEASE)};
+    char *json = list(rel, 3);
+    CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_OFFER && !strcmp(r.version, "0.2.10"));
+    CHECK(evaluate_list(json, "0.2.9", false, &r) == RELEASE_NOT_PUBLISHED && r.version[0] == '\0');
+    discard(rel, 3, json);
+    char *draft[] = {ours("0.2.12", DRAFT)};
+    json = list(draft, 1);
+    CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_NOT_PUBLISHED);
+    CHECK(r.version[0] == '\0' && r.zip_url[0] == '\0');
+    discard(draft, 1, json);
+}
+
+static void test_list_order(void)
+{
+    Release r;
+    /* by version, not as text and not as listed: 0.2.10 is newer than 0.2.9 */
+    char *rel[] = {ours("0.2.9", PRERELEASE), ours("0.2.10", PRERELEASE), ours("0.2.1", PRERELEASE)};
+    char *json = list(rel, 3);
+    CHECK(evaluate_list(json, "0.2.8", true, &r) == RELEASE_OFFER && !strcmp(r.version, "0.2.10"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/PPSA99010.zip"));
+    discard(rel, 3, json);
+    char *other[] = {ours("0.2.10", PRERELEASE), ours("v0.2.9", PUBLISHED), ours("0.10.0", PRERELEASE),
+                     ours("0.9.99", PRERELEASE)};
+    json = list(other, 4);
+    CHECK(evaluate_list(json, "0.2.8", true, &r) == RELEASE_OFFER && !strcmp(r.version, "0.10.0"));
+    CHECK(evaluate_list(json, "0.2.8", false, &r) == RELEASE_OFFER && !strcmp(r.version, "0.2.9"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/v0.2.9/PPSA99010.zip"));
+    /* not newer: the newest of them is named */
+    CHECK(evaluate_list(json, "0.10.0", true, &r) == RELEASE_NOT_NEWER && !strcmp(r.version, "0.10.0"));
+    discard(other, 4, json);
+    /* the same version twice (v0.2.10 and 0.2.10): the one listed first, the most recent, is offered */
+    char *twice[] = {ours("v0.2.10", PRERELEASE), ours("0.2.10", PRERELEASE)};
+    json = list(twice, 2);
+    CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_OFFER);
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/v0.2.10/PPSA99010.zip"));
+    discard(twice, 2, json);
+}
+
+static void test_sums_of_another_tag(void)
+{
+    Release r;
+    /* the ZIP is the tag's own but SHA256SUMS another tag's, or another host's: never offered, alone or listed */
+    char files[4096], zip[1024], sums[1024];
+    asset(zip, sizeof(zip), OURS, "0.2.10", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(sums, sizeof(sums), OURS, "0.2.9", "SHA256SUMS", "uploaded", NULL);
+    snprintf(files, sizeof(files), "%s,%s", zip, sums);
+    char *json = release("0.2.10", PUBLISHED, files, "");
+    CHECK(evaluate(json, "0.2.8", &r) == RELEASE_FOREIGN_FILE && r.sums_url[0] == '\0');
+    char *rel[] = {release("0.2.10", PRERELEASE, files, "")};
+    char *listed = list(rel, 1);
+    CHECK(evaluate_list(listed, "0.2.8", true, &r) == RELEASE_FOREIGN_FILE && r.zip_url[0] == '\0');
+    discard(rel, 1, listed);
+    free(json);
+    asset(sums, sizeof(sums), "Oliv3rmoon/Dulcamara.evil.example/x", "0.2.10", "SHA256SUMS", "uploaded", NULL);
+    snprintf(files, sizeof(files), "%s,%s", zip, sums);
+    json = release("0.2.10", PUBLISHED, files, "");
+    CHECK(evaluate(json, "0.2.8", &r) == RELEASE_FOREIGN_FILE);
+    free(json);
+}
+
+static void test_list_unreadable(void)
+{
+    Release r;
+    /* an empty list: nothing newer */
+    CHECK(evaluate_list("[]", "0.2.9", true, &r) == RELEASE_NOT_NEWER && r.version[0] == '\0' && r.zip_url[0] == '\0');
+    CHECK(evaluate_list(" [ ] ", "0.2.9", true, &r) == RELEASE_NOT_NEWER);
+    /* a release that is not a version: no offer */
+    CHECK(evaluate_list("[{}]", "0.2.9", true, &r) == RELEASE_BAD_TAG);
+    const char *const bad[] = {"",
+                               "{}",
+                               "null",
+                               "[",
+                               "[{}",
+                               "[{},]",
+                               "[,]",
+                               "[1]",
+                               "[null]",
+                               "[\"0.2.10\"]",
+                               "[{\"draft\":\"no\"}]",
+                               "[{\"tag_name\":\"0.2.10\"},{\"tag_name\":}]",
+                               "[{\"tag_name\":\"0.2.10\"} {\"tag_name\":\"0.2.11\"}]",
+                               "[{\"tag_name\":5}]"};
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i)
+        CHECK(evaluate_list(bad[i], "0.2.9", true, &r) == RELEASE_UNREADABLE && r.zip_url[0] == '\0');
+    /* releases/latest's answer, one release, is not a list */
+    char *one = ours("0.2.10", PRERELEASE);
+    CHECK(evaluate_list(one, "0.2.9", true, &r) == RELEASE_UNREADABLE);
+    /* one that would be offered, then one that can't be read: nothing */
+    size_t size = strlen(one) + 64;
+    char *json = malloc(size);
+    snprintf(json, size, "[%s,{\"tag_name\":\"0.2.11\",\"draft\":maybe}]", one);
+    CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_UNREADABLE && r.zip_url[0] == '\0');
+    free(json);
+    free(one);
+    /* a cut-off list, at every length */
+    char *rel[] = {ours("0.2.10", PRERELEASE), ours("0.2.9", PUBLISHED)};
+    json = list(rel, 2);
+    const size_t n = strlen(json) - 1; /* everything before the final bracket */
+    int cut_ok = 1;
+    for (size_t len = 0; len < n; ++len)
+        if (release_evaluate_list(json, len, "0.2.8", true, &r) != RELEASE_UNREADABLE || r.zip_url[0])
+            cut_ok = 0;
+    CHECK(cut_ok);
+    CHECK(release_evaluate_list(json, n + 1, "0.2.8", true, &r) == RELEASE_OFFER);
+    discard(rel, 2, json);
+}
+
 static void test_sums(void)
 {
     char sha[65], text[512];
@@ -311,17 +529,102 @@ static void test_file_sha256(const char *dir)
     CHECK(!release_file_sha256(path, hex));
 }
 
+/* Eclipse 2.0.0: 0.2.x installs are offered it, 2.0.0 is offered 2.0.1 and 2.1.0 in numeric order, and nothing
+ * older or equal is ever offered (no downgrade). Pre-release eligibility is unchanged: only with Test builds on. */
+static void test_eclipse_ordering(void)
+{
+    Release r;
+    char *eclipse = ours("2.0.0", PUBLISHED);
+    CHECK(evaluate(eclipse, "0.2.12", &r) == RELEASE_OFFER && !strcmp(r.version, "2.0.0"));
+    CHECK(evaluate(eclipse, "0.2.13", &r) == RELEASE_OFFER && !strcmp(r.version, "2.0.0"));
+    CHECK(evaluate(eclipse, "0.2.0", &r) == RELEASE_OFFER);
+    CHECK(evaluate(eclipse, "2.0.0", &r) == RELEASE_NOT_NEWER);
+    CHECK(evaluate(eclipse, "2.0.1", &r) == RELEASE_NOT_NEWER);
+    free(eclipse);
+    CHECK(release_version_compare("2.0.0", "0.2.13") > 0);
+    CHECK(release_version_compare("2.0.1", "2.0.0") > 0);
+    CHECK(release_version_compare("2.1.0", "2.0.1") > 0);
+    CHECK(release_version_compare("2.0.10", "2.0.9") > 0);
+    CHECK(release_version_compare("2.0.0", "02.000.000") == 0);
+
+    /* after 2.0.0, a full 2.0.1 and 2.1.0: the newest by version, whatever the list order */
+    char *next[] = {ours("2.0.1", PUBLISHED), ours("2.1.0", PUBLISHED), ours("0.2.13", PUBLISHED)};
+    char *json = list(next, 3);
+    CHECK(evaluate_list(json, "2.0.0", false, &r) == RELEASE_OFFER && !strcmp(r.version, "2.1.0"));
+    CHECK(evaluate_list(json, "2.0.1", false, &r) == RELEASE_OFFER && !strcmp(r.version, "2.1.0"));
+    CHECK(evaluate_list(json, "2.1.0", true, &r) == RELEASE_NOT_NEWER);
+    discard(next, 3, json);
+
+    /* no downgrade: an installed 2.0.0 is never offered 0.2.x or 1.x, published or test builds */
+    char *older[] = {ours("0.2.13", PRERELEASE), ours("1.9.9", PUBLISHED), ours("2.0.0", PRERELEASE)};
+    json = list(older, 3);
+    CHECK(evaluate_list(json, "2.0.0", true, &r) == RELEASE_NOT_NEWER && r.zip_url[0] == '\0');
+    CHECK(evaluate_list(json, "2.0.0", false, &r) == RELEASE_NOT_NEWER && r.zip_url[0] == '\0');
+    discard(older, 3, json);
+
+    /* a 2.0.1 test build: offered to a 2.0.0 install only with Test builds on, never by releases/latest */
+    char *test[] = {ours("2.0.1", PRERELEASE), ours("2.0.0", PUBLISHED)};
+    json = list(test, 2);
+    CHECK(evaluate_list(json, "2.0.0", true, &r) == RELEASE_OFFER && !strcmp(r.version, "2.0.1") && r.prerelease);
+    CHECK(evaluate_list(json, "2.0.0", false, &r) == RELEASE_NOT_NEWER);
+    CHECK(evaluate_list(json, "0.2.13", false, &r) == RELEASE_OFFER && !strcmp(r.version, "2.0.0"));
+    discard(test, 2, json);
+    char *one = ours("2.0.1", PRERELEASE);
+    CHECK(evaluate(one, "2.0.0", &r) == RELEASE_NOT_PUBLISHED);
+    free(one);
+
+    /* the package's own identity: PPSA99010 and 02.000.000 for 2.0.0, nothing else */
+    const char *ok = "{\"titleId\":\"PPSA99010\",\"contentVersion\":\"02.000.000\"}";
+    CHECK(release_payload_identity(ok, strlen(ok), "PPSA99010", "2.0.0"));
+    const char *stale = "{\"titleId\":\"PPSA99010\",\"contentVersion\":\"00.002.013\"}";
+    CHECK(!release_payload_identity(stale, strlen(stale), "PPSA99010", "2.0.0"));
+    const char *other = "{\"titleId\":\"PPSA99011\",\"contentVersion\":\"02.000.000\"}";
+    CHECK(!release_payload_identity(other, strlen(other), "PPSA99010", "2.0.0"));
+}
+
+/* The real package metadata (sce_sys/param.json) and the app's NP_VERSION/NP_TITLE_ID agree, and NP_VERSION is
+ * newer than every 0.2.x, so the 2.0.0 package is one the 2.0.0 installer accepts and 0.2.x is offered. */
+static void test_package_identity(const char *param)
+{
+    FILE *f = fopen(param, "rb");
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    static char json[65536];
+    const size_t length = fread(json, 1, sizeof(json) - 1, f);
+    fclose(f);
+    CHECK(length > 0 && length < sizeof(json) - 1);
+    CHECK(release_payload_identity(json, length, NP_TITLE_ID, NP_VERSION));
+    CHECK(!strcmp(NP_TITLE_ID, "PPSA99010"));
+    CHECK(release_version_compare(NP_VERSION, "0.2.13") > 0);
+    Release r;
+    char *installed_again = ours(NP_VERSION, PUBLISHED);
+    CHECK(evaluate(installed_again, NP_VERSION, &r) == RELEASE_NOT_NEWER);
+    CHECK(evaluate(installed_again, "0.2.12", &r) == RELEASE_OFFER);
+    free(installed_again);
+}
+
 int main(int argc, char **argv)
 {
+    test_eclipse_ordering();
+    if (argc > 2)
+        test_package_identity(argv[2]);
     test_versions();
     test_offer();
     test_not_offered();
     test_notes_are_not_fields();
     test_unreadable();
+    test_list_test_builds();
+    test_list_passes_over();
+    test_list_drafts();
+    test_list_order();
+    test_sums_of_another_tag();
+    test_list_unreadable();
     test_sums();
     test_file_sha256(argc > 1 ? argv[1] : ".");
     CHECK(!strcmp(UPDATE_REPO, "Oliv3rmoon/Dulcamara"));
     CHECK(!strcmp(UPDATE_LATEST_URL, "https://api.github.com/repos/Oliv3rmoon/Dulcamara/releases/latest"));
+    CHECK(!strcmp(UPDATE_LIST_URL, "https://api.github.com/repos/Oliv3rmoon/Dulcamara/releases?per_page=20"));
     printf("%s: %d checks, %d failed\n", failures ? "FAIL" : "PASS", checks, failures);
     return failures ? 1 : 0;
 }

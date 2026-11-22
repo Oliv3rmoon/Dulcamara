@@ -7,6 +7,12 @@ cmake_minimum_required(VERSION 3.22)
 project(dulcamara_desktop LANGUAGES C CXX)
 
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+execute_process(COMMAND git apply --reverse --check "${ROOT}/tools/patches/easyrpg-runtime.patch"
+    WORKING_DIRECTORY "${ROOT}/third_party/easyrpg-player" RESULT_VARIABLE runtime_applied OUTPUT_QUIET ERROR_QUIET)
+if(NOT runtime_applied EQUAL 0)
+    execute_process(COMMAND git apply "${ROOT}/tools/patches/easyrpg-runtime.patch"
+        WORKING_DIRECTORY "${ROOT}/third_party/easyrpg-player" COMMAND_ERROR_IS_FATAL ANY)
+endif()
 add_subdirectory("${ROOT}/third_party/easyrpg-player" easyrpg-player EXCLUDE_FROM_ALL)
 
 find_package(SDL2 CONFIG REQUIRED)
@@ -25,3 +31,11 @@ if(NP_PREVIEW)
 endif()
 target_link_libraries(dulcamara PRIVATE easyrpg_libretro SDL2::SDL2 Iconv::Iconv m)
 set_target_properties(dulcamara PROPERTIES LINKER_LANGUAGE CXX)
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_custom_target(watermark_config
+    COMMAND "${Python3_EXECUTABLE}" "${ROOT}/tools/gen-watermark.py" "${CMAKE_CURRENT_BINARY_DIR}/generated/watermark_config.h"
+    BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/generated/watermark_config.h"
+    VERBATIM)
+add_dependencies(dulcamara watermark_config)
+target_include_directories(dulcamara PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")

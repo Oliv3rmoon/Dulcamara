@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <time.h>
+#include <string.h>
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t to_engine = PTHREAD_COND_INITIALIZER;
@@ -40,6 +41,8 @@ static pthread_t engine;
 static bool engine_known, stopping, ended;
 static int64_t now_usec;
 static uint64_t frames, engine_frame, yields;
+static struct dr_save_layout saves;
+static bool save_enabled, initial_published;
 
 void handoff_reset(void)
 {
@@ -47,6 +50,11 @@ void handoff_reset(void)
     pthread_mutex_lock(&lock);
     engine_known = stopping = ended = false;
     now_usec = 0;
+    memset(&saves, 0, sizeof(saves));
+    saves.version = DR_RUNTIME_VERSION;
+    saves.size = sizeof(saves);
+    saves.complete = true;
+    save_enabled = initial_published = false;
     frames = engine_frame = yields = 0;
     pthread_mutex_unlock(&lock);
 }
@@ -113,6 +121,8 @@ void handoff_engine_end(void)
 {
     pthread_mutex_lock(&lock);
     ended = true;
+    saves.writers_finished = true;
+    saves.checkpoint = false;
     pthread_cond_broadcast(&to_frontend);
     pthread_mutex_unlock(&lock);
 }
@@ -147,4 +157,114 @@ int64_t handoff_now_usec(void)
     const int64_t now = now_usec;
     pthread_mutex_unlock(&lock);
     return now;
+}
+
+void handoff_save_enable(bool enabled)
+{
+    pthread_mutex_lock(&lock);
+    save_enabled = enabled;
+    pthread_mutex_unlock(&lock);
+}
+
+bool handoff_save_paths(const struct dr_save_entry *entries, uint32_t count, bool initial)
+{
+    pthread_mutex_lock(&lock);
+    while (saves.checkpoint && !stopping)
+        pthread_cond_wait(&to_engine, &lock);
+    if (stopping)
+    {
+        pthread_mutex_unlock(&lock);
+        return false;
+    }
+    /* Validate the whole batch before publication: the frontend never sees a partial initial union. */
+    struct dr_save_layout next = saves;
+    bool changed = false;
+    bool valid = count > 0 && count <= DR_SAVE_MAX && entries;
+    for (uint32_t n = 0; valid && n < count; ++n)
+    {
+        const struct dr_save_entry *entry = &entries[n];
+        if (!dr_save_entry_valid(entry))
+        {
+            valid = false;
+            break;
+        }
+        uint32_t i;
+        for (i = 0; i < next.count; ++i)
+            if (!strcmp(next.entries[i].path, entry->path) && next.entries[i].kind == entry->kind && !strcmp(next.entries[i].suffix,entry->suffix))
+                break;
+        if (i < next.count)
+        {
+            /* A shared native location can alias a configured game root. Never lose that fact. */
+            if (entry->scope == DR_SAVE_SHARED && next.entries[i].scope != DR_SAVE_SHARED)
+            {
+                next.entries[i].scope = DR_SAVE_SHARED;
+                changed = true;
+            }
+            continue;
+        }
+        if (next.count == DR_SAVE_MAX)
+        {
+            valid = false;
+            break;
+        }
+        next.entries[next.count++] = *entry;
+        changed = true;
+    }
+    if (!valid)
+    {
+        saves.available = saves.complete = false;
+        /* A declined optional extension must not restrict native game paths. Stop cancellation
+         * was handled above, independently of metadata representation/validation failure. */
+        bool legacy = !save_enabled;
+        pthread_mutex_unlock(&lock);
+        return legacy; /* protected launches abort before an unrepresentable native write */
+    }
+    bool first = initial && !initial_published;
+    if (!changed && !first)
+    {
+        pthread_mutex_unlock(&lock);
+        return true;
+    }
+    saves = next;
+    saves.available = saves.complete;
+    ++saves.generation;
+    saves.initial = first;
+    saves.preinitial = !initial && !initial_published;
+    initial_published |= initial;
+    saves.checkpoint = save_enabled;
+    pthread_cond_broadcast(&to_frontend);
+    while (saves.checkpoint && !stopping)
+        pthread_cond_wait(&to_engine, &lock);
+    bool ok = !stopping;
+    saves.checkpoint = false;
+    pthread_mutex_unlock(&lock);
+    return ok;
+}
+
+bool handoff_save_path(const char *path, unsigned kind, unsigned scope, unsigned policy)
+{
+    struct dr_save_entry entry = {.kind = kind, .scope = scope, .policy = policy};
+    if (path && strlen(path) < sizeof(entry.path))
+        strcpy(entry.path, path);
+    return handoff_save_paths(&entry, 1, false);
+}
+
+void handoff_save_copy(struct dr_save_layout *out)
+{
+    pthread_mutex_lock(&lock);
+    *out = saves;
+    pthread_mutex_unlock(&lock);
+}
+
+bool handoff_save_release(uint32_t generation)
+{
+    pthread_mutex_lock(&lock);
+    bool ok = saves.checkpoint && saves.generation == generation && !stopping;
+    if (ok)
+    {
+        saves.checkpoint = false;
+        pthread_cond_broadcast(&to_engine);
+    }
+    pthread_mutex_unlock(&lock);
+    return ok;
 }

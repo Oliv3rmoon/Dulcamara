@@ -1,0 +1,72 @@
+--- a/renpy/main.py
++++ b/renpy/main.py
+@@ -432,6 +432,9 @@
+     if renpy.game.args.savedir:  # type: ignore
+         renpy.config.savedir = renpy.game.args.savedir  # type: ignore
+
++    import dulcamara_savepaths
++    dulcamara_savepaths.initial(renpy)
++
+     # Init the save token system.
+     renpy.savetoken.init()
+
+--- a/renpy/savelocation.py
++++ b/renpy/savelocation.py
+@@ -107,6 +107,8 @@
+     """
+
+     def __init__(self, directory):
++        import dulcamara_savepaths
++        dulcamara_savepaths.declare(directory)
+         self.directory = directory
+
+         # Make the save directory.
+@@ -147,6 +149,8 @@
+         Given a slot name, returns a filename.
+         """
+
++        import dulcamara_savepaths
++        dulcamara_savepaths.slot(self.directory, slotname, tmp)
+         return os.path.join(self.directory, renpy.exports.fsencode(slotname + renpy.savegame_suffix))
+
+     def sync(self):
+--- a/renpy/persistent.py
++++ b/renpy/persistent.py
+@@ -640,6 +640,9 @@
+             renpy.display.log.write("Loading MultiPersistent at %r:" % fn)  # type: ignore
+             renpy.display.log.exception()
+
++    import dulcamara_savepaths
++    dulcamara_savepaths.declare(fn, kind=2, shared=True)
++
+     rv._filename = fn  # type: ignore
+     rv._name = name
+     rv._save_on_quit = save_on_quit
+--- a/renpy/savetoken.py
++++ b/renpy/savetoken.py
+@@ -303,6 +303,9 @@
+     if token_dir is None:
+         return
+
++    import dulcamara_savepaths
++    dulcamara_savepaths.tokens(token_dir)
++
+     keys_fn = os.path.join(token_dir, "security_keys.txt")
+
+     if os.path.exists(keys_fn):
+--- a/renpy/bootstrap.py
++++ b/renpy/bootstrap.py
+@@ -431,10 +431,12 @@
+         renpy.display.tts.tts(None)  # type: ignore
+
+ 
++        renpy.display.im.cache.quit()  # type: ignore
++
+         if renpy.display.draw:  # type: ignore
+-            renpy.display.im.cache.quit()  # type: ignore
+             renpy.display.draw.quit()  # type: ignore
+
++        renpy.savelocation.quit()
+         renpy.audio.audio.quit()
+
+         for cb in renpy.config.python_exit_callbacks:

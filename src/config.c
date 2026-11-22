@@ -3,11 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "config.h"
+#include "storage.h"
 
 #include "core/cores.h"
 #include "ui/sfx.h"
 
 #include <stdio.h>
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,8 +51,11 @@ void config_defaults(Settings *s)
     s->ui_volume = 2;
     s->game_volume = 10;
     s->update_check = true;
+    s->update_test_builds = false;
     s->sort_mode = 0;
     s->last_game = 0;
+    s->automatic_backups = true;
+    s->library_view = 0; /* Story */
 }
 
 static int clamp(int v, int lo, int hi)
@@ -67,7 +74,29 @@ void config_load(Settings *s, const char *path)
         char key[64], value[128];
         if (sscanf(line, " %63[^= ] = %127[^\r\n]", key, value) != 2)
             continue;
-        const int v = atoi(value);
+        if (!strchr(line, '\n') && !(feof)(f))
+        {
+            int c;
+            while ((c = fgetc(f)) != '\n' && c != EOF) {}
+            continue;
+        }
+        if (!strcmp(key, "selected_game_id"))
+        {
+            value[strcspn(value, " \t")] = '\0';
+            if (game_id_valid(value))
+                str_copy(s->selected_game_id, sizeof(s->selected_game_id), value);
+            continue;
+        }
+        char *end;
+        errno = 0;
+        const long parsed = strtol(value, &end, 10);
+        if (end == value || errno || parsed < INT_MIN || parsed > INT_MAX)
+            continue;
+        while (isspace((unsigned char)*end))
+            ++end;
+        if (*end)
+            continue;
+        const int v = (int)parsed;
         if (!strcmp(key, "integer_scale"))
             s->integer_scale = v != 0;
         else if (!strcmp(key, "smooth"))
@@ -96,12 +125,20 @@ void config_load(Settings *s, const char *path)
             s->ui_volume = clamp(v, 0, 3);
         else if (!strcmp(key, "game_volume"))
             s->game_volume = clamp(v, 0, 10);
+        else if (!strcmp(key, "still_background"))
+            s->still_background = v != 0;
+        else if (!strcmp(key, "automatic_backups"))
+            s->automatic_backups = v != 0;
         else if (!strcmp(key, "update_check"))
             s->update_check = v != 0;
+        else if (!strcmp(key, "update_test_builds"))
+            s->update_test_builds = v != 0;
         else if (!strcmp(key, "community_seen"))
             s->community_seen = v != 0;
         else if (!strcmp(key, "sort_mode"))
             s->sort_mode = clamp(v, 0, 1);
+        else if (!strcmp(key, "library_view"))
+            s->library_view = clamp(v, 0, 1);
         else if (!strcmp(key, "last_game"))
             s->last_game = v < 0 ? 0 : v;
         else
@@ -119,11 +156,10 @@ void config_load(Settings *s, const char *path)
 
 bool config_save(const Settings *s, const char *path)
 {
-    char temp[NP_PATH_MAX];
-    snprintf(temp, sizeof(temp), "%s.new", path);
-    FILE *f = fopen(temp, "w");
-    if (!f)
+    StorageFile write;
+    if (!storage_begin(&write, path))
         return false;
+    FILE *f = write.file;
     fprintf(f, "# Dulcamara %s settings\n", NP_VERSION);
     fprintf(f, "version = %s\n", NP_VERSION);
     fprintf(f, "integer_scale = %d\nsmooth = %d\nshader = %d\naspect = %d\nupscale = %d\nupscale_filter = %d\n",
@@ -140,13 +176,13 @@ bool config_save(const Settings *s, const char *path)
     fprintf(f, "ui_sound = %d\nui_volume = %d\ngame_volume = %d\nupdate_check = %d\nsort_mode = %d\nlast_game = %d\n",
             s->ui_sound, s->ui_volume, s->game_volume, s->update_check, s->sort_mode, s->last_game);
     fprintf(f, "community_seen = %d\n", s->community_seen);
-    const bool ok = fclose(f) == 0;
-    if (ok)
-    {
-        remove(path);
-        rename(temp, path);
-    }
-    return ok;
+    fprintf(f, "still_background = %d\n", s->still_background);
+    fprintf(f, "automatic_backups = %d\n", s->automatic_backups);
+    if (game_id_valid(s->selected_game_id))
+        fprintf(f, "selected_game_id = %s\n", s->selected_game_id);
+    fprintf(f, "update_test_builds = %d\n", s->update_test_builds);
+    fprintf(f, "library_view = %d\n", s->library_view);
+    return storage_commit(&write);
 }
 
 void config_paths(Paths *p, const char *root)
@@ -159,4 +195,278 @@ void config_paths(Paths *p, const char *root)
     path_join(p->cache, sizeof(p->cache), root, "cache");
     path_join(p->config, sizeof(p->config), root, "settings.ini");
     path_join(p->played, sizeof(p->played), root, "played.txt");
+    path_join(p->keys, sizeof(p->keys), root, "keys");
+    path_join(p->metadata, sizeof(p->metadata), root, "library-user.txt");
+    path_join(p->profiles, sizeof(p->profiles), root, "profiles");
+    path_join(p->backups, sizeof(p->backups), root, "backups");
+    path_join(p->sounds, sizeof(p->sounds), root, "sounds");
+}
+
+/* ---------------------------------------------------------------- a Ren'Py game's keys */
+
+#define LETTER(c, C) {#c, #C, 2}
+#define DIGIT(d) {#d, #d, 3}
+#define F_KEY(n) {"f" #n, "F" #n, 4}
+
+/* what src/core/renpy/input.c takes: the core's own, nothing and the mouse; then the keys, the letters, the digits and
+ * the F keys */
+const KeyAction KEY_ACTIONS[] = {
+    {"default", "Default", 0},       {"none", "Nothing", 0},          {"click", "Left click", 0},
+    {"rightclick", "Right click", 0}, {"cursor", "Cursor on and off", 0},
+    {"return", "Return", 1},         {"escape", "Escape", 1},         {"space", "Space", 1},
+    {"tab", "Tab", 1},               {"backspace", "Backspace", 1},   {"delete", "Delete", 1},
+    {"shift", "Shift", 1},           {"ctrl", "Ctrl", 1},             {"alt", "Alt", 1},
+    {"up", "Up arrow", 1},           {"down", "Down arrow", 1},       {"left", "Left arrow", 1},
+    {"right", "Right arrow", 1},     {"pageup", "Page Up", 1},        {"pagedown", "Page Down", 1},
+    {"home", "Home", 1},             {"end", "End", 1},
+    LETTER(a, A), LETTER(b, B), LETTER(c, C), LETTER(d, D), LETTER(e, E), LETTER(f, F), LETTER(g, G),
+    LETTER(h, H), LETTER(i, I), LETTER(j, J), LETTER(k, K), LETTER(l, L), LETTER(m, M), LETTER(n, N),
+    LETTER(o, O), LETTER(p, P), LETTER(q, Q), LETTER(r, R), LETTER(s, S), LETTER(t, T), LETTER(u, U),
+    LETTER(v, V), LETTER(w, W), LETTER(x, X), LETTER(y, Y), LETTER(z, Z),
+    DIGIT(0), DIGIT(1), DIGIT(2), DIGIT(3), DIGIT(4), DIGIT(5), DIGIT(6), DIGIT(7), DIGIT(8), DIGIT(9),
+    F_KEY(1), F_KEY(2), F_KEY(3), F_KEY(4), F_KEY(5), F_KEY(6), F_KEY(7), F_KEY(8), F_KEY(9), F_KEY(10),
+    F_KEY(11), F_KEY(12),
+};
+_Static_assert(sizeof(KEY_ACTIONS) / sizeof(KEY_ACTIONS[0]) == KEY_ACTION_COUNT, "KEY_ACTION_COUNT (config.h)");
+
+/* each RetroPad button's option (PAD_* order; R2 is the app's fast-forward), and the core's own for it: Cross Return,
+ * Square H (Ren'Py hides its text), Options and Circle Escape (the menu), the D-pad the arrows, Triangle Tab (skip),
+ * L1 and R1 Page Up and Down (back and forward), L3 the cursor; Create, L2 and R3 nothing */
+#define KEY_PREFIX "renpy_key_" /* the file names a button by the rest: "y = i" */
+static const char *const KEY_OPTIONS[MAP_BUTTONS] = {
+    KEY_PREFIX "b",    KEY_PREFIX "y",     KEY_PREFIX "select", KEY_PREFIX "start", KEY_PREFIX "up", KEY_PREFIX "down",
+    KEY_PREFIX "left", KEY_PREFIX "right", KEY_PREFIX "a",      KEY_PREFIX "x",     KEY_PREFIX "l",  KEY_PREFIX "r",
+    KEY_PREFIX "l2",   NULL,               KEY_PREFIX "l3",     KEY_PREFIX "r3"};
+static const char *const KEY_DEFAULTS[MAP_BUTTONS] = {"return", "h",     "none",   "escape", "up",     "down",
+                                                      "left",   "right", "escape", "tab",    "pageup", "pagedown",
+                                                      "none",   "none",  "cursor", "none"};
+
+static int key_action(const char *value)
+{
+    for (int i = 0; i < KEY_ACTION_COUNT; ++i)
+        if (!strcmp(KEY_ACTIONS[i].value, value))
+            return i;
+    return -1;
+}
+
+const char *config_key_option(int pad)
+{
+    return pad >= 0 && pad < MAP_BUTTONS ? KEY_OPTIONS[pad] : NULL;
+}
+
+int config_key_default(int pad)
+{
+    const int action = pad >= 0 && pad < MAP_BUTTONS ? key_action(KEY_DEFAULTS[pad]) : -1;
+    return action < 0 ? 0 : action;
+}
+
+void config_load_keys(int8_t keys[MAP_BUTTONS], const char *path)
+{
+    memset(keys, 0, MAP_BUTTONS);
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return;
+    char line[256];
+    while (fgets(line, sizeof(line), f))
+    {
+        char button[32], value[32];
+        if (line[0] == '#' || sscanf(line, " %31[^= ] = %31s", button, value) != 2)
+            continue;
+        const int action = key_action(value);
+        for (int pad = 0; pad < MAP_BUTTONS && action >= 0; ++pad)
+            if (KEY_OPTIONS[pad] && !strcmp(KEY_OPTIONS[pad] + strlen(KEY_PREFIX), button))
+                keys[pad] = (int8_t)action;
+    }
+    fclose(f);
+}
+
+bool config_save_keys(const int8_t keys[MAP_BUTTONS], const char *path, const char *title)
+{
+    bool any = false;
+    for (int pad = 0; pad < MAP_BUTTONS; ++pad)
+        any |= KEY_OPTIONS[pad] && keys[pad] > 0 && keys[pad] < KEY_ACTION_COUNT;
+    if (!any)
+        return storage_remove(path);
+    char name[160];
+    StorageFile write;
+    if (!storage_begin(&write, path))
+        return false;
+    FILE *f = write.file;
+    /* the game's name on the first line, nothing in it that could start another */
+    str_copy(name, sizeof(name), title);
+    for (char *p = name; *p; ++p)
+        if ((unsigned char)*p < 0x20)
+            *p = ' ';
+    fprintf(f, "# Dulcamara %s: the keys of %s (Dulcamara's menu > Keys for this game)\n", NP_VERSION, name);
+    fprintf(f, "# a RetroPad button = a key, click, rightclick, cursor or none; the others do the core's own\n");
+    for (int pad = 0; pad < MAP_BUTTONS; ++pad)
+        if (KEY_OPTIONS[pad] && keys[pad] > 0 && keys[pad] < KEY_ACTION_COUNT)
+            fprintf(f, "%s = %s\n", KEY_OPTIONS[pad] + strlen(KEY_PREFIX), KEY_ACTIONS[keys[pad]].value);
+    return storage_commit(&write);
+}
+
+/* ---------------------------------------------------------------- a Ren'Py game's sounds */
+
+/* A whole file, '\0' after it; NULL when it can't be read. */
+static char *read_text(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return NULL;
+    fseek(f, 0, SEEK_END);
+    const long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *text = size >= 0 ? malloc((size_t)size + 1) : NULL;
+    if (text && fread(text, 1, (size_t)size, f) != (size_t)size)
+    {
+        free(text);
+        text = NULL;
+    }
+    fclose(f);
+    if (text)
+        text[size] = '\0';
+    return text;
+}
+
+/* The line at *at without its ending ("\n" or "\r\n"), and *at past it; NULL at the end. */
+static char *next_line(char **at)
+{
+    char *line = *at, *end = line + strcspn(line, "\n");
+    if (!*line)
+        return NULL;
+    *at = *end ? end + 1 : end;
+    *end = '\0';
+    if (end > line && end[-1] == '\r')
+        end[-1] = '\0';
+    return line;
+}
+
+/* The sound of an off list's line, "off = <name>": the name as it is, spaces and all; NULL for any other line. The
+ * engine's dulcamara_errors reads the file the same way. */
+static char *off_name(char *line)
+{
+    line += strspn(line, " \t");
+    if (strncmp(line, "off", 3))
+        return NULL;
+    line += 3;
+    line += strspn(line, " \t");
+    if (*line++ != '=')
+        return NULL;
+    if (*line == ' ')
+        ++line;
+    return *line ? line : NULL;
+}
+
+/* name's place in the list's first n names, -1 when it is not there. The core writes them in order (by their UTF-8
+ * bytes, as strcmp has them): then halved each step, else one by one. */
+static int find_sound(const SoundList *s, int n, bool in_order, const char *name)
+{
+    if (!in_order)
+    {
+        for (int i = 0; i < n; ++i)
+            if (!strcmp(s->names[i], name))
+                return i;
+        return -1;
+    }
+    int lo = 0, hi = n;
+    while (lo < hi)
+    {
+        const int mid = lo + (hi - lo) / 2, c = strcmp(s->names[mid], name);
+        if (!c)
+            return mid;
+        if (c < 0)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return -1;
+}
+
+void config_free_sounds(SoundList *sounds)
+{
+    free(sounds->text[0]);
+    free(sounds->text[1]);
+    free(sounds->names);
+    free(sounds->off);
+    memset(sounds, 0, sizeof(*sounds));
+}
+
+bool config_load_sounds(SoundList *s, const char *base)
+{
+    config_free_sounds(s);
+    char path[NP_PATH_MAX];
+    snprintf(path, sizeof(path), "%s.list", base);
+    if (!(s->text[0] = read_text(path)))
+        return false;
+    snprintf(path, sizeof(path), "%s.txt", base);
+    s->text[1] = read_text(path);
+    /* a name for each line of the two at most */
+    size_t lines = 2;
+    for (int t = 0; t < 2; ++t)
+        for (const char *p = s->text[t]; p && *p; ++p)
+            lines += *p == '\n';
+    s->names = malloc(lines * sizeof(*s->names));
+    s->off = calloc(lines, sizeof(*s->off));
+    if (!s->names || !s->off)
+    {
+        config_free_sounds(s);
+        return false;
+    }
+    bool in_order = true;
+    char *at = s->text[0];
+    for (char *line; (line = next_line(&at));)
+        if (*line)
+        {
+            in_order = in_order && (!s->count || strcmp(s->names[s->count - 1], line) < 0);
+            s->names[s->count++] = line;
+        }
+    const int listed = s->count;
+    at = s->text[1];
+    for (char *line; at && (line = next_line(&at));)
+    {
+        char *name = off_name(line);
+        if (!name)
+            continue;
+        int i = find_sound(s, listed, in_order, name);
+        /* one the list does not have (written by hand, or gone from the game): kept, after the list's */
+        for (int k = listed; i < 0 && k < s->count; ++k)
+            if (!strcmp(s->names[k], name))
+                i = k;
+        if (i < 0)
+        {
+            i = s->count++;
+            s->names[i] = name;
+        }
+        s->off[i] = true;
+    }
+    return true;
+}
+
+bool config_save_sounds(const SoundList *s, const char *base, const char *title)
+{
+    char path[NP_PATH_MAX], name[160];
+    int length = snprintf(path, sizeof(path), "%s.txt", base);
+    if (length < 0 || (size_t)length >= sizeof(path))
+        return false;
+    bool any = false;
+    for (int i = 0; i < s->count && !any; ++i)
+        any = s->off[i];
+    if (!any)
+        return storage_remove(path);
+    StorageFile write;
+    if (!storage_begin(&write, path))
+        return false;
+    FILE *f = write.file;
+    /* the game's name on the first line, nothing in it that could start another */
+    str_copy(name, sizeof(name), title);
+    for (char *p = name; *p; ++p)
+        if ((unsigned char)*p < 0x20)
+            *p = ' ';
+    fprintf(f, "# Dulcamara %s: the sounds of %s switched off (Dulcamara's menu > Sounds for this game)\n",
+            NP_VERSION, name);
+    fprintf(f, "# off = a sound as the game's list beside this file names it: the game plays nothing for it\n");
+    for (int i = 0; i < s->count; ++i)
+        if (s->off[i])
+            fprintf(f, "off = %s\n", s->names[i]);
+    return storage_commit(&write);
 }

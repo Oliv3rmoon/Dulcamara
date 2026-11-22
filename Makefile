@@ -39,13 +39,14 @@ APP_PARAM ?=
 APP_SCE_SYS ?=
 APP_ASSETS ?= assets
 APP_ROOT_FILES ?=
-# Lapy elevation: needed to list /data/dulcamara under ShadowMountPlus.
-APP_LAPY_HELPER ?= 1
 PACBREW_PACKAGES ?= sdl2 libcurl
 PACBREW_INCLUDE_PATHS ?=
 # The library reads game titles in Shift-JIS and the Windows code pages (src/rpgmaker.c): GNU libiconv. The core
 # has its own copy, local to its archive.
 PACBREW_STATIC_ARCHIVES ?= lib/libiconv.a
+# nightly's insider service, such as https://nightly-insider.<account>.workers.dev (src/insider.h): its insider builds
+# are offered to members with a code. Empty: none.
+INSIDER_URL ?=
 PS5_HOST ?=
 FTP_PORT ?= 2121
 DEPLOY_FORMAT ?= folder
@@ -58,20 +59,22 @@ APP_CATEGORY ?= game
 CONTENT_SUFFIX ?=
 HOST_CC ?= clang
 HOST_CXX ?= clang++
-HOST_CC ?= clang
 HOST_TEST_CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror \
 	-ffunction-sections -fdata-sections
 HOST_TEST_CXXFLAGS ?= -std=c++20 -O2 -Wall -Wextra -Wpedantic -Werror \
 	-ffunction-sections -fdata-sections
+ifeq ($(shell uname -s),Darwin)
+HOST_TEST_LDFLAGS ?= -Wl,-dead_strip
+else
 HOST_TEST_LDFLAGS ?= -Wl,--gc-sections
-GTEST_ARGS ?=
+endif
 BUILD_JOBS ?= $(shell nproc 2>/dev/null || echo 2)
 USE_CCACHE ?= 1
 export BUILD_JOBS USE_CCACHE
 export HOST_CC HOST_CXX HOST_TEST_CFLAGS HOST_TEST_CXXFLAGS HOST_TEST_LDFLAGS
 export APP_VULKAN APP_DEFINITIONS APP_INCLUDE_PATHS APP_STATIC_ARCHIVES APP_RUNTIME_MODULES APP_WRAP_SYMBOLS
 export APP_SOURCE_DIR APP_PARAM APP_SCE_SYS APP_ASSETS APP_ROOT_FILES
-export APP_LAPY_HELPER
+export INSIDER_URL
 export PACBREW_PACKAGES PACBREW_INCLUDE_PATHS PACBREW_STATIC_ARCHIVES
 export PS5_HOST FTP_PORT DEPLOY_FORMAT PS5_FTP_USER PS5_FTP_PASSWORD DEPLOY_DRY_RUN
 export TITLE_ID APP_NAME APP_CATEGORY CONTENT_SUFFIX
@@ -80,9 +83,8 @@ RUNTIME := runtime/libc.prx
 RUNTIME_INPUTS := tools/rebuild-libc.sh tools/build-host-tools.sh tools/ninja-build.sh \
 	$(wildcard tooling/native/*.cpp tooling/native/*.hpp) \
 	$(wildcard tooling/native/runtime/*.txt)
-HOST_UNIT_TEST := build/tests/demo_renderer_tests
 
-.PHONY: all app build init doctor test test-deps test-unit test-integration libc deps pacbrew pacbrew-list assets-check format format-check tidy lint check ffpkg ffpfsc packages sandbox-elevation-ffpfsc update-check-example test-update-check self-update-helper self-update-example test-self-update deploy undeploy clean distclean help
+.PHONY: all app build init doctor test test-deps test-unit test-integration libc deps pacbrew pacbrew-list assets-check format format-check tidy lint check ffpkg ffpfsc packages update-check-example test-update-check deploy undeploy clean distclean help
 
 all: app
 build: app
@@ -95,13 +97,19 @@ doctor:
 	@printf '%s\n' '==> [doctor] Checking the Linux/WSL host without changing it'
 	@bash tools/doctor.sh
 
-test: host-checks test-unit test-integration test-elevation test-update-check test-self-update
+# Explicit recursive stages remain serial even with make -j: native headless builds
+# share dependency prefixes. Discovery owns every Python suite exactly once.
+test:
+	@$(MAKE) --no-print-directory test-unit
+	@$(MAKE) --no-print-directory test-integration
 
 # Dulcamara's own host checks: the library's game detection (tests/test_library.py), EasyRPG Player's core run
 # headless on EasyRPG's TestGame (tests/test_core.py) and Ren'Py's two on tests/renpy-game (tests/test_renpy_core.py,
-# tests/test_renpy7_core.py). None needs the PS5 SDK.
-.PHONY: host-checks test-library test-core test-renpy-core test-renpy7-core
-host-checks: test-library test-core test-renpy-core test-renpy7-core
+# tests/test_renpy7_core.py), the on-screen keyboard's logic (tests/test_keyboard.py) and the update's download
+# (tests/test_net_download.py, which needs libcurl's headers), and insider builds (tests/test_insider.py, libcurl's
+# headers too). None needs the PS5 SDK.
+.PHONY: host-checks test-library test-core test-renpy-core test-renpy7-core test-keyboard test-net-download test-insider
+host-checks: test-library test-core test-renpy-core test-renpy7-core test-keyboard test-net-download test-insider
 test-library:
 	@python3 -m unittest tests.test_library -v
 test-core:
@@ -110,15 +118,12 @@ test-renpy-core:
 	@python3 -m unittest tests.test_renpy_core -v
 test-renpy7-core:
 	@python3 -m unittest tests.test_renpy7_core -v
-
-.PHONY: test-elevation
-test-elevation:
-	@bash tools/setup-native-dependencies.sh >/dev/null
-	@mkdir -p build/tests
-	@$(HOST_CXX) $(HOST_TEST_CXXFLAGS) -idirafter .deps/native/ps5-payload-sdk/target/include \
-		tests/test_elevation.cpp $(HOST_TEST_LDFLAGS) -o build/tests/test_elevation
-	@build/tests/test_elevation
-	@printf '%s\n' 'Resident/one-shot Lapy client, exchange, and proof checks passed.'
+test-keyboard:
+	@python3 -m unittest tests.test_keyboard -v
+test-net-download:
+	@python3 -m unittest tests.test_net_download -v
+test-insider:
+	@python3 -m unittest tests.test_insider -v
 
 test-update-check:
 	@mkdir -p build/tests
@@ -126,31 +131,16 @@ test-update-check:
 		tests/test_update_check.cpp $(HOST_TEST_LDFLAGS) -o build/tests/test_update_check
 	@build/tests/test_update_check
 	@printf '%s\n' 'Update-check version, parsing and decision checks passed.'
-test-self-update:
-	@mkdir -p build/tests/self-update
-	@for name in miniz miniz_tinfl miniz_tdef miniz_zip; do \
-		$(HOST_CC) -std=c11 -O2 -w -g -fsanitize=address,undefined \
-			-c third_party/miniz/$$name.c -o build/tests/self-update/$$name.o || exit 1; \
-	done
-	@$(HOST_CXX) $(HOST_TEST_CXXFLAGS) -g -fsanitize=address,undefined -fno-sanitize-recover=all \
-		-Ithird_party -Iexamples/self-update -Iexamples/update-check \
-		tests/test_self_update.cpp examples/self-update-helper/updater.cpp \
-		examples/self-update-helper/archive.cpp examples/self-update-helper/files.cpp \
-		build/tests/self-update/*.o -pthread $(HOST_TEST_LDFLAGS) -o build/tests/test_self_update
-	@build/tests/test_self_update
-	@printf '%s\n' 'Self-update check, download, staging, apply and refusal checks passed.'
-
 test-deps:
 	@printf '%s\n' '==> [test-deps] Fetching the pinned host-only GoogleTest source'
 	@bash tools/setup-test-dependencies.sh >/dev/null
 
 test-unit:
-	@bash tools/build-tests.sh
-	@printf '%s\n' '==> [test-unit] Running host-native GoogleTest application tests'
-	@$(HOST_UNIT_TEST) $(GTEST_ARGS)
+	@printf '%s\n' '==> [test-unit] Running the standalone update-check suite'
+	@$(MAKE) --no-print-directory test-update-check
 
 test-integration:
-	@printf '%s\n' '==> [test-integration] Running host tooling integration tests'
+	@printf '%s\n' '==> [test-integration] Running every Python suite once (unittest discovery)'
 	@python3 -m unittest discover -s tests -p 'test_*.py' -v
 
 deps: test-deps
@@ -194,13 +184,6 @@ packages: $(RUNTIME)
 	@printf '%s\n' '==> [packages] Building the app folder and both package formats'
 	@bash tools/build.sh All
 
-sandbox-elevation-ffpfsc: $(RUNTIME)
-	@printf '%s\n' '==> [sandbox-elevation] Building the embedded upstream-Lapy proof image'
-	@APP_SOURCE_DIR=examples/sandbox-elevation/src \
-		APP_PARAM=examples/sandbox-elevation/sce_sys/param.json \
-		APP_SCE_SYS=sce_sys APP_ASSETS= APP_LAPY_HELPER=1 \
-		bash tools/build.sh Ffpfsc
-
 update-check-example: $(RUNTIME)
 	@printf '%s\n' '==> [update-check] Building the catalog update-check example title'
 	@APP_SOURCE_DIR=examples/update-check \
@@ -210,28 +193,6 @@ update-check-example: $(RUNTIME)
 		APP_WRAP_SYMBOLS="fcntl $(APP_WRAP_SYMBOLS)" \
 		bash tools/build.sh Folder
 
-SELF_UPDATE_HELPER := build/self-update/self-updater.elf
-
-self-update-helper:
-	@printf '%s\n' '==> [self-update] Building the helper for the payload loader'
-	@bash tools/setup-native-dependencies.sh >/dev/null
-	@$(MAKE) --no-print-directory -s -C examples/self-update-helper \
-		PS5_PAYLOAD_SDK="$(CURDIR)/.deps/native/ps5-payload-sdk" \
-		OUTPUT="$(CURDIR)/$(SELF_UPDATE_HELPER)"
-	@python3 tools/validate-loader-elf.py "$(SELF_UPDATE_HELPER)"
-
-self-update-example: $(RUNTIME) self-update-helper
-	@printf '%s\n' '==> [self-update] Building the self-update example title'
-	@APP_SOURCE_DIR=examples/self-update \
-		APP_PARAM=examples/self-update/sce_sys/param.json \
-		APP_SCE_SYS=sce_sys APP_ASSETS=examples/self-update/assets \
-		APP_INCLUDE_PATHS="examples/update-check $(APP_INCLUDE_PATHS)" \
-		PACBREW_PACKAGES="libcurl $(PACBREW_PACKAGES)" \
-		APP_WRAP_SYMBOLS="fcntl $(APP_WRAP_SYMBOLS)" \
-		APP_ROOT_FILES="$(SELF_UPDATE_HELPER) $(APP_ROOT_FILES)" \
-		bash tools/build.sh Folder
-
-# The version into sce_sys/param.json (as make release does), then the app.
 deploy: sync-version
 	@printf '%s\n' '==> [deploy] Building and publishing the selected app output over FTP'
 	@bash tools/deploy.sh
@@ -297,7 +258,7 @@ help:
 	@printf '%s\n' \
 	  'Dulcamara:' \
 	  'make                 Build the PS5 app folder dist/PPSA99010 (the cores + the frontend)' \
-	  'make host-checks     Game detection tests and EasyRPG Player run headless on TestGame' \
+	  'make test            All relevant application suites once (docs/testing.md)' \
 	  'make desktop         The app for this computer (SDL2 window), for the interface' \
 	  'make deploy PS5_HOST=<ip>  Build and upload to /data/homebrew over FTP' \
 	  '' \
@@ -305,10 +266,9 @@ help:
 	  'make                 Generate libc.prx and build the app folder' \
 	  'make init TITLE_ID=PPSA12345 APP_NAME="My App"  Configure app identity' \
 	  'make doctor          Check required and optional Linux/WSL tools' \
-	  'make test            Run all host unit and integration tests' \
-	  'make test-deps       Fetch verified host-only GoogleTest source' \
-	  'make test-unit       Run host-native GoogleTest application tests' \
-	  'make test-integration  Run host tooling integration tests' \
+	  'make test-deps       Fetch verified host-only GoogleTest source (used by make tidy)' \
+	  'make test-unit       Run the standalone update-check suite' \
+	  'make test-integration  Run every Python suite once (unittest discovery)' \
 	  'make deps            Fetch native dependencies into .deps/' \
 	  'make pacbrew         Fetch the pinned PacBrew ports sysroot' \
 	  'make pacbrew-list    List PacBrew pkg-config module names' \
@@ -322,17 +282,14 @@ help:
 	  'make ffpkg           Build the folder and UFS2 .ffpkg image' \
 	  'make ffpfsc          Build the folder and compressed .ffpfsc image' \
 	  'make packages        Build folder, .ffpkg, and .ffpfsc outputs' \
-	  'make sandbox-elevation-ffpfsc  Build the official-Lapy client proof image' \
 	  'make update-check-example  Build the catalog update-check example title' \
 	  'make test-update-check     Run the update-check host tests' \
-	  'make self-update-example   Build the self-update example title and its helper' \
-	  'make test-self-update      Run the self-update host tests' \
 	  'make deploy PS5_HOST=<address>  Build and FTP-deploy the app folder' \
 	  'make undeploy PS5_HOST=<address>  Remove this title from /data/homebrew' \
-	  'Build variables:     APP_DEFINITIONS, APP_INCLUDE_PATHS, APP_STATIC_ARCHIVES, APP_RUNTIME_MODULES, APP_WRAP_SYMBOLS, APP_LAPY_HELPER' \
+	  'Build variables:     APP_DEFINITIONS, APP_INCLUDE_PATHS, APP_STATIC_ARCHIVES, APP_RUNTIME_MODULES, APP_WRAP_SYMBOLS' \
 	  'PacBrew variables:   PACBREW_PACKAGES, PACBREW_INCLUDE_PATHS, PACBREW_STATIC_ARCHIVES' \
 	  'Deploy variables:    FTP_PORT=2121, DEPLOY_FORMAT=folder|ffpfsc|ffpkg, DEPLOY_DRY_RUN=0|1' \
 	  'Local defaults:      Copy .env.example to the ignored .env file' \
-	  'Build speed:         BUILD_JOBS defaults to all CPUs; USE_CCACHE=0 disables ccache' \
+	  'Build speed:         BUILD_JOBS defaults to nproc (2 where nproc is absent); USE_CCACHE=0 disables ccache' \
 	  'make clean           Remove build/, dist/, and generated libc.prx' \
 	  'make distclean       Also remove the ignored .deps/ cache'

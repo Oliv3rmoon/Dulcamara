@@ -1,0 +1,39 @@
+{
+  "generator": "ImageGen (built-in)",
+  "date": "2026-11-08",
+  "intent": "User requested every UI component use ImageGen and be animated in the app.",
+  "prompts": [
+    {
+      "key": "panel",
+      "prompt": "Production bitmap UI asset for Dulcamara Eclipse. Cohesive near-black and crimson (#ef3f4b) design, restrained scarlet glow, fine monospaced ASCII micro-detail, crisp edges, premium dark game-library interface, flat front-facing orthographic view. No words, no logos, no mockup surroundings, no watermark. Create ONE large reusable rectangular UI panel, 4:3 landscape. It fills most of the image, with generous transparent padding outside its exact rounded-rectangle border. Matte almost-black translucent interior, delicate dark-red outline and short brighter crimson corner accents. Tiny ASCII + : / glyph motifs confined to the four corner patches; middle portions of every edge must remain straight and simple so the image can be nine-sliced without stretching decorative symbols. Keep the huge central content region quiet and empty for live text, settings, lists and dialogs. No objects or controls inside. Actual alpha transparency outside the panel."
+    },
+    {
+      "key": "cover-frame",
+      "prompt": "Production bitmap UI asset for Dulcamara Eclipse. Cohesive near-black and crimson (#ef3f4b) design, restrained scarlet glow, fine monospaced ASCII micro-detail, crisp edges, premium dark game-library interface, flat front-facing orthographic view. No words, no logos, no mockup surroundings, no watermark. Create ONE reusable cover-card focus frame, 4:3 landscape. A thin crisp crimson rounded rectangular outline with short luminous corner brackets, a soft restrained red outer glow, and tiny ASCII + : / details ONLY at the corners. The entire large rectangular interior must be completely transparent for a game cover image. The outside must also be transparent beyond the narrow halo. Edge midsections straight and simple, for nine-slice rendering. No filled background, no cover artwork, no text, no symbols inside the central window. This is an isolated border asset, not a whole screen."
+    },
+    {
+      "key": "button",
+      "prompt": "Production UI asset for Dulcamara Eclipse, near-black and crimson (#ef3f4b), fine restrained ASCII-terminal styling matching a red ASCII eclipse background. Create ONE square reusable button/keycap surface, perfectly front-facing, on a truly transparent background. A matte almost-black face with a very thin dark red rounded-square edge, crisp short scarlet accents confined to the corners, extremely subtle inner depth, no perspective, no glossy plastic. The large central face is completely empty for live text, keyboard letters or icons. Simple straight middle edge sections suitable for nine-slice scaling into pills, menu rows and keyboard keys. A little transparent padding all around. No text, no symbols in the center, no words, no watermark. Only one isolated keycap."
+    },
+    {
+      "key": "controller-atlas",
+      "prompt": "Production controller hint sprite atlas for Dulcamara Eclipse. Transparent background, front-facing crisp graphic symbols, restrained crimson red and soft white linework, consistent thin rounded dark-red button rims, no realistic controller. EXACTLY 12 equally sized isolated sprites on a rigid grid of 4 columns and 3 rows, equal cell dimensions and generous equal transparent spacing. Landscape 4:3 sheet. Reading order left-to-right: row 1 = Cross X, Circle O, Square outline, Triangle outline; row 2 = L1, L2, R1, R2 (these exact uppercase letter-number labels, centered and clearly legible); row 3 = Options represented by three horizontal menu lines, Touchpad represented by a wide rectangular trackpad with two tiny dots, four-way D-pad plus with directional arrow ends, and a simple curved Back arrow. Every sprite perfectly centered in its own invisible square cell, with no overlap across cells. White primary marks with crimson edge accents, very modest glow only. No captions outside the sprites, no row labels, no grid lines, no decorative background, no watermark. Designed to read clearly when each sprite is reduced to 32 pixels."
+    },
+    {
+      "key": "icon-atlas",
+      "prompt": "Production UI icon sprite atlas for Dulcamara Eclipse, a dark red-and-black game-library app. Truly transparent background. EXACTLY 16 minimalist icons in a rigid 4-column by 4-row grid, all equal square cells and generous equal transparent spacing; every icon centered in its own invisible cell. Reading order: row 1 magnifying glass, heart, clock, filter sliders; row 2 gear, picture/monitor, speaker, game controller; row 3 folder, backup archive box, curved restore arrow, play triangle; row 4 circled information i, warning triangle with exclamation, trash bin, downward download arrow. Soft white monoline marks with restrained crimson red (#ef3f4b) accents, consistent medium stroke, small simple silhouettes that remain legible at 32 pixels. Flat front-facing graphics, no perspective, no shadows beyond a very faint red halo. No captions, no labels, no cell borders, no background, no watermark. No extra symbols or repeated icons."
+    },
+    {
+      "key": "loading-ring",
+      "prompt": "Create one isolated loading/eclipsing status ring UI asset for Dulcamara Eclipse, on genuine transparent alpha background. Square image, a single thin circular orbit precisely centered with a completely transparent large center and transparent outside. Build the ring from crisp tiny monospaced ASCII characters . : + * / | - and a few short geometric segments, mostly dark crimson with one brighter scarlet arc fading smoothly around the circle to suggest motion when rotated by code. Refined futuristic terminal style, restrained glow, readable small silhouette, almost no visual clutter. Front-facing perfectly circular geometry, no perspective, no solid disc, no words or numbers, no logos, no watermark. Exactly one ring."
+    },
+    {
+      "key": "chrome-strip",
+      "prompt": "Production reusable header/footer strip for Dulcamara Eclipse, an ASCII-inspired black-and-crimson game-library UI. Wide 3:1 landscape asset, flat front-facing. One low-profile horizontal near-black translucent bar with genuine transparent alpha around its outside. A very thin dark-crimson edge, short precise scarlet (#ef3f4b) corner accents at far left and right, tiny restrained ASCII glyph details only in the end caps. The entire long middle area is very dark, uniform and empty for live app name, count, time or controller hints. Straight simple horizontal middle sections suitable for nine-slice stretching. Subtle depth, no glossy plastic, no perspective, no text, no words, no icons in the center, no watermark. A single bar only, with modest transparent padding."
+    },
+    {
+      "key": "placeholder-cover",
+      "prompt": "Production fallback cover artwork for Dulcamara Eclipse. Landscape 4:3 composition, opaque near-black field, restrained deep red and scarlet ASCII art matching a red ASCII eclipse background. A centered elegant eclipse emblem constructed from crisp tiny monospaced . : + * # / characters, with a faint orbital grid and sparse drifting text-symbol particles at the edges. Quiet empty upper and lower space for a game title to be drawn by code; no baked words or letters that read as words. Sophisticated terminal art, no photorealism, no objects, no people, no mockup, no UI controls, no frame, no logo text or watermark. Dark and readable, detailed at full size but a recognizable simple eclipse silhouette when small."
+    }
+  ]
+}

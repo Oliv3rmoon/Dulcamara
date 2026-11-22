@@ -67,7 +67,7 @@ Ren'Py's core is built with, from pinned sources (the tarballs are checked again
 | [CPython](https://www.python.org) 3.12.8 | `Python-3.12.8.tar.xz`, SHA-256 `c909157bb25ec114e5869124cc2a9c4a4d4c1e957ca4ff553f1edc692101154e`; for the PS5 with `tools/patches/python-3.12.8-cross-freebsd.diff` | PSF License (`licenses/LICENSE-Python.txt`); its standard library is packed as `assets/renpy8/lib/python312.zip` |
 | [FFmpeg](https://ffmpeg.org) 4.3.1 | `ffmpeg-4.3.1.tar.gz`, SHA-256 `45035f15d6f192772de2309c846e1d60472694f479679354a39c699719e53772`, with Ren'Py's two patches (`tools/patches/ffmpeg-4.3.1-*.diff`) | LGPL-2.1-or-later (`licenses/LICENSE-FFmpeg.txt`). Configured with LGPL parts only (no `--enable-gpl`, no `--enable-nonfree`; the build checks `CONFIG_GPL 0`); decoders only, no network |
 | [Assimp](https://github.com/assimp/assimp) 5.4.3 | GitHub's `v5.4.3` archive, SHA-256 `66dfbaee288f2bc43172440a55d0235dfc7bf885dda6435c038e8000e79582cb`; glTF and STL importers only | BSD-3-Clause (`licenses/LICENSE-Assimp.txt`) |
-| [ps5-opengl](https://github.com/darkxex/ps5-opengl) 1.0.2 | its SDK release, SHA-256 `30d8e51dd062739b629346102be5932728ba714bc50b1bdcdf08306c8843d9a4` (the one Nightshade pins) | MIT, with Mesa's licences (`licenses/LICENSE-ps5-opengl.txt`, `licenses/NOTICES-ps5-opengl.md`) |
+| [ps5-opengl](https://github.com/darkxex/ps5-opengl) 1.0.2 | its SDK release, SHA-256 `30d8e51dd062739b629346102be5932728ba714bc50b1bdcdf08306c8843d9a4`; its bundled source rebuilt with `tools/patches/ps5-opengl-cache-coherency.diff` by `tools/renpy/rebuild-opengl.py` | GPL-3.0-or-later for project-owned code, with Mesa's per-file licences (`licenses/LICENSE-ps5-opengl.txt`, `licenses/NOTICES-ps5-opengl.md`) |
 | Cython 3.1.4, setuptools 80.10.2 | PyPI wheels, by SHA-256 (`tools/renpy/wheels.txt`) | Apache-2.0, MIT: run on the build machine only, not shipped |
 | six 1.17.0, ecdsa 0.19.1, requests 2.33.0, urllib3 2.7.0, idna 3.11, certifi 2026.1.4, charset-normalizer 3.4.4, rsa 4.9.1, pyasn1 0.6.2, future 1.0.0 | PyPI wheels at the versions of Ren'Py's `uv.lock`, by SHA-256 (`tools/renpy/wheels.txt`) | MIT, MIT, Apache-2.0, MIT, BSD-3-Clause, MPL-2.0, MIT, Apache-2.0, BSD-2-Clause, MIT; each package's licence travels in its `*.dist-info` folder under `assets/renpy8/lib/site-packages` |
 
@@ -218,7 +218,10 @@ The BlackBear icon, selection artwork, and default selection track
 (C) 2026 BlackBearReloaded, and distributed under GPL-3.0-or-later. The track
 is titled `Night Drive`.
 
-Dulcamara's icon and home-screen pictures (`sce_sys/icon0.png`, `pic0.dds` and `pic1.dds`
+Dulcamara's logo (`assets/branding/dulcamara-logo-1024.png`, and `sce_sys/icon0.png` resized from it) is
+Copyright (C) 2026 Oliv3rmoon, distributed under GPL-3.0-or-later.
+
+Dulcamara's home-screen pictures (`pic0.dds` and `pic1.dds`
 with their source PNGs, `background-source.png` and `launch-background-source.png`) are drawn by
 `tools/render-home-art.py`, after Mandrake's and Nightshade's (Oliv3rmoon/Nightshade), Copyright
 (C) 2026 Oliv3rmoon, and distributed under GPL-3.0-or-later. The name in them is set in Inter (SIL Open Font
@@ -239,6 +242,7 @@ The frontend is Mandrake's (formerly Nightshade Station), which is [darkxex's Sw
 | [dlmalloc](https://gee.cs.oswego.edu/dl/html/malloc.html) 2.8.6 by Doug Lea | allocator for the direct-memory heap (`third_party/dlmalloc`) | Public domain (CC0) |
 | [QR Code generator](https://www.nayuki.io/page/qr-code-generator-library) by Project Nayuki | the QR code of nightly's invitation on Settings > About (`third_party/qrcodegen`, Mandrake's copy, unmodified; compiled in by `src/vendor.c`) | MIT (`third_party/qrcodegen/LICENSE.txt`) |
 | [Noto Sans JP](https://github.com/notofonts/noto-cjk) (subset made for Mandrake) | Japanese text (`assets/fonts/NotoSansJP-subset.ttf`) | SIL Open Font License 1.1 (`assets/fonts/OFL-NotoSansJP.txt`) |
+| [DotGothic16](https://github.com/fontworks-fonts/DotGothic16) (unmodified, from [google/fonts](https://github.com/google/fonts/tree/main/ofl/dotgothic16), SHA-256 `3ad9af88726d42b40f7f365f0dcac785af73cf20ea6f1d5b44e57cc21150b8f1`) | Story mode's pixel text (`assets/fonts/DotGothic16-Regular.ttf`) | SIL Open Font License 1.1 (`assets/fonts/OFL-DotGothic16.txt`, with its source URLs and SHA-256 sums) |
 | [Tabler Icons](https://tabler.io/icons) 3.31.0 (subset by `tools/make_icon_font.py`) | interface icons (`assets/fonts/tabler-icons-subset.ttf`) | MIT (`assets/fonts/LICENSE-tabler-icons.txt`) |
 | [lcd3x](https://github.com/libretro/slang-shaders) by Gigaherz | the LCD3x shader, ported to GLSL in `src/platform/vk/shaders/lcd3x.frag` | Public domain |
 | [crt-royale](https://github.com/libretro/slang-shaders) (crt-royale-fast) by TroggleMonkey, adapted by Hyllian | the CRT Royale Fast shader, compiled to SPIR-V by `tools/make-royale.py` (`third_party/crt-royale`) | GPL-2.0-or-later (`third_party/crt-royale/LICENSE.TXT`) |

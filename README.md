@@ -16,27 +16,11 @@
   <a href="https://buymeacoffee.com/oliv3rmoon"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-e5484d?logo=buymeacoffee&logoColor=white" alt="Buy me a coffee"></a>
 </p>
 
-<p align="center">
-  <a href="https://nightly-insider.nightly-ps5.workers.dev"><strong>New releases: nightly insider</strong></a><br>
-  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases">Browse the archived public releases</a>
-</p>
+## Dulcamara Eclipse 2.1 PS5 test build
 
-<p align="center">
-  <img src="docs/images/eclipse-2.0-announcement.jpg" width="100%" alt="Dulcamara Eclipse 2.0: Story mode. Thursday 12 November, 9:21:21 PM Pacific, insiders first">
-</p>
+The test build includes the itch.io Shelf, support for compiled Python packages in Ren’Py 8 game archives, and the older Ren’Py 7 save API used by some games. Open **Settings → Library → Install itch.io Shelf**, then open the shelf from your library. This build uses the console’s existing access to `/data/dulcamara`.
 
-> [!NOTE]
-> **Dulcamara Eclipse 2.0 arrives Thursday 12 November 2026 at 9:21:21 PM Pacific, for nightly insiders.** New in 2.0: **Story mode**, a library that looks like an old RPG menu and talks to you like a visual novel; adding a game from a direct link; automatic save backups; and a scanner that finds games it used to miss. The picture above is a preview. The countdown is in [nightly on Discord](https://discord.gg/pSqgRU3YP9), and the download appears on [nightly insider](https://nightly-insider.nightly-ps5.workers.dev) at zero.
-
-> [!IMPORTANT]
-> **The next chapter is insider only.** New Dulcamara releases will no longer be published here, including after a waiting period. Existing public releases and source stay available. Follow [nightly on Discord](https://discord.gg/pSqgRU3YP9) and [nightly insider](https://nightly-insider.nightly-ps5.workers.dev) for upcoming builds.
-
-<p align="center">If Dulcamara works for you, a ⭐ helps other PS5 owners find it.</p>
-
-Dulcamara, named after *Solanum dulcamara*, the bittersweet nightshade, is a PS5 homebrew app by **[Oliv3rmoon](https://github.com/Oliv3rmoon)** for story games and RPGs: a library that finds your RPG Maker 2000 and 2003 games and plays them, with the Nightshade look, CRT shaders and a Vulkan screen. The latest release is **0.1.0**; what changed is in the [changelog](docs/CHANGELOG.md).
-
-> [!NOTE]
-> **0.2.3 is a test release.** It adds Ren'Py visual novels; 0.2.3 fixes the crash 0.2.0 to 0.2.2 had when a Ren'Py game started on a console. It is checked on the build machine and in CI by tests that play a test game, and it is marked pre-release on the [Releases](https://github.com/Oliv3rmoon/Dulcamara/releases) page, so the updater skips it: [download 0.2.3](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/0.2.3) to try it, and tell me what breaks.
+The two reported Summertime Saga startup failures have host regression tests. Gameplay, controller input on hardware, and encrypted installation still need PS5 testing. The release includes the application ZIP, corresponding source and checksums. [Download the PS5 test build](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/eclipse-v2.1.0-test.1)
 
 ## Why Dulcamara
 
@@ -46,7 +30,7 @@ Dulcamara, named after *Solanum dulcamara*, the bittersweet nightshade, is a PS5
 - **Made for the controller.** Cross confirms, Circle cancels, Triangle opens the game's menu, and every button can be mapped again in Settings. The touchpad opens Dulcamara's menu at any time. Hold R2 (or press it once) to fast-forward from x2 to x8, for grinding and long cutscenes.
 - **CRT and LCD shaders.** CRT Royale, CRT Lottes, CRT Pi, Newpixie, Hyllian NTSC, Mattias, NTSC signals, LCD3x, zfast LCD and Game Boy LCD, or sharp square pixels, whole-number scaling and the game's own shape.
 - **Updates from its own releases.** It asks this repository for a newer release and installs it, after checking `PPSA99010.zip` against the release's `SHA256SUMS`.
-- **Free software, no bundled games.** Dulcamara remains under the GPL and includes no ads. Copy your own games; it ships and downloads none. New insider builds require an eligible account; archived public builds keep their existing behavior.
+- **Free software, no bundled games.** Dulcamara remains under the GPL and includes no ads. Copy your own games or use the optional itch.io Shelf to download free Ren’Py titles. New insider builds require an eligible account; archived public builds keep their existing behavior.
 
 ## nightly insider
 
@@ -58,22 +42,9 @@ Join [nightly on Discord](https://discord.gg/pSqgRU3YP9), complete verification 
 
 **Dulcamara Eclipse** is being built around a smoother, more reliable session: better game startup and cleanup, safer save handling, rendering fixes, a refreshed interface and new artwork. The focus is on making RPG Maker games and Ren'Py visual novels easier to start, play and return to.
 
-Private testing is also gaining **approved updates while idle and automatic app diagnostics**, with clear tester consent, account controls and a dashboard for failures and performance. Encrypted package storage and authenticated downloads are being prepared for the new delivery. Limited trials have a stated access window and can stop new game launches when it ends; saves and files are preserved.
+## Install the PS5 test build
 
-Eclipse is still in development. The final combined build and physical PS5 checks are pending, so these previews are not a claim that the new release is already available. Follow Discord for the finished build and its exact release notes.
-
-## Install
-
-These instructions describe the archived public builds. New insider builds include their own installation, account and testing-window instructions.
-
-1. Download `PPSA99010.zip` from the [latest release](https://github.com/Oliv3rmoon/Dulcamara/releases/latest) and unzip it. For Ren'Py visual novels, take it from the [0.2.3 test release](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/0.2.3) instead.
-2. Copy its `PPSA99010` folder to `/data/homebrew/` on the PS5 over FTP, as you install the other Nightshade apps, and set its permissions to `777` (in FileZilla: right-click the folder, *File permissions*, `777`, recurse into subdirectories). Without them the PS5 says *"Can't start the game or app"*. Nightshade's **Settings > Apps** can install it for you instead.
-3. Restart ShadowMountPlus (or the console). **Dulcamara** appears on the home screen.
-4. Start it once: it makes its folders in `/data/dulcamara/` and shows an empty library that says where games go. Copy your games to `/data/dulcamara/games/`, one folder (or `.zip`) each.
-
-Its title ID, `PPSA99010`, is its own: it sits beside the other Nightshade apps.
-
-Like the other Nightshade apps, it needs `/data` unlocked to look into its games folder: LegacyJB, etaHEN's *Legacy CMD server* or the Lapy helper it carries all do it (see [Unlocking /data](https://github.com/Oliv3rmoon/Mandrake/blob/main/docs/GUIDE.md#unlocking-data-so-swanstationps5-can-see-your-games)).
+Extract the release ZIP and install the `PPSA99010` application folder using your existing Dulcamara homebrew installation method. Your homebrew environment must already grant the app access to `/data/dulcamara`. Existing games and saves use the same locations. The release page has the console test steps and matching source.
 
 ## Docs
 

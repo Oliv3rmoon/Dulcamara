@@ -1,0 +1,91 @@
+diff --git a/src/platform/libretro/ui.cpp b/src/platform/libretro/ui.cpp
+index 822c2c680..6c2127f42 100644
+--- a/src/platform/libretro/ui.cpp
++++ b/src/platform/libretro/ui.cpp
+@@ -17,6 +17,7 @@
+ 
+ // Headers
+ #include "ui.h"
++#include "../../../../../src/core/runtime_protocol.h"
+ #include "clock.h"
+ #include "filesystem_libretro.h"
+ #include "bitmap.h"
+@@ -415,6 +416,29 @@ RETRO_API void retro_reset(void) {
+ 	Player::reset_flag = true;
+ }
+ 
++// Optional Dulcamara contract: no native game writer starts before release.
++static dr_save_layout dc_saves;
++static bool dc_pending_start, dc_stop, dc_finished;
++static void dc_copy(dr_save_layout* out) { *out = dc_saves; }
++static bool dc_release(uint32_t generation) {
++    if (!dc_saves.checkpoint || generation != dc_saves.generation || dc_stop) return false;
++    dc_saves.checkpoint = false;
++    dc_pending_start = false;
++    init_easy_rpg();
++    Player::Run();
++    return true;
++}
++static void dc_request_stop() { dc_stop = true; }
++static dr_stop_result dc_poll_stop() {
++    if (dc_finished) return DR_STOP_CLEAN;
++    if (!dc_stop) return DR_STOP_RUNNING;
++    if (!dc_pending_start && !LibretroUi::player_exit_called) Player::Exit();
++    LibretroUi::player_exit_called = true;
++    dc_pending_start = false; dc_finished = true;
++    dc_saves.checkpoint = false; dc_saves.writers_finished = true;
++    return DR_STOP_CLEAN;
++}
++
+ /* Runs the game for one video frame.
+  * During retro_run(), input_poll callback must be called at least once.
+  *
+@@ -425,6 +449,7 @@ RETRO_API void retro_reset(void) {
+  */
+ 
+ RETRO_API void retro_run() {
++	if (dc_pending_start || dc_finished) return;
+ 	Player::MainLoop();
+ 
+ 	if (!DisplayUi) {
+@@ -468,6 +493,25 @@ RETRO_API bool retro_load_game(const struct retro_game_info* game) {
+ 		}
+ 	}
+ 	FileFinder::SetGameFilesystem(fs);
++    dc_saves = {}; dc_saves.version = DR_RUNTIME_VERSION; dc_saves.size = sizeof(dc_saves);
++    dc_saves.generation = 1; dc_saves.initial = true;
++    dc_pending_start = dc_stop = dc_finished = false;
++    LibretroUi::player_exit_called = false;
++    auto save_fs = FileFinder::Save();
++    std::string save_path = FileFinder::GetFullFilesystemPath(save_fs);
++    if (!save_path.empty() && save_path[0] == '/' && save_path.size() < DR_SAVE_PATH_MAX) {
++        dc_saves.count = 1; dc_saves.available = dc_saves.complete = true;
++        auto& entry = dc_saves.entries[0];
++        std::strcpy(entry.path, save_path.c_str());
++        entry.kind = DR_SAVE_RPG_SLOTS; entry.scope = DR_SAVE_GAME;
++        entry.policy = save_fs.IsFeatureSupported(Filesystem::Feature::Write) ? DR_SAVE_READ_WRITE : DR_SAVE_READ_ONLY;
++    }
++    dr_runtime_interface runtime = {DR_RUNTIME_VERSION, sizeof(runtime), false,
++        dc_copy, dc_release, dc_request_stop, dc_poll_stop, Input::ResetKeys};
++    if (LibretroUi::environ_cb(DR_ENVIRONMENT_RUNTIME, &runtime)) {
++        dc_saves.checkpoint = dc_pending_start = true;
++        return true;
++    }
+ 
+ 	init_easy_rpg();
+ 
+@@ -485,11 +529,13 @@ RETRO_API void retro_unload_game() {
+ 	};
+ 	LibretroUi::environ_cb(RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK, &no_audio_callback_definition);
+ 
+-	if (!LibretroUi::player_exit_called) {
++	if (!dc_pending_start && !LibretroUi::player_exit_called) {
+ 		// Shutdown requested by the frontend and not via Title scene
+ 		Player::Exit();
+ 	}
+ 
++	dc_finished = true; dc_pending_start = false;
++	dc_saves.checkpoint = false; dc_saves.writers_finished = true;
+ 	Output::SetLogCallback(nullptr);
+ }
+ 

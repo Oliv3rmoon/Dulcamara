@@ -9,6 +9,17 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "../runtime_protocol.h"
+
+void handoff_save_enable(bool enabled);
+/* initial=true is reserved for the complete pre-save-init native union, once per runtime.
+ * Stop cancellation always returns false. Invalid/unrepresentable metadata also returns
+ * false under the protected contract; a legacy launch continues with unavailable/incomplete
+ * metadata instead, so optional discovery cannot restrict the engine's native paths. */
+bool handoff_save_paths(const struct dr_save_entry *entries, uint32_t count, bool initial);
+bool handoff_save_path(const char *path, unsigned kind, unsigned scope, unsigned policy);
+void handoff_save_copy(struct dr_save_layout *out);
+bool handoff_save_release(uint32_t generation);
 
 /* Before Ren'Py's thread starts: no frames, the clock at zero, not stopping. */
 void handoff_reset(void);

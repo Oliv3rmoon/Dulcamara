@@ -30,7 +30,8 @@ class UpdateReleaseTest(unittest.TestCase):
                             str(ROOT / "tests/update_release_check.c"), str(ROOT / "src/update_release.c"),
                             str(ROOT / "examples/self-update/self_update_sha256.c"),
                             "-o", str(executable)], check=True)
-            result = subprocess.run([str(executable), directory], capture_output=True, text=True,
+            result = subprocess.run([str(executable), directory, str(ROOT / "sce_sys/param.json")],
+                                    capture_output=True, text=True,
                                     timeout=120, check=False)
         print(result.stdout.strip())
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr[-3000:])
@@ -40,15 +41,27 @@ class UpdateReleaseTest(unittest.TestCase):
         header = (ROOT / "src/update_release.h").read_text(encoding="utf-8")
         self.assertIn('#define UPDATE_REPO "Oliv3rmoon/Dulcamara"', header)
         self.assertIn('#define UPDATE_ZIP "PPSA99010.zip"', header)
+        self.assertIn('#define UPDATE_LIST_URL "https://api.github.com/repos/" UPDATE_REPO '
+                      '"/releases?per_page=20"', header)
         update = (ROOT / "src/update.c").read_text(encoding="utf-8")
         self.assertIn("net_request(UPDATE_LATEST_URL", update)
         self.assertIn("release_evaluate(", update)
         self.assertIn("release_file_sha256(zip, got)", update)
-        # darkxex's repository is never asked, and no other release list is read.
+        # With Settings > System > Test builds on, Dulcamara's own list (UPDATE_LIST_URL), read by
+        # release_evaluate_list() with the same checks.
+        self.assertIn("net_request(UPDATE_LIST_URL", update)
+        self.assertIn("release_evaluate_list(", update)
+        # darkxex's repository is never asked, and no other release list is read: the only one is
+        # UPDATE_LIST_URL, spelled out in update_release.h alone.
         for source in sorted((ROOT / "src").rglob("*.[ch]")):
             text = source.read_text(encoding="utf-8", errors="replace")
             self.assertNotIn("api.github.com/repos/darkxex", text, source)
-        self.assertIsNone(re.search(r"/releases\?per_page", update))
+            lists = re.findall(r"/releases\?[^\"]*", text)
+            self.assertEqual(lists, ["/releases?per_page=20"] if source.name == "update_release.h" else [],
+                             source)
+
+    # Real ordinary offer/consent and retry behavior are exercised by
+    # test_update_production.py and test_insider.py, not source-string expectations.
 
 
 if __name__ == "__main__":

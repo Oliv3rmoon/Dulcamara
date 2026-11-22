@@ -1,6 +1,7 @@
 /*
  * Dulcamara - the library's game detection (src/library.c, src/rpgmaker.c), on the build machine: a games
- * folder of made-up games is written, scanned and checked, then EasyRPG's TestGame when it is given.
+ * folder of made-up games is written, scanned, sorted into its sections and checked, then EasyRPG's TestGame when it
+ * is given.
  * tests/test_library.py builds and runs it.
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -16,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 static int failures, checks;
 
@@ -127,6 +129,22 @@ static size_t make_xyz(uint8_t *out, size_t cap, int w, int h)
     int rc = mz_compress(out + 8, &packed, raw, (mz_ulong)raw_len);
     free(raw);
     return rc == MZ_OK ? 8 + (size_t)packed : 0;
+}
+
+/* Whether s is whole UTF-8 characters (no character cut short). */
+static bool utf8_valid(const char *s)
+{
+    const unsigned char *p = (const unsigned char *)s;
+    while (*p)
+    {
+        int n = *p < 0x80 ? 0 : (*p & 0xE0) == 0xC0 ? 1 : (*p & 0xF0) == 0xE0 ? 2 : (*p & 0xF8) == 0xF0 ? 3 : -1;
+        if (n < 0)
+            return false;
+        for (++p; n > 0; --n, ++p)
+            if ((*p & 0xC0) != 0x80)
+                return false;
+    }
+    return true;
 }
 
 static const Game *find(const Library *lib, const char *name)
@@ -445,6 +463,604 @@ static void check_renpy_games(void)
     library_free(&lib);
 }
 
+/* The titles of a library, in its order, one space between. */
+static void titles(const Library *lib, char *out, size_t size)
+{
+    out[0] = '\0';
+    for (int i = 0; i < lib->count; ++i)
+        snprintf(out + strlen(out), size - strlen(out), "%s%s", i ? " " : "", lib->games[i].title);
+}
+
+/* The sections: in a games folder of both kinds, sorted, RPG Maker's games come first and Ren'Py's (8's and 7's
+ * together) after, each section in its own order, by title or the last played first. One kind alone is one section. */
+static void check_sections(void)
+{
+    char root[NP_PATH_MAX], dir[NP_PATH_MAX], sub[NP_PATH_MAX], order[256];
+    path_join(root, sizeof(root), base, "mixed-games");
+    make_dirs(root);
+    /* by title alone they would mix: Alfa (Ren'Py), Bravo (RPG Maker), Mike (Ren'Py 7), Yankee (RPG Maker), Zulu */
+    static const char *const RPG_MAKER[] = {"Yankee", "Bravo"}, *const RENPY[] = {"Zulu", "Mike", "Alfa"};
+    for (size_t i = 0; i < sizeof(RPG_MAKER) / sizeof(RPG_MAKER[0]); ++i)
+    {
+        make_dir(dir, sizeof(dir), root, RPG_MAKER[i]);
+        write_text(dir, "RPG_RT.ldb", "x");
+        write_text(dir, "RPG_RT.lmt", "x");
+    }
+    for (size_t i = 0; i < sizeof(RENPY) / sizeof(RENPY[0]); ++i)
+    {
+        make_dir(dir, sizeof(dir), root, RENPY[i]);
+        make_dir(sub, sizeof(sub), dir, "game");
+        write_text(sub, "script.rpy", "label start:\n");
+    }
+    path_join(dir, sizeof(dir), root, "Mike");
+    make_dir(sub, sizeof(sub), dir, "renpy");
+    write_text(sub, "__init__.py", "version_tuple = (7, 4, 11, vc_version)\n");
+
+    Library lib = {0};
+    library_scan(&lib, root);
+    library_sort(&lib, 0);
+    titles(&lib, order, sizeof(order));
+    CHECK(!strcmp(order, "Bravo Yankee Alfa Mike Zulu"), "by title, RPG Maker's section first: %s", order);
+    int count = -1, first = library_section_start(&lib, SECTION_RPG_MAKER, &count);
+    CHECK(first == 0 && count == 2, "RPG Maker's section: %d games from %d", count, first);
+    first = library_section_start(&lib, SECTION_RENPY, &count);
+    CHECK(first == 2 && count == 3, "Ren'Py's section: %d games from %d", count, first);
+    const Game *m = find(&lib, "Mike");
+    CHECK(m && m->core == CORE_RENPY7 && library_section(m) == SECTION_RENPY,
+          "a Ren'Py 7 game is in Ren'Py's section, on Ren'Py 7's core: core %d", m ? m->core : -1);
+
+    /* Zulu, played last of them all, still comes after RPG Maker's games */
+    for (int i = 0; i < lib.count; ++i)
+    {
+        const char *name = lib.games[i].name;
+        lib.games[i].played = !strcmp(name, "Zulu")     ? 300
+                              : !strcmp(name, "Yankee") ? 200
+                              : !strcmp(name, "Mike")   ? 100
+                                                        : 0;
+    }
+    library_sort(&lib, 1);
+    titles(&lib, order, sizeof(order));
+    CHECK(!strcmp(order, "Yankee Bravo Zulu Mike Alfa"), "the last played first, in each section: %s", order);
+    library_free(&lib);
+
+    library_scan(&lib, games);
+    library_sort(&lib, 0);
+    first = library_section_start(&lib, SECTION_RPG_MAKER, &count);
+    CHECK(first == 0 && count == lib.count && count > 0, "RPG Maker's games alone: one section of %d", count);
+    library_section_start(&lib, SECTION_RENPY, &count);
+    CHECK(count == 0, "and Ren'Py's is empty: %d", count);
+    library_free(&lib);
+    path_join(root, sizeof(root), base, "renpy-games");
+    library_scan(&lib, root);
+    library_sort(&lib, 1);
+    first = library_section_start(&lib, SECTION_RENPY, &count);
+    CHECK(first == 0 && count == lib.count && count > 0, "Ren'Py's games alone: one section of %d", count);
+    library_free(&lib);
+}
+
+static const char *base_of(const char *path)
+{
+    const char *slash = strrchr(path, '/');
+    return slash ? slash + 1 : path;
+}
+
+/* The reason recorded for a folder or file the scan did not list, by the end of its path; NULL when none. */
+static const char *skip_reason(const Library *lib, const char *tail)
+{
+    const size_t tn = strlen(tail);
+    for (int i = 0; i < lib->skipped_count; ++i)
+    {
+        const char *p = lib->skipped[i].path;
+        const size_t pn = strlen(p);
+        if (pn >= tn && !strcmp(p + pn - tn, tail) && (pn == tn || p[pn - tn - 1] == '/'))
+            return lib->skipped[i].reason;
+    }
+    return NULL;
+}
+
+static void rpg_game(const char *parent, const char *name)
+{
+    char dir[NP_PATH_MAX];
+    make_dir(dir, sizeof(dir), parent, name);
+    write_text(dir, "RPG_RT.ldb", "x");
+    write_text(dir, "RPG_RT.lmt", "x");
+}
+
+/* The id the library has always given a game: FNV-1a of its location, as 16 hex digits. */
+static void expected_id(const char *location, char *out, size_t size)
+{
+    uint64_t h = 1469598103934665603ull;
+    for (const char *s = location; *s; ++s)
+        h = (h ^ (unsigned char)*s) * 1099511628211ull;
+    snprintf(out, size, "%016llx", (unsigned long long)h);
+}
+
+/* Smarter detection: games one folder deeper than before, Ren'Py's scripts in game/'s subfolders, and a reason for
+ * every folder that looks like a game but is not listed. */
+static void check_detection(void)
+{
+    char root[NP_PATH_MAX], dir[NP_PATH_MAX], sub[NP_PATH_MAX], more[NP_PATH_MAX];
+    path_join(root, sizeof(root), base, "detect-games");
+    make_dirs(root);
+
+    /* two folders down: games/Windows/Series/Game (RPG Maker) and games/Windows/Fantasy/<build>/game (Ren'Py) */
+    make_dir(dir, sizeof(dir), root, "Windows");
+    make_dir(sub, sizeof(sub), dir, "Series");
+    rpg_game(sub, "Deep RPG");
+    make_dir(sub, sizeof(sub), dir, "Fantasy Opposite");
+    make_dir(more, sizeof(more), sub, "FantasyOpposite-1.0-pc");
+    make_dir(more, sizeof(more), more, "game");
+    write_text(more, "script.rpyc", "compiled");
+    /* three folders down: not listed, and said why */
+    make_dir(dir, sizeof(dir), root, "One");
+    make_dir(dir, sizeof(dir), dir, "Two");
+    make_dir(dir, sizeof(dir), dir, "Three");
+    rpg_game(dir, "Too Deep");
+    /* Ren'Py with its scripts and archives only in game/'s subfolders */
+    make_dir(dir, sizeof(dir), root, "Scripts Below");
+    make_dir(sub, sizeof(sub), dir, "game");
+    make_dir(sub, sizeof(sub), sub, "scripts");
+    write_text(sub, "script.rpyc", "compiled");
+    make_dir(dir, sizeof(dir), root, "Archives Below");
+    make_dir(sub, sizeof(sub), dir, "game");
+    make_dir(more, sizeof(more), sub, "gui");
+    write_text(more, "main_menu.png", "png");
+    make_dir(sub, sizeof(sub), sub, "archives");
+    write_text(sub, "images.RPA", "RPA-3.0");
+    /* A partial transfer can already contain enough files to look playable, even in the previous index. */
+    make_dir(dir, sizeof(dir), root, "Champion.AVA-PART");
+    make_dir(sub, sizeof(sub), dir, "game");
+    write_text(sub, "archives.rpa", "truncated");
+    Game partial;
+    CHECK(library_read_folder(dir, &partial) && !library_game_valid(&partial, root),
+          "cached partial transfer rejected");
+    make_dir(dir, sizeof(dir), root, "Collection.ava-part");
+    rpg_game(dir, "Nested Transfer");
+    path_join(sub, sizeof(sub), dir, "Nested Transfer");
+    CHECK(library_read_folder(sub, &partial) && !library_game_valid(&partial, root),
+          "cached game inside a partial transfer rejected");
+    make_dir(dir, sizeof(dir), root, "Nested Script");
+    make_dir(sub, sizeof(sub), dir, "game");
+    make_dir(sub, sizeof(sub), sub, "src");
+    make_dir(sub, sizeof(sub), sub, "episode");
+    write_text(sub, "story_ren.py", "label start:");
+    make_dir(dir, sizeof(dir), root, "Not a Script");
+    make_dir(sub, sizeof(sub), dir, "game");
+    make_dir(sub, sizeof(sub), sub, "empty.rpa");
+
+    /* other engines */
+    make_dir(dir, sizeof(dir), root, "Lust Doll");
+    write_text(dir, "Game.exe", "MZ");
+    make_dir(sub, sizeof(sub), dir, "www");
+    make_dir(sub, sizeof(sub), sub, "js");
+    write_text(sub, "rpg_core.js", "//");
+    make_dir(dir, sizeof(dir), root, "MZ Game");
+    make_dir(sub, sizeof(sub), dir, "js");
+    write_text(sub, "rmmz_core.js", "//");
+    make_dir(dir, sizeof(dir), root, "Ace Game");
+    write_text(dir, "Game.exe", "MZ");
+    write_text(dir, "Game.rgss3a", "RGSSAD");
+    make_dir(dir, sizeof(dir), root, "XP Game");
+    write_text(dir, "Game.ini", "[Game]\r\nLibrary=RGSS104E.dll\r\nScripts=Data\\Scripts.rxdata\r\nTitle=XP\r\n");
+    make_dir(dir, sizeof(dir), root, "Unity Game");
+    write_text(dir, "UnityGame.exe", "MZ");
+    write_text(dir, "UnityPlayer.dll", "MZ");
+    make_dir(sub, sizeof(sub), dir, "UnityGame_Data");
+    make_dir(sub, sizeof(sub), sub, "Managed");
+    write_text(sub, "Assembly-CSharp.dll", "MZ");
+    /* Ren'Py still packed: a .zip of it, and archives Dulcamara cannot open */
+    {
+        char path[NP_PATH_MAX];
+        path_join(path, sizeof(path), root, "Story-1.0-pc.zip");
+        mz_zip_archive zip;
+        memset(&zip, 0, sizeof(zip));
+        mz_zip_writer_init_file(&zip, path, 0);
+        mz_zip_writer_add_mem(&zip, "Story-1.0-pc/game/script.rpyc", "x", 1, MZ_DEFAULT_COMPRESSION);
+        mz_zip_writer_add_mem(&zip, "Story-1.0-pc/Story.exe", "x", 1, MZ_DEFAULT_COMPRESSION);
+        mz_zip_writer_finalize_archive(&zip);
+        mz_zip_writer_end(&zip);
+    }
+    write_text(root, "Story.7z", "7z\xbc\xaf\x27\x1c");
+    write_text(root, "Story.RAR", "Rar!\x1a\x07");
+    /* not games, and nothing to say: an empty folder, a folder of games, a text file */
+    make_dir(dir, sizeof(dir), root, "Empty Folder");
+    make_dir(dir, sizeof(dir), root, "Collection");
+    rpg_game(dir, "Listed");
+    write_text(root, "readme.txt", "hello");
+    /* collections that merely hold a loose www/ folder or an RPG Maker XP-VX Ace file beside real games are still
+     * looked into, as they were before games two folders down were looked for */
+    make_dir(dir, sizeof(dir), root, "Mixed Collection");
+    make_dir(sub, sizeof(sub), dir, "www");
+    rpg_game(dir, "Beside www");
+    make_dir(dir, sizeof(dir), root, "Mixed RGSS");
+    write_text(dir, "Leftover.rgss3a", "RGSSAD");
+    rpg_game(dir, "Beside RGSS");
+    /* a link out of the games folder is not followed into: games/Links/Out -> <base>/outside, with a game in it */
+    char outside[NP_PATH_MAX], link[NP_PATH_MAX];
+    make_dir(outside, sizeof(outside), base, "outside");
+    rpg_game(outside, "Outside Game");
+    make_dir(dir, sizeof(dir), root, "Links");
+    path_join(link, sizeof(link), dir, "Out");
+    CHECK(!symlink(outside, link), "a link to a folder outside the games folder");
+
+    Library lib = {0};
+    char error[NP_PATH_MAX + 64];
+    CHECK(library_scan_checked(&lib, root, NULL, NULL, error, sizeof(error)), "the detection scan: %s", error);
+    printf("detection: %d games:", lib.count);
+    for (int i = 0; i < lib.count; ++i)
+        printf(" [%s]", lib.games[i].name);
+    printf("; %d not shown:\n", lib.skipped_count);
+    for (int i = 0; i < lib.skipped_count; ++i)
+        printf("  %s: %s\n", lib.skipped[i].path + strlen(root) + 1, lib.skipped[i].reason);
+
+    const Game *deep = find(&lib, "Deep RPG");
+    CHECK(deep && strstr(deep->location, "/Windows/Series/Deep RPG") && deep->core == CORE_EASYRPG,
+          "an RPG Maker game two folders down is found");
+    CHECK(deep && library_game_valid(deep, root), "and its location is a valid one (the index keeps it)");
+    const Game *fantasy = find(&lib, "FantasyOpposite-1.0-pc");
+    CHECK(fantasy && core_is_renpy(fantasy->core), "a Ren'Py game two folders down is found");
+    const Game *scripts = find(&lib, "Scripts Below");
+    CHECK(scripts && core_is_renpy(scripts->core), "Ren'Py with its scripts only in game/scripts/ is found");
+    const Game *archives = find(&lib, "Archives Below");
+    CHECK(archives && core_is_renpy(archives->core), "Ren'Py with its archives only in game/archives/ is found");
+    CHECK(find(&lib, "Listed") && !skip_reason(&lib, "Collection"), "a folder of games is not a rejected game");
+    CHECK(!find(&lib, "Too Deep"), "a game three folders down is not listed");
+    CHECK(find(&lib, "Nested Script") && !find(&lib, "Not a Script"),
+          "nested _ren.py is a script and an empty .rpa directory is not");
+    const char *partial_reason = skip_reason(&lib, "Champion.AVA-PART");
+    CHECK(partial_reason && strstr(partial_reason, "finish copying") && !find(&lib, "Nested Transfer"),
+          "partial transfers get an explanation and hide unfinished descendants");
+    path_join(dir, sizeof(dir), root, "Champion.AVA-PART");
+    path_join(more, sizeof(more), root, "Champion.ava-part-complete");
+    CHECK(rename(dir, more) == 0, "complete the transfer");
+    library_scan(&lib, root);
+    CHECK(find(&lib, "Champion.ava-part-complete"), "the next scan lists the finished game");
+    const char *why = skip_reason(&lib, "One/Two/Three/Too Deep");
+    CHECK(why && strstr(why, "nested too deep"), "and the reason says it is nested too deep: %s", why ? why : "-");
+    why = skip_reason(&lib, "Lust Doll");
+    CHECK(why && strstr(why, "RPG Maker MV/MZ"), "an RPG Maker MV game (www/) is named: %s", why ? why : "-");
+    why = skip_reason(&lib, "MZ Game");
+    CHECK(why && strstr(why, "RPG Maker MV/MZ"), "an RPG Maker MZ game (js/rmmz_core.js) is named: %s",
+          why ? why : "-");
+    why = skip_reason(&lib, "Ace Game");
+    CHECK(why && strstr(why, "RPG Maker XP/VX/VX Ace"), "an RPG Maker VX Ace game (Game.rgss3a) is named: %s",
+          why ? why : "-");
+    why = skip_reason(&lib, "XP Game");
+    CHECK(why && strstr(why, "RPG Maker XP/VX/VX Ace"), "an RPG Maker XP game (RGSS Game.ini) is named: %s",
+          why ? why : "-");
+    why = skip_reason(&lib, "Unity Game");
+    CHECK(why && strstr(why, "no supported game found here"), "another engine gets the generic reason: %s",
+          why ? why : "-");
+    CHECK(!skip_reason(&lib, "Unity Game/UnityGame_Data"), "and its own folders are not reported again");
+    why = skip_reason(&lib, "Story-1.0-pc.zip");
+    CHECK(why && strstr(why, "Ren'Py") && strstr(why, "extract"), "a Ren'Py game in a .zip: %s", why ? why : "-");
+    why = skip_reason(&lib, "Story.7z");
+    CHECK(why && strstr(why, ".7z") && strstr(why, "extract"), "a .7z: %s", why ? why : "-");
+    why = skip_reason(&lib, "Story.RAR");
+    CHECK(why && strstr(why, ".rar") && strstr(why, "extract"), "a .rar: %s", why ? why : "-");
+    CHECK(!skip_reason(&lib, "Empty Folder") && !skip_reason(&lib, "readme.txt") && !skip_reason(&lib, "Links"),
+          "an empty folder, a text file and a folder of links say nothing");
+    CHECK(!find(&lib, "Outside Game") && !skip_reason(&lib, "Out/Outside Game"),
+          "a link out of the games folder is not followed");
+    why = skip_reason(&lib, "Links/Out");
+    CHECK(why && strstr(why, "link") && strstr(why, "outside the games folder") && strstr(why, "not followed"),
+          "and it says so: %s", why ? why : "-");
+    CHECK(find(&lib, "Beside www") && !skip_reason(&lib, "Mixed Collection"),
+          "a game beside a loose www/ folder is listed, and its collection is not called an MV game");
+    CHECK(find(&lib, "Beside RGSS") && !skip_reason(&lib, "Mixed RGSS"),
+          "a game beside a loose .rgss3a is listed, and its collection is not called an XP-VX Ace game");
+    CHECK(!skip_reason(&lib, "Lust Doll/www") && !skip_reason(&lib, "Lust Doll/www/js"),
+          "an MV game's own folders are not reported again");
+    library_free(&lib);
+    CHECK(!lib.skipped && !lib.skipped_count, "library_free frees the reasons too");
+
+    /* a location three folders down is not one the index accepts */
+    Game g = {0};
+    path_join(dir, sizeof(dir), root, "One/Two/Three/Too Deep");
+    CHECK(library_read_folder(dir, &g) && !library_game_valid(&g, root), "a game three folders down is invalid");
+
+    /* the old games folder: the same games with the ids they always had, and the reasons for what it skips */
+    library_scan(&lib, games);
+    CHECK(lib.count == 7, "the made-up games are still 7: %d", lib.count);
+    for (int i = 0; i < lib.count; ++i)
+    {
+        char id[24];
+        expected_id(lib.games[i].location, id, sizeof(id));
+        CHECK(!strcmp(id, lib.games[i].id), "%s keeps its id %s", lib.games[i].name, id);
+    }
+    why = skip_reason(&lib, "Half");
+    CHECK(why && strstr(why, "no supported game found here"), "a folder with only RPG_RT.ldb: %s", why ? why : "-");
+    CHECK(!skip_reason(&lib, "Series") && !skip_reason(&lib, "Series/readme") && !skip_reason(&lib, "Photos.zip") &&
+              !skip_reason(&lib, "Broken.zip") && !skip_reason(&lib, "Delta.zip.save"),
+          "folders of games, empty folders, archives of photos, broken and save folders say nothing");
+    library_free(&lib);
+}
+
+/* The reason recorded for a skipped path that starts with `head` (an over-long path is recorded cut short). */
+static const char *skip_reason_from(const Library *lib, const char *head)
+{
+    for (int i = 0; i < lib->skipped_count; ++i)
+        if (!strncmp(lib->skipped[i].path, head, strlen(head)))
+            return lib->skipped[i].reason;
+    return NULL;
+}
+
+/* Whether every game of `names` (NULL-ended) is listed. */
+static bool all_listed(const Library *lib, const char *const *names)
+{
+    for (; *names; ++names)
+        if (!find(lib, *names))
+        {
+            printf("  missing: %s\n", *names);
+            return false;
+        }
+    return true;
+}
+
+/* `n` copies of a UTF-8 character */
+static void repeat(char *out, size_t size, const char *ch, int n)
+{
+    out[0] = '\0';
+    for (int i = 0; i < n; ++i)
+        strncat(out, ch, size - strlen(out) - 1);
+}
+
+/* The games already listed (the games folder and the folders in it, depths 0 and 1) are never dropped by a partial
+ * scan: a failure there fails the scan, which keeps the library it had and names the entry. A failure two folders
+ * down (depth 2, where the scan did not look before), or a path too long for the app at any depth, is reported as
+ * not shown with its reason, and every other game is listed. */
+static void check_failed_scan(void)
+{
+    char root[NP_PATH_MAX], dir[NP_PATH_MAX], sub[NP_PATH_MAX], locked[NP_PATH_MAX], link[NP_PATH_MAX];
+    path_join(root, sizeof(root), base, "failing-games");
+    make_dirs(root);
+    rpg_game(root, "Good");
+    make_dir(dir, sizeof(dir), root, "Collection");
+    make_dir(sub, sizeof(sub), dir, "Series");
+    rpg_game(sub, "Deep OK");
+    Library lib = {0};
+    char error[NP_PATH_MAX + 64];
+    CHECK(library_scan_checked(&lib, root, NULL, NULL, error, sizeof(error)) && lib.count == 2, "the first scan");
+    static const char *const EVERY[] = {"Good", "Deep OK", "New Game", NULL};
+    rpg_game(root, "New Game");
+
+    /* depths 0 and 1, as before: a dangling link one folder down fails the scan */
+    make_dir(dir, sizeof(dir), root, "Box");
+    path_join(link, sizeof(link), dir, "Dangling");
+    CHECK(!symlink("/nonexistent/dulcamara-test", link), "a dangling link one folder down");
+    CHECK(!library_scan_checked(&lib, root, NULL, NULL, error, sizeof(error)),
+          "a dangling link at depth 1 still fails the scan");
+    CHECK(strstr(error, "Box/Dangling") != NULL, "and the error names it: %s", error);
+    CHECK(lib.count == 2 && find(&lib, "Good") && find(&lib, "Deep OK") && !find(&lib, "New Game"),
+          "and the library is the one it had");
+    unlink(link);
+
+    if (geteuid() == 0)
+        printf("SKIP the unreadable-folder checks: running as root, which reads every folder\n");
+    else
+    {
+        /* depth 1: an unreadable folder still fails the scan */
+        make_dir(locked, sizeof(locked), dir, "Locked Folder");
+        chmod(locked, 0);
+        CHECK(!library_scan_checked(&lib, root, NULL, NULL, error, sizeof(error)),
+              "an unreadable folder at depth 1 still fails the scan");
+        CHECK(strstr(error, "Box/Locked Folder") != NULL, "and the error names it: %s", error);
+        CHECK(lib.count == 2 && !find(&lib, "New Game"), "and the library is the one it had");
+        chmod(locked, 0700);
+        rmdir(locked);
+
+        /* depth 2: an unreadable folder is reported, and the scan goes on */
+        path_join(sub, sizeof(sub), root, "Collection/Series");
+        make_dir(locked, sizeof(locked), sub, "Locked Deep");
+        chmod(locked, 0);
+        CHECK(library_scan_checked(&lib, root, NULL, NULL, error, sizeof(error)),
+              "an unreadable folder two folders down does not fail the scan: %s", error);
+        CHECK(all_listed(&lib, EVERY), "every other game is listed (%d)", lib.count);
+        const char *why = skip_reason(&lib, "Collection/Series/Locked Deep");
+        CHECK(why && strstr(why, "could not be read"), "and the unreadable folder says why: %s", why ? why : "-");
+        chmod(locked, 0700);
+        rmdir(locked);
+
+        /* inside a Ren'Py game's game/: a subfolder that cannot be opened holds no scripts */
+        char game_dir[NP_PATH_MAX], scripts[NP_PATH_MAX], shut[NP_PATH_MAX];
+        make_dir(dir, sizeof(dir), root, "Locked Inside");
+        make_dir(game_dir, sizeof(game_dir), dir, "game");
+        make_dir(shut, sizeof(shut), game_dir, "aaa-locked");
+        make_dir(scripts, sizeof(scripts), game_dir, "scripts");
+        write_text(scripts, "script.rpyc", "compiled");
+        make_dir(dir, sizeof(dir), root, "Only Locked Inside");
+        make_dir(game_dir, sizeof(game_dir), dir, "game");
+        make_dir(locked, sizeof(locked), game_dir, "locked");
+        chmod(shut, 0);
+        chmod(locked, 0);
+        CHECK(library_scan_checked(&lib, root, NULL, NULL, error, sizeof(error)),
+              "an unreadable folder inside game/ does not fail the scan: %s", error);
+        CHECK(all_listed(&lib, EVERY), "every other game is listed (%d)", lib.count);
+        const Game *inside = find(&lib, "Locked Inside");
+        CHECK(inside && core_is_renpy(inside->core), "a Ren'Py game with scripts beside the locked folder is listed");
+        CHECK(!find(&lib, "Only Locked Inside"), "one with nothing but a locked folder in game/ is not");
+        why = skip_reason(&lib, "Only Locked Inside/game/locked");
+        CHECK(why && strstr(why, "could not be read"), "and its locked folder (depth 2) says why: %s",
+              why ? why : "-");
+        chmod(shut, 0700);
+        chmod(locked, 0700);
+    }
+
+    /* depth 2: a dangling link is reported, and the scan goes on */
+    path_join(sub, sizeof(sub), root, "Collection/Series");
+    path_join(link, sizeof(link), sub, "Gone");
+    CHECK(!symlink("/nonexistent/dulcamara-test", link), "a dangling link two folders down");
+    CHECK(library_scan_checked(&lib, root, NULL, NULL, error, sizeof(error)),
+          "a dangling link two folders down does not fail the scan: %s", error);
+    CHECK(all_listed(&lib, EVERY), "every other game is listed (%d)", lib.count);
+    const char *why = skip_reason(&lib, "Collection/Series/Gone");
+    CHECK(why && strstr(why, "could not be read"), "and the link says why: %s", why ? why : "-");
+    unlink(link);
+
+    /* a Japanese collection, title and build folder: the build folder (depth 2) passes the app's 512 bytes */
+    char collection[256], title[256], build[256], deeper[1024], deepest[1400];
+    repeat(collection, sizeof(collection), "\xe5\x90\x8c", 50); /* 50 x U+540C, 150 bytes */
+    repeat(title, sizeof(title), "\xe3\x81\x82", 60);           /* 60 x U+3042, 180 bytes */
+    repeat(build, sizeof(build), "\xe7\x89\x88", 50);           /* 50 x U+7248, 150 bytes */
+    make_dir(dir, sizeof(dir), root, collection);
+    snprintf(deeper, sizeof(deeper), "%s/%s", dir, title);
+    snprintf(deepest, sizeof(deepest), "%s/%s", deeper, build);
+    CHECK(strlen(deeper) < NP_PATH_MAX && strlen(deepest) >= NP_PATH_MAX, "the build folder's path is %zu bytes",
+          strlen(deepest));
+    CHECK(!mkdir(deeper, 0700) && !mkdir(deepest, 0700), "folders with long Japanese names");
+    CHECK(library_scan_checked(&lib, root, NULL, NULL, error, sizeof(error)),
+          "a path too long two folders down does not fail the scan: %s", error);
+    CHECK(all_listed(&lib, EVERY), "every other game is listed (%d)", lib.count);
+    why = skip_reason_from(&lib, deeper);
+    CHECK(why && strstr(why, "path too long"), "and the over-long path says why: %s", why ? why : "-");
+    for (int i = 0; i < lib.skipped_count; ++i)
+        if (!strncmp(lib.skipped[i].path, deeper, strlen(deeper)))
+            CHECK(utf8_valid(lib.skipped[i].path), "its recorded path is cut at a character: %s",
+                  lib.skipped[i].path);
+    rmdir(deepest);
+    rmdir(deeper);
+    rmdir(dir);
+
+    /* a path too long one folder down (depth 1): reported too, as such a game could never be listed */
+    char long_a[241], long_b[241];
+    memset(long_a, 'a', 240), long_a[240] = '\0';
+    memset(long_b, 'b', 240), long_b[240] = '\0';
+    make_dir(dir, sizeof(dir), root, long_a);
+    snprintf(deeper, sizeof(deeper), "%s/%s", dir, long_b);
+    CHECK(strlen(deeper) >= NP_PATH_MAX && !mkdir(deeper, 0700), "a folder one down longer than the app's paths");
+    CHECK(library_scan_checked(&lib, root, NULL, NULL, error, sizeof(error)),
+          "a path too long one folder down does not fail the scan: %s", error);
+    CHECK(all_listed(&lib, EVERY), "every other game is listed (%d)", lib.count);
+    why = skip_reason_from(&lib, dir);
+    CHECK(why && strstr(why, "path too long"), "and it says why: %s", why ? why : "-");
+    rmdir(deeper);
+    library_free(&lib);
+}
+
+/* miniz's writer to a file at any offset, so that what it never writes (the space reserved before the first entry)
+ * is a hole in a sparse file */
+static size_t write_at(void *opaque, mz_uint64 offset, const void *data, size_t n)
+{
+    FILE *f = opaque;
+    return fseeko(f, (off_t)offset, SEEK_SET) == 0 ? fwrite(data, 1, n, f) : 0;
+}
+
+/* An RPG Maker game in a .zip, written after `before` bytes that are never written (a sparse file over 4 GiB when
+ * before is that large), with flags (MZ_ZIP_FLAG_WRITE_ZIP64 forces the ZIP64 format). */
+static bool write_game_zip(const char *path, mz_uint64 before, mz_uint flags)
+{
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return false;
+    mz_zip_archive zip;
+    memset(&zip, 0, sizeof(zip));
+    zip.m_pWrite = write_at;
+    zip.m_pIO_opaque = f;
+    bool ok = mz_zip_writer_init_v2(&zip, before, flags) &&
+              mz_zip_writer_add_mem(&zip, "Game/RPG_RT.ldb", "x", 1, MZ_DEFAULT_COMPRESSION) &&
+              mz_zip_writer_add_mem(&zip, "Game/RPG_RT.lmt", "x", 1, MZ_DEFAULT_COMPRESSION) &&
+              mz_zip_writer_finalize_archive(&zip);
+    mz_zip_writer_end(&zip);
+    return fclose(f) == 0 && ok;
+}
+
+/* An RPG Maker game in a .zip with `extra` more entries (MZ_ZIP_FLAG_WRITE_ZIP64 in flags forces the ZIP64 format) */
+static bool write_many_zip(const char *path, unsigned extra, mz_uint flags)
+{
+    mz_zip_archive zip;
+    memset(&zip, 0, sizeof(zip));
+    bool ok = mz_zip_writer_init_file_v2(&zip, path, 0, flags) &&
+              mz_zip_writer_add_mem(&zip, "Game/RPG_RT.ldb", "x", 1, MZ_NO_COMPRESSION) &&
+              mz_zip_writer_add_mem(&zip, "Game/RPG_RT.lmt", "x", 1, MZ_NO_COMPRESSION);
+    for (unsigned i = 0; ok && i < extra; ++i)
+    {
+        char name[32];
+        snprintf(name, sizeof(name), "Game/Pad/%05u", i);
+        ok = mz_zip_writer_add_mem(&zip, name, "", 0, MZ_NO_COMPRESSION);
+    }
+    ok = ok && mz_zip_writer_finalize_archive(&zip);
+    return mz_zip_writer_end(&zip) && ok;
+}
+
+/* An RPG Maker game in a .zip with one more entry that says it holds 5 GiB (a few bytes stored compressed, never
+ * read): a ZIP64 entry size. */
+static bool write_big_entry_zip(const char *path)
+{
+    mz_zip_archive zip;
+    memset(&zip, 0, sizeof(zip));
+    static const unsigned char deflated[] = {0x03, 0x00}; /* an empty deflate stream */
+    bool ok = mz_zip_writer_init_file_v2(&zip, path, 0, MZ_ZIP_FLAG_WRITE_ZIP64) &&
+              mz_zip_writer_add_mem(&zip, "Game/RPG_RT.ldb", "x", 1, MZ_NO_COMPRESSION) &&
+              mz_zip_writer_add_mem(&zip, "Game/RPG_RT.lmt", "x", 1, MZ_NO_COMPRESSION) &&
+              mz_zip_writer_add_mem_ex(&zip, "Game/Movie/big.avi", deflated, sizeof(deflated), NULL, 0,
+                                       MZ_DEFAULT_LEVEL | MZ_ZIP_FLAG_COMPRESSED_DATA, 5ull << 30, 0) &&
+              mz_zip_writer_finalize_archive(&zip);
+    return mz_zip_writer_end(&zip) && ok;
+}
+
+/* EasyRPG's ZIP reader has no ZIP64 (filesystem_zip.cpp): it reads the classic end record, the central directory and
+ * each local header, with 32-bit offsets and sizes and a 16-bit entry count. A .zip past those limits is not listed
+ * (it would fail at launch); it is reported. A .zip within them is listed, even one that carries a ZIP64 end record
+ * beside valid classic fields (as some tools always write), which EasyRPG never reads. */
+static void check_large_zips(void)
+{
+    char root[NP_PATH_MAX], huge[NP_PATH_MAX], forced[NP_PATH_MAX], normal[NP_PATH_MAX], many[NP_PATH_MAX],
+        many64[NP_PATH_MAX], most[NP_PATH_MAX], big[NP_PATH_MAX];
+    path_join(root, sizeof(root), base, "large-zips");
+    make_dirs(root);
+    path_join(huge, sizeof(huge), root, "Huge.zip");
+    path_join(forced, sizeof(forced), root, "Forced64.zip");
+    path_join(normal, sizeof(normal), root, "Normal.zip");
+    path_join(many, sizeof(many), root, "Many.zip");
+    path_join(many64, sizeof(many64), root, "Many64.zip");
+    path_join(most, sizeof(most), root, "Most.zip");
+    path_join(big, sizeof(big), root, "BigEntry.zip");
+    CHECK(write_game_zip(normal, 0, 0), "a normal .zip");
+    CHECK(write_game_zip(forced, 0, MZ_ZIP_FLAG_WRITE_ZIP64), "a small .zip in the ZIP64 format");
+    CHECK(write_many_zip(most, 65535 - 2, 0), "a .zip of 65,535 entries");
+    CHECK(write_many_zip(many, 65536 - 2, 0), "a .zip of 65,536 entries");
+    CHECK(write_many_zip(many64, 65536 - 2, MZ_ZIP_FLAG_WRITE_ZIP64), "and one written as ZIP64");
+    CHECK(write_big_entry_zip(big), "a .zip with an entry of 5 GiB");
+    const mz_uint64 four_gib = 4ull << 30;
+    bool sparse = write_game_zip(huge, four_gib + 4096, 0);
+    struct stat st;
+    sparse = sparse && stat(huge, &st) == 0 && (uint64_t)st.st_size > four_gib &&
+             (uint64_t)st.st_blocks * 512 < (64u << 20);
+    if (!sparse)
+    {
+        printf("SKIP the .zip over 4 GiB: this filesystem cannot make it sparse (or write it)\n");
+        remove(huge);
+    }
+
+    Game g;
+    CHECK(library_read_archive(forced, &g), "a small .zip with a ZIP64 end record and valid classic fields is offered");
+    CHECK(library_read_archive(most, &g), "a .zip of 65,535 entries is offered");
+    CHECK(!library_read_archive(many, &g), "a .zip of 65,536 entries is not");
+    CHECK(!library_read_archive(many64, &g), "nor one of 65,536 written as ZIP64");
+    CHECK(!library_read_archive(big, &g), "nor one with an entry of 5 GiB");
+    if (sparse)
+        CHECK(!library_read_archive(huge, &g), "nor a .zip over 4 GiB (its entries past 4 GiB)");
+    Library lib = {0};
+    library_scan(&lib, root);
+    printf("large zips: %d games, %d not shown\n", lib.count, lib.skipped_count);
+    for (int i = 0; i < lib.skipped_count; ++i)
+        printf("  %s: %s\n", base_of(lib.skipped[i].path), lib.skipped[i].reason);
+    CHECK(lib.count == 3 && find(&lib, "Normal") && find(&lib, "Normal")->archive && find(&lib, "Forced64") &&
+              find(&lib, "Most"),
+          "the normal, the ZIP64-recorded and the 65,535-entry .zip are listed: %d", lib.count);
+    static const char *const TOO_LARGE[] = {"Many.zip", "Many64.zip", "BigEntry.zip", "Huge.zip"};
+    for (size_t i = 0; i < sizeof(TOO_LARGE) / sizeof(TOO_LARGE[0]); ++i)
+    {
+        if (i == 3 && !sparse)
+            continue;
+        const char *why = skip_reason(&lib, TOO_LARGE[i]);
+        CHECK(why && strstr(why, "too large for the RPG Maker player") && strstr(why, "extract it into a folder"),
+              "%s says why: %s", TOO_LARGE[i], why ? why : "-");
+    }
+    library_free(&lib);
+    remove(huge);
+}
+
 static void check_testgame(const char *dir)
 {
     Library lib = {0};
@@ -491,7 +1107,11 @@ int main(int argc, char **argv)
     make_games();
     check_made_up_games();
     check_renpy_games();
+    check_sections();
     check_pieces();
+    check_detection();
+    check_failed_scan();
+    check_large_zips();
     if (argc > 2)
         check_testgame(argv[2]);
     printf("%d checks, %d failed\n%s\n", checks, failures, failures ? "FAIL" : "PASS");

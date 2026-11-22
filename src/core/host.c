@@ -7,6 +7,7 @@
 #include "host.h"
 
 #include "cores.h"
+#include "dulcamara_libretro.h"
 
 #include "../platform/platform.h"
 
@@ -14,6 +15,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !defined(__PROSPERO__)
+#include <sys/resource.h>
+#else
+size_t ps5_heap_mapped_bytes(void);
+#endif
 
 void app_toast(const char *message); /* main.c: a short notice on screen */
 
@@ -22,18 +28,27 @@ void app_toast(const char *message); /* main.c: a short notice on screen */
 typedef struct
 {
     char key[64];
-    char value[64];
+    char value[NP_PATH_MAX]; /* a path too: a Ren'Py game's renpy_sounds */
 } Option;
 
 static const CoreInfo *core;
 static bool loaded, shutdown_asked, fast_forward;
+static enum HostState lifecycle;
+static struct dr_runtime_interface runtime;
+static struct dr_save_layout last_layout;
+static Game owned_game;
+static HostCounters counters;
+static bool unsafe_stop, renpy_seen, audio_expected, input_connected;
+static uint64_t stop_deadline;
+
 static char system_dir[NP_PATH_MAX];
 static char assets_dir[NP_PATH_MAX];
 static char game_path[NP_PATH_MAX];
 static Option options[MAX_OPTIONS];
 static int option_count;
-static Option settings_options[4]; /* host_set_option's */
+static Option settings_options[40]; /* host_set_option's: a core's settings, and a Ren'Py game's keys */
 static int settings_option_count;
+static bool options_changed; /* since the core last asked (RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE) */
 
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
 static struct retro_system_av_info av;
@@ -56,7 +71,20 @@ static int16_t pointer_x, pointer_y;
 static bool pointer_pressed, finger_was_down;
 static uint64_t finger_down_us;
 static int finger_down_x, finger_down_y, tap_frames;
+static bool clicked_this_touch; /* the touchpad pressed down during this touch: its click, and no tap after it */
 static int volume = 10;
+
+/* Typing, for a core that takes it: the text it wants (RETRO_ENVIRONMENT_DULCAMARA_TEXT_INPUT), its keyboard callback
+ * (RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK), and the on-screen keyboard's presses, held until the core polls, as
+ * libretro's frontends give a keyboard's */
+static struct retro_dulcamara_text_input text_input;
+static retro_keyboard_event_t keyboard_cb;
+static struct
+{
+    unsigned key;
+    uint32_t character;
+} typed[32];
+static int typed_count;
 
 /* ---------------------------------------------------------------- options */
 
@@ -131,6 +159,15 @@ static bool environment(unsigned cmd, void *data)
 {
     switch (cmd)
     {
+    case DR_ENVIRONMENT_RUNTIME:
+    {
+        const struct dr_runtime_interface *api = data;
+        if (!api || api->version != DR_RUNTIME_VERSION || api->size != sizeof(*api) ||
+            !api->copy_layout || !api->release_checkpoint || !api->request_stop || !api->poll_stop)
+            return false;
+        runtime = *api;
+        return true;
+    }
     case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
     {
         enum retro_pixel_format f = *(const enum retro_pixel_format *)data;
@@ -188,7 +225,8 @@ static bool environment(unsigned cmd, void *data)
         return o != NULL;
     }
     case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
-        *(bool *)data = false;
+        *(bool *)data = options_changed; /* a Ren'Py game's keys, changed in its menu */
+        options_changed = false;
         return true;
     case RETRO_ENVIRONMENT_SET_GEOMETRY:
     {
@@ -205,6 +243,17 @@ static bool environment(unsigned cmd, void *data)
     case RETRO_ENVIRONMENT_SHUTDOWN:
         shutdown_asked = true;
         return true;
+    case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK:
+        keyboard_cb = ((const struct retro_keyboard_callback *)data)->callback;
+        return true;
+    case RETRO_ENVIRONMENT_DULCAMARA_TEXT_INPUT:
+    {
+        const struct retro_dulcamara_text_input *t = data;
+        if (t->wanted != text_input.wanted)
+            np_log("host: %s", t->wanted ? "the game wants text typed" : "the game has its text");
+        text_input = *t;
+        return true;
+    }
     case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
     case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
     case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
@@ -258,16 +307,23 @@ static void video_refresh(const void *data, unsigned width, unsigned height, siz
     frame_h = height;
     frame_pitch = pitch;
     frame_fresh = true;
+    ++counters.fresh_pictures;
+    counters.frame_bytes = pitch * height;
 }
 
 static void audio_sample(int16_t left, int16_t right)
 {
+    audio_expected = true;
+    ++counters.audio_frames;
     int16_t frame[2] = {left, right};
     plat_audio_push(frame, 1);
 }
 
 static size_t audio_batch(const int16_t *samples, size_t frames)
 {
+    if (frames)
+        audio_expected = true;
+    counters.audio_frames += frames;
     if (volume >= 10)
     {
         plat_audio_push(samples, frames);
@@ -287,6 +343,12 @@ static size_t audio_batch(const int16_t *samples, size_t frames)
 
 static void input_poll(void)
 {
+    for (int i = 0; i < typed_count && keyboard_cb; ++i)
+    {
+        keyboard_cb(true, typed[i].key, typed[i].character, 0);
+        keyboard_cb(false, typed[i].key, 0, 0);
+    }
+    typed_count = 0;
 }
 
 static int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
@@ -321,11 +383,20 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
 
 bool host_load(const Game *g, const char *system, char *error, size_t error_size)
 {
-    if (loaded)
-        host_unload();
+    if (host_owns_runtime() || unsafe_stop)
+    {
+        snprintf(error, error_size, "The previous runtime has not safely stopped.");
+        return false;
+    }
     if (!g || g->core < 0 || g->core >= CORE_COUNT)
     {
         snprintf(error, error_size, "No core runs this game.");
+        return false;
+    }
+    if (core_is_renpy(g->core) && renpy_seen)
+    {
+        lifecycle = HOST_RESTART_REQUIRED;
+        snprintf(error, error_size, "Ren’Py requires restarting Dulcamara before another game.");
         return false;
     }
     if (!CORES[g->core].init)
@@ -333,10 +404,17 @@ bool host_load(const Game *g, const char *system, char *error, size_t error_size
         snprintf(error, error_size, "%s games play on the console.", CORES[g->core].name);
         return false;
     }
+    owned_game = *g;
+    g = &owned_game;
+    lifecycle = HOST_LOADING;
+    memset(&runtime, 0, sizeof(runtime));
+    memset(&last_layout, 0, sizeof(last_layout));
+    memset(&counters, 0, sizeof(counters));
     core = &CORES[g->core];
     str_copy(system_dir, sizeof(system_dir), system);
     plat_asset_path(assets_dir, sizeof(assets_dir), "");
     str_copy(game_path, sizeof(game_path), g->path);
+    input_connected = false;
     option_count = 0;
     shutdown_asked = false;
     fast_forward = false;
@@ -348,8 +426,11 @@ bool host_load(const Game *g, const char *system, char *error, size_t error_size
     pad_bits = 0;
     pad_lx = pad_ly = 0;
     pointer_x = pointer_y = 0;
-    pointer_pressed = finger_was_down = false;
+    pointer_pressed = finger_was_down = clicked_this_touch = false;
     tap_frames = 0;
+    memset(&text_input, 0, sizeof(text_input));
+    keyboard_cb = NULL;
+    typed_count = 0;
     plat_pad_touch(core->pointer);
 
     struct retro_system_info info;
@@ -373,6 +454,7 @@ bool host_load(const Game *g, const char *system, char *error, size_t error_size
         snprintf(error, error_size, "%s could not start this game.", core->name);
         np_log("host: %s refused %s", core->name, game_path);
         core = NULL;
+        lifecycle = HOST_FAILURE;
         return false;
     }
     memset(&av, 0, sizeof(av));
@@ -390,24 +472,175 @@ bool host_load(const Game *g, const char *system, char *error, size_t error_size
         audio_cb.set_state(true);
     audio_enabled = true;
     loaded = true;
+    if (core_is_renpy(g->core))
+        renpy_seen = true;
+    if (!runtime.version)
+        lifecycle = HOST_RUNNING;
     return true;
 }
 
-void host_unload(void)
+void host_reset_transient(void)
 {
-    if (!loaded)
-        return;
-    if (audio_cb_set && audio_cb.set_state)
-        audio_cb.set_state(false);
+    pad_bits = 0;
+    pad_lx = pad_ly = 0;
+    pointer_x = pointer_y = 0;
+    pointer_pressed = finger_was_down = clicked_this_touch = false;
+    finger_down_us = 0;
+    tap_frames = typed_count = 0;
+    fast_forward = false;
+    audio_expected = false;
+    plat_audio_clear();
+    if (loaded && !unsafe_stop && runtime.reset_transient)
+        runtime.reset_transient();
+}
+
+static void finish_stop(void)
+{
+    bool restart = runtime.restart_required;
+    if (runtime.copy_layout)
+        runtime.copy_layout(&last_layout);
     core->unload_game();
     core->deinit();
-    np_log("host: %s stopped", core->name);
-    plat_pad_touch(false);
-    plat_audio_clear();
+    np_log("host: %s stopped cleanly", core->name);
     loaded = false;
+    core = NULL;
     audio_cb_set = audio_enabled = false;
     frame_data = NULL;
-    core = NULL;
+    memset(&text_input, 0, sizeof(text_input));
+    keyboard_cb = NULL;
+    plat_pad_touch(false);
+    host_reset_transient();
+    lifecycle = restart ? HOST_RESTART_REQUIRED : HOST_IDLE;
+}
+
+void host_request_stop(void)
+{
+    if (!loaded || lifecycle == HOST_STOPPING || unsafe_stop)
+        return;
+    lifecycle = HOST_STOPPING;
+    host_reset_transient();
+    if (audio_cb_set && audio_cb.set_state)
+        audio_cb.set_state(false);
+    audio_enabled = false;
+    stop_deadline = plat_ticks_us() + 10000000;
+    if (runtime.request_stop)
+        runtime.request_stop();
+    else
+    {
+        /* Unextended cores may unload synchronously, but do not certify native writers. */
+        finish_stop();
+    }
+}
+
+enum HostState host_poll(void)
+{
+    if (!loaded || unsafe_stop)
+        return lifecycle;
+    if (runtime.copy_layout)
+        runtime.copy_layout(&last_layout);
+    if (lifecycle == HOST_STOPPING)
+    {
+        enum dr_stop_result result = runtime.poll_stop();
+        if (result == DR_STOP_CLEAN)
+            finish_stop();
+        else if (result == DR_STOP_TIMEOUT || plat_ticks_us() >= stop_deadline)
+        {
+            unsafe_stop = true;
+            lifecycle = HOST_FAILURE;
+            np_log("host: stop timed out; runtime retained, save operations and relaunch disabled");
+        }
+    }
+    return lifecycle;
+}
+
+enum HostState host_state(void)
+{
+    return lifecycle;
+}
+bool host_owns_runtime(void)
+{
+    return loaded || lifecycle == HOST_LOADING || lifecycle == HOST_STOPPING;
+}
+bool host_copy_save_layout(struct dr_save_layout *out)
+{
+    if (!out)
+        return false;
+    if (loaded && runtime.copy_layout)
+        runtime.copy_layout(&last_layout);
+    *out = last_layout;
+    bool valid = out->version == DR_RUNTIME_VERSION && out->size == sizeof(*out) &&
+                 out->count <= DR_SAVE_MAX && (!out->available || out->count > 0);
+    for (uint32_t i = 0; valid && i < out->count; ++i)
+        valid = dr_save_entry_valid(&out->entries[i]);
+    if (!valid)
+    {
+        out->available = out->complete = out->checkpoint = out->initial = out->preinitial = false;
+        out->count = 0; /* consumers must never iterate untrusted counts or unterminated paths */
+    }
+    if (unsafe_stop)
+    {
+        out->writers_finished = false;
+        out->checkpoint = false;
+    }
+    return out->version == DR_RUNTIME_VERSION;
+}
+bool host_release_checkpoint(uint32_t generation)
+{
+    if (!loaded || unsafe_stop || lifecycle == HOST_STOPPING || !runtime.release_checkpoint)
+        return false;
+    struct dr_save_layout layout;
+    bool starting = lifecycle == HOST_LOADING && host_copy_save_layout(&layout) && layout.initial &&
+                    layout.checkpoint && layout.generation == generation;
+    if (!runtime.release_checkpoint(generation))
+        return false;
+    if (starting)
+    {
+        core->get_system_av_info(&av);
+        if (av.timing.fps <= 0)
+            av.timing.fps = 60;
+        if (av.timing.sample_rate <= 0)
+            av.timing.sample_rate = 48000;
+        plat_audio_open((int)av.timing.sample_rate);
+        if (audio_cb_set && audio_cb.set_state)
+            audio_cb.set_state(true);
+        lifecycle = HOST_RUNNING;
+    }
+    host_reset_transient();
+    return true;
+}
+bool host_snapshot_eligible(void)
+{
+    struct dr_save_layout layout;
+    return !unsafe_stop && host_copy_save_layout(&layout) && layout.available && layout.complete &&
+           ((layout.checkpoint && (layout.initial || layout.preinitial) && lifecycle == HOST_LOADING) ||
+            (layout.writers_finished && !host_owns_runtime()));
+}
+void host_note_presentation(uint64_t elapsed_us)
+{
+    ++counters.presentations;
+    counters.presentation_us += elapsed_us;
+}
+void host_counters(HostCounters *out)
+{
+#if defined(__PROSPERO__)
+    counters.heap_mapped_bytes = ps5_heap_mapped_bytes();
+#else
+    struct rusage usage;
+    if (!getrusage(RUSAGE_SELF, &usage))
+    {
+        counters.peak_resident_bytes = (uint64_t)usage.ru_maxrss;
+#if !defined(__APPLE__)
+        counters.peak_resident_bytes *= 1024;
+#endif
+    }
+#endif
+    if (out)
+        *out = counters;
+}
+void host_unload(void)
+{
+    host_request_stop();
+    (void)host_poll();
 }
 
 bool host_loaded(void)
@@ -420,8 +653,18 @@ const char *host_core_name(void)
     return core ? core->name : "";
 }
 
+bool host_core_skips(void)
+{
+    return core && core->own_skip;
+}
+
+/* The touchpad as the pointer: a touch moves it, a tap clicks; with a core that has the touchpad's click (a Ren'Py
+ * game's: main.c passes BTN_MENU on), pressing the touchpad down clicks too, for as long as it is down. */
 static void set_pointer(const PadState *pad)
 {
+    const bool clicking = (pad->buttons & BIT(BTN_MENU)) != 0;
+    if (clicking)
+        clicked_this_touch = true;
     if (pad->touching)
     {
         pointer_x = (int16_t)((int)pad->touch_x * 65534 / 1919 - 32767);
@@ -433,11 +676,13 @@ static void set_pointer(const PadState *pad)
             finger_down_y = pad->touch_y;
         }
     }
-    else if (finger_was_down && plat_ticks_us() - finger_down_us < 250000 && abs(finger_down_x - (int)pad->touch_x) < 60 &&
-             abs(finger_down_y - (int)pad->touch_y) < 60)
+    else if (finger_was_down && !clicked_this_touch && plat_ticks_us() - finger_down_us < 250000 &&
+             abs(finger_down_x - (int)pad->touch_x) < 60 && abs(finger_down_y - (int)pad->touch_y) < 60)
         tap_frames = 3;
+    if (!pad->touching && !clicking)
+        clicked_this_touch = false;
     finger_was_down = pad->touching;
-    pointer_pressed = tap_frames > 0;
+    pointer_pressed = tap_frames > 0 || clicking;
     if (tap_frames)
         --tap_frames;
 }
@@ -445,6 +690,16 @@ static void set_pointer(const PadState *pad)
 void host_set_input(const PadState *pad, const Settings *s)
 {
     uint16_t bits = 0;
+    if (!pad || !pad->connected)
+    {
+        if (input_connected)
+            host_reset_transient();
+        input_connected = false;
+        return;
+    }
+    if (!input_connected)
+        host_reset_transient();
+    input_connected = true;
     if (pad)
     {
         for (int b = 0; b < MAP_BUTTONS; ++b)
@@ -453,7 +708,9 @@ void host_set_input(const PadState *pad, const Settings *s)
             if ((pad->buttons & BIT(b)) && to >= 0 && to < 16)
                 bits |= (uint16_t)(1u << to);
         }
-        if (s->stick_dpad)
+        /* a core with a pointer (Ren'Py's) reads the stick itself: its arrows, or its cursor */
+        const bool own_stick = core && core->pointer;
+        if (s->stick_dpad && !own_stick)
         {
             const int16_t dead = 16000;
             if (pad->lx < -dead)
@@ -465,8 +722,8 @@ void host_set_input(const PadState *pad, const Settings *s)
             if (pad->ly > dead)
                 bits |= 1u << RETRO_DEVICE_ID_JOYPAD_DOWN;
         }
-        pad_lx = s->stick_dpad ? pad->lx : 0;
-        pad_ly = s->stick_dpad ? pad->ly : 0;
+        pad_lx = s->stick_dpad || own_stick ? pad->lx : 0;
+        pad_ly = s->stick_dpad || own_stick ? pad->ly : 0;
     }
     pad_bits = bits;
     if (core && core->pointer && pad)
@@ -475,7 +732,7 @@ void host_set_input(const PadState *pad, const Settings *s)
 
 void host_run(int times, double seconds)
 {
-    if (!loaded)
+    if (!loaded || (lifecycle != HOST_RUNNING && lifecycle != HOST_LOADING))
         return;
     retro_usec_t usec = (retro_usec_t)(seconds * 1e6);
     if (usec <= 0)
@@ -484,14 +741,19 @@ void host_run(int times, double seconds)
     {
         if (frame_time_cb.callback)
             frame_time_cb.callback(usec);
+        uint64_t started = plat_ticks_us();
         core->run();
+        ++counters.engine_calls;
+        counters.engine_us += plat_ticks_us() - started;
     }
 }
 
 void host_feed_audio(double seconds)
 {
-    if (!loaded || !audio_cb_set || !audio_enabled)
+    if (!loaded || lifecycle != HOST_RUNNING || !audio_cb_set || !audio_enabled)
         return;
+    if (plat_audio_queued_frames() == 0 && audio_expected)
+        ++counters.audio_underruns;
     const size_t want = (size_t)(av.timing.sample_rate * seconds);
     /* a few calls at most a refresh: each gives a frame's worth (EasyRPG: 800 at 48 kHz) */
     for (int i = 0; i < 6 && plat_audio_queued_frames() < want; ++i)
@@ -514,6 +776,8 @@ void host_set_option(const char *key, const char *value)
             return;
         str_copy(settings_options[settings_option_count++].key, sizeof(settings_options[0].key), key);
     }
+    if (strcmp(settings_options[i].value, value))
+        options_changed = true;
     str_copy(settings_options[i].value, sizeof(settings_options[i].value), value);
 }
 
@@ -527,10 +791,30 @@ bool host_shutdown_requested(void)
     return shutdown_asked;
 }
 
+bool host_text_wanted(float *top, float *bottom)
+{
+    const bool wanted = loaded && lifecycle == HOST_RUNNING && keyboard_cb && text_input.wanted;
+    *top = wanted ? text_input.top : 0;
+    *bottom = wanted ? text_input.bottom : 0;
+    return wanted;
+}
+
+void host_type(unsigned retro_key, uint32_t character)
+{
+    if (!loaded || lifecycle != HOST_RUNNING || !keyboard_cb ||
+        typed_count == (int)(sizeof(typed) / sizeof(typed[0])))
+        return;
+    typed[typed_count].key = retro_key;
+    typed[typed_count++].character = character;
+}
+
 void host_reset(void)
 {
-    if (loaded)
+    if (loaded && lifecycle == HOST_RUNNING)
+    {
+        host_reset_transient();
         core->reset();
+    }
 }
 
 double host_fps(void)
@@ -570,5 +854,5 @@ const void *host_frame(int *width, int *height, size_t *pitch, int *format, bool
 
 bool host_can_save_states(void)
 {
-    return loaded && core->serialize_size() > 0;
+    return loaded && lifecycle == HOST_RUNNING && core->serialize_size() > 0;
 }

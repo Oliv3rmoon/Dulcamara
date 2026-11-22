@@ -12,6 +12,7 @@ enum
     FONT_REGULAR = 0,
     FONT_BOLD = 1,
     FONT_MONO = 2, /* IBM Plex Mono: text guides keep their columns */
+    FONT_PIXEL = 3, /* DotGothic16: Story mode's window, list and text box; it has Japanese too */
 };
 
 enum
@@ -31,7 +32,12 @@ void text_want_clear(void);
 /* Another pair of faces (assets paths), for the themes. */
 void text_set_fonts(const char *regular, const char *bold);
 
-/* (x, y) is the top-left of the line box for ALIGN_LEFT; size is the pixel height. */
+/* (x, y) is the top-left of the line box for ALIGN_LEFT; size is the pixel height. {Cross}, {R2} and the other button
+ * names in braces are drawn as pad glyphs; a TEXT_LITERAL byte ('\x1b') before a character makes it plain text and is
+ * not drawn (Story marks every '{' in titles and file names so: story_plain). */
+#ifndef TEXT_LITERAL
+#define TEXT_LITERAL '\x1b'
+#endif
 void text_draw(float x, float y, float size, int weight, uint32_t argb, int align, const char *s);
 float text_width(float size, int weight, const char *s);
 /* Truncates with "..." so the text fits in max_width. */

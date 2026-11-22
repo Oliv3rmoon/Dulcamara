@@ -59,7 +59,7 @@ Frame interpolation (PS5SX2 by Swordpdf, AMD FidelityFX SDK) - GPL-3.0-or-later 
 The shaders (CRT Royale, CRT Lottes, CRT Pi, Newpixie, Hyllian NTSC, Mattias, NTSC, LCD3x, zfast LCD,
   SameBoy's Game Boy LCD, FSR 1) - each under its own licence: THIRD_PARTY_NOTICES.md in the source
 Fonts in assets/fonts - SIL Open Font License 1.1 (notices beside them): Inter, Noto Sans JP (a subset),
-  IBM Plex Mono; Tabler Icons - MIT License
+  IBM Plex Mono, DotGothic16; Tabler Icons - MIT License
 dlmalloc (Doug Lea) - public domain (CC0)
 miniz - MIT License - https://github.com/richgel999/miniz
 QR Code generator (Project Nayuki) - MIT License - https://github.com/nayuki/QR-Code-generator

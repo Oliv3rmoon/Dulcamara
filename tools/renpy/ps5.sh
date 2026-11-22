@@ -70,8 +70,10 @@ build_python_ps5() {
     unpack "Python-$python_version.tar.xz" "$out/work/python"
     rm -rf "$out/python"
     local src="$out/work/python/Python-$python_version"
-    patch -d "$src" -p1 <"$root/tools/patches/python-3.12.8-cross-freebsd.diff" >"$log/python.log" 2>&1 ||
-        fail python
+    : >"$log/python.log"
+    for p in "$root"/tools/patches/python-3.12.8-*.diff; do
+        patch -d "$src" -p1 <"$p" >>"$log/python.log" 2>&1 || fail python
+    done
     cp "$root/tools/renpy/Setup.local" "$src/Modules/Setup.local"
     # cross answers: no pseudo-terminals; getaddrinfo is the console's (the core stands in for it, ps5_libc.c)
     printf 'ac_cv_file__dev_ptmx=no\nac_cv_file__dev_ptc=no\nac_cv_buggy_getaddrinfo=no\n' >"$src/config.site"
@@ -117,6 +119,12 @@ build_ffmpeg_ps5() {
         exit 1
     }
     { make -C "$src" -j"$jobs" && make -C "$src" install; } >>"$log/ffmpeg.log" 2>&1 || fail ffmpeg
+    # The console maps code execute-only: a table in the code that the code reads ends the app on that read (the
+    # FFT's, ffmpeg-4.3.1-fft-tables.diff: a game's first OGG sound).
+    if [[ -f $src/libavcodec/x86/fft.o ]] && "$nm" "$src/libavcodec/x86/fft.o" | grep -qE ' t dispatch_tab'; then
+        echo "FFmpeg's FFT keeps its dispatch tables in its code, which the PS5 cannot read" >&2
+        exit 1
+    fi
 }
 
 # ---- Assimp for the PS5, through a CMake toolchain like tools/build-easyrpg.sh's (CMake's checks only compile).
@@ -155,7 +163,8 @@ EOF
         >>"$log/assimp.log" 2>&1 || fail assimp
 }
 
-# ---- ps5-opengl (MIT; Mesa's licences): the SDK, as released.
+# ---- ps5-opengl (GPL-3.0; Mesa's licences): the pinned SDK, with its driver rebuilt
+# from the corresponding source it ships. Both Ren'Py cores use this SDK.
 fetch_opengl() {
     fetch "https://github.com/darkxex/ps5-opengl/releases/download/v$opengl_version/ps5-opengl-sdk-$opengl_version.tar.gz" \
         "ps5-opengl-sdk-$opengl_version.tar.gz" "$opengl_hash"
@@ -163,17 +172,37 @@ fetch_opengl() {
     mkdir -p "$out/ps5-opengl"
     tar -xzf "$cache/ps5-opengl-sdk-$opengl_version.tar.gz" -C "$out/ps5-opengl" --strip-components=1
     [[ -f $out/ps5-opengl/sdk/lib/libPS5OpenGL.a ]] || { echo "ps5-opengl's SDK has no libPS5OpenGL.a" >&2; exit 1; }
+    local requirements="$root/tools/renpy/opengl-requirements.txt"
+    local key
+    key=$(digest "$requirements")
+    if [[ ! -x $out/opengl-tools/bin/meson || ! -f $out/opengl-tools/.requirements || \
+          $(cat "$out/opengl-tools/.requirements") != "$key" ]]; then
+        "$host/python/bin/python3.12" -m venv "$out/opengl-tools" >"$log/opengl.log" 2>&1 || fail opengl
+        "$out/opengl-tools/bin/python" -m pip install -r "$requirements" >>"$log/opengl.log" 2>&1 || fail opengl
+        echo "$key" >"$out/opengl-tools/.requirements"
+    fi
+    PATH="$out/opengl-tools/bin:$PATH" "$out/opengl-tools/bin/python" \
+        "$root/tools/renpy/rebuild-opengl.py" "$out/ps5-opengl" "$sdk" "$out/opengl-rebuild" \
+        --cc "$cc" --ar "$ar" >>"$log/opengl.log" 2>&1 || fail opengl
 }
 
 python_key="python-ps5-2 $python_version $toolchain_key $(recipe build_python_ps5) $(
-    digest "$root/tools/renpy/Setup.local" "$root/tools/patches/python-3.12.8-cross-freebsd.diff")"
+    digest "$root/tools/renpy/Setup.local" "$root"/tools/patches/python-3.12.8-*.diff)"
 fresh python "$python_key" || { build_python_ps5; stamp python "$python_key"; }
+# Python's arenas come from the app's heap (tools/patches/python-3.12.8-arenas-heap.diff): mmap takes the console's
+# small system memory, where threads' stacks are made too
+if "$nm" -A "$out/python/lib/libpython3.12.a" 2>/dev/null | grep -qE 'obmalloc\.o:[[:space:]]+U mmap$'; then
+    echo "CPython 3.12 for the PS5 takes its arenas with mmap" >&2
+    exit 1
+fi
 ffmpeg_key="ffmpeg-ps5-2 $ffmpeg_version $toolchain_key $(recipe build_ffmpeg_ps5) $(command -v nasm >/dev/null && echo asm) $(
     digest "$root"/tools/patches/ffmpeg-4.3.1-*.diff)"
 fresh ffmpeg "$ffmpeg_key" || { build_ffmpeg_ps5; stamp ffmpeg "$ffmpeg_key"; }
 assimp_key="assimp-ps5-2 $assimp_version $toolchain_key $(recipe build_assimp_ps5)"
 fresh assimp "$assimp_key" || { build_assimp_ps5; stamp assimp "$assimp_key"; }
-opengl_key="opengl-1 $opengl_version"
+opengl_key="opengl-cache-2 $opengl_version $toolchain_key $(digest \
+    "$root/tools/renpy/rebuild-opengl.py" "$root/tools/renpy/opengl-requirements.txt" \
+    "$root/tools/patches/ps5-opengl-cache-coherency.diff")"
 fresh opengl "$opengl_key" || { fetch_opengl; stamp opengl "$opengl_key"; }
 
 # ---- Ren'Py's modules: the host build's generated C, compiled for the PS5 with the renamed SDL calls.
@@ -216,7 +245,7 @@ mkdir -p "$core"
 core_flags=($ps5_flags -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -I"$libretro"
     -I"$out/python/include/python3.12" -I"$out/ps5-opengl/sdk/include" $(pc_cflags))
 objects=()
-for f in core python hooks input log handoff frames audio gl gl_egl ps5_libc; do
+for f in core python hooks input log handoff frames audio gl gl_egl ps5_libc ps5_gl_output ps5_console ps5_threads ps5_trace ps5_memory; do
     "$cc" "${core_flags[@]}" -c "$root/src/core/renpy/$f.c" -o "$core/$f.o" >"$log/core.log" 2>&1 ||
         { cat "$log/core.log" >&2; exit 1; }
     objects+=("$core/$f.o")
@@ -238,8 +267,22 @@ done
 work="$out/isolate"
 rm -rf "$work"
 mkdir -p "$work"
-# chdir goes through the core's own (ps5_libc.c), which keeps the working folder that its getcwd answers with
-"$lld" -r -o "$work/renpy.o" --wrap=chdir -u ps5_agc_gate2_run "${objects[@]}" --whole-archive "$out/librenpy-modules.a" \
+# chdir goes through the core's own (ps5_libc.c), which keeps the working folder that its getcwd answers with;
+# ps5-opengl's TV output is the core's stand-in (ps5_gl_output.c), so the app keeps the screen; what the core's
+# libraries print goes to dulcamara.log too (ps5_console.c); their threads get room and a signal stack
+# (ps5_threads.c); what ends the app and FFmpeg's steps are traced (ps5_trace.c); the direct memory ps5-opengl
+# holds is counted (ps5_memory.c)
+wraps=()
+for f in Open Close SetFlipRate RegisterBuffers2 UnregisterBuffers SubmitFlip IsFlipPending WaitVblank GetFlipStatus \
+    AddFlipEvent DeleteFlipEvent IsOutputSupported ConfigureOutput GetOutputStatus GetResolutionStatus; do
+    wraps+=("--wrap=sceVideoOut$f")
+done
+for f in printf puts fprintf fputs fwrite pthread_create abort exit _exit _Exit avformat_open_input \
+    avformat_find_stream_info avcodec_open2 avcodec_send_packet avcodec_receive_frame av_read_frame swr_convert_frame \
+    avcodec_free_context avformat_close_input swr_free sceKernelAllocateDirectMemory sceKernelReleaseDirectMemory; do
+    wraps+=("--wrap=$f")
+done
+"$lld" -r -o "$work/renpy.o" --wrap=chdir "${wraps[@]}" -u ps5_agc_gate2_run "${objects[@]}" --whole-archive "$out/librenpy-modules.a" \
     --no-whole-archive --start-group "${libraries[@]}" --end-group >"$log/isolate.log" 2>&1 || fail isolate
 "$nm" --defined-only --extern-only "$work/renpy.o" | awk '{print $NF}' | grep -E '^retro_' | sort -u >"$work/api.txt"
 [[ -s $work/api.txt ]] || { echo "no retro_* symbols in the Ren'Py core" >&2; exit 1; }
@@ -275,9 +318,10 @@ grep -ohE '\bsceAgc[A-Za-z0-9_]+[[:space:]]*\(' "$root"/tooling/ps5-stubs/*.c | 
     sed 's/^ps5_//' >>"$work/console.txt"
 echo __emutls_get_address >>"$work/console.txt"
 LC_ALL=C sort -u -o "$work/console.txt" "$work/console.txt"
-# The app provides dirfd, nl_langinfo, uselocale, strcasestr and ___mb_cur_max (src/platform/ps5_shims.c), and its
+# The app provides dirfd, nl_langinfo, uselocale, strcasestr and ___mb_cur_max (src/platform/ps5_shims.c) and its
+# heap's size for the memory line (ps5_heap_mapped_bytes, src/platform/ps5_heap.c), and its
 # link the C++ runtime's __dso_handle (as for EasyRPG Player's core).
-LC_ALL=C comm -23 "$work/undefined.txt" "$work/console.txt" | grep -vxE 'dirfd|nl_langinfo|uselocale|strcasestr|___mb_cur_max|__dso_handle' \
+LC_ALL=C comm -23 "$work/undefined.txt" "$work/console.txt" | grep -vxE 'dirfd|nl_langinfo|uselocale|strcasestr|___mb_cur_max|__dso_handle|ps5_heap_mapped_bytes' \
     >"$work/unresolved.txt" || true
 
 # ---- the engine: the host's (Ren'Py's Python, the standard library, the packages are the same on the console)

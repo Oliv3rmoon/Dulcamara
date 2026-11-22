@@ -92,10 +92,9 @@ jobs:
           path: |
             .deps/native
             .deps/pacbrew
-            .deps/lapy
             .deps/pixman
             .deps/testgame
-          key: deps-${{ runner.os }}-${{ hashFiles('tools/setup-*-dependencies.sh', 'tools/build-lapy-helper.py', 'tools/fetch-radv.sh', 'tools/fetch-testgame.sh', 'tools/build-easyrpg.sh') }}
+          key: deps-${{ runner.os }}-${{ hashFiles('tools/setup-*-dependencies.sh', 'tools/fetch-radv.sh', 'tools/fetch-testgame.sh', 'tools/build-easyrpg.sh') }}
 
       # The core for the PS5 is rebuilt only when its sources, its patch or its build script change: its build
       # stamp (build/easyrpg-ps5/.stamp) says which it was built from.

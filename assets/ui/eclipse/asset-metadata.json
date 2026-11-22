@@ -1,0 +1,194 @@
+[
+  {
+    "file": "button.png",
+    "width": 1254,
+    "height": 1254,
+    "bytes": 1376967,
+    "sha256": "3e282d2a14f09408471ca491030d8f433c4ec7533276e8602ee57c63aadf5efb",
+    "alpha_range": [
+      0,
+      255
+    ],
+    "alpha_bbox": [
+      0,
+      0,
+      1190,
+      1254
+    ],
+    "strong_alpha_bbox": [
+      77,
+      84,
+      1177,
+      1176
+    ],
+    "center_alpha": 252
+  },
+  {
+    "file": "chrome-strip.png",
+    "width": 2172,
+    "height": 724,
+    "bytes": 291428,
+    "sha256": "e7d1b9204753bf0a62f4aadf6e488adc64c6b69eee43664c4b8cfac4e32e8b54",
+    "alpha_range": [
+      0,
+      255
+    ],
+    "alpha_bbox": [
+      24,
+      150,
+      2149,
+      579
+    ],
+    "strong_alpha_bbox": [
+      27,
+      298,
+      2145,
+      424
+    ],
+    "center_alpha": 240
+  },
+  {
+    "file": "controller-atlas.png",
+    "width": 1448,
+    "height": 1086,
+    "bytes": 813010,
+    "sha256": "c7759648f373ed93db847cbd4209d336ef0ad0d863473b04e079788c4cdbdae8",
+    "alpha_range": [
+      255,
+      255
+    ],
+    "alpha_bbox": [
+      0,
+      0,
+      1448,
+      1086
+    ],
+    "strong_alpha_bbox": [
+      0,
+      0,
+      1448,
+      1086
+    ],
+    "center_alpha": 255
+  },
+  {
+    "file": "cover-frame.png",
+    "width": 1448,
+    "height": 1086,
+    "bytes": 314259,
+    "sha256": "3d7dd7b8e205bfe4944b5385d6c0fe4a23072c18fdc399892ce57989306e24cb",
+    "alpha_range": [
+      0,
+      255
+    ],
+    "alpha_bbox": [
+      23,
+      26,
+      1428,
+      1063
+    ],
+    "strong_alpha_bbox": [
+      47,
+      50,
+      1402,
+      1037
+    ],
+    "center_alpha": 0
+  },
+  {
+    "file": "icon-atlas.png",
+    "width": 1254,
+    "height": 1254,
+    "bytes": 659380,
+    "sha256": "8372295a529f6eab053fd4321db7256cb7c8722a32613cffaa5c59ef6d510e15",
+    "alpha_range": [
+      255,
+      255
+    ],
+    "alpha_bbox": [
+      0,
+      0,
+      1254,
+      1254
+    ],
+    "strong_alpha_bbox": [
+      0,
+      0,
+      1254,
+      1254
+    ],
+    "center_alpha": 255
+  },
+  {
+    "file": "loading-ring.png",
+    "width": 1254,
+    "height": 1254,
+    "bytes": 333035,
+    "sha256": "fdf9166b3bd506cabe85b0da44b104465514ce2fee17ff2bac077387b347dfa5",
+    "alpha_range": [
+      0,
+      255
+    ],
+    "alpha_bbox": [
+      0,
+      9,
+      1254,
+      1254
+    ],
+    "strong_alpha_bbox": [
+      97,
+      107,
+      1152,
+      1134
+    ],
+    "center_alpha": 0
+  },
+  {
+    "file": "panel.png",
+    "width": 1448,
+    "height": 1086,
+    "bytes": 1088084,
+    "sha256": "503cb48cadc97b42bdf6f2bc2df2bc8b3b061bde1349e11a5b9b58b142cd91b2",
+    "alpha_range": [
+      0,
+      255
+    ],
+    "alpha_bbox": [
+      46,
+      50,
+      1401,
+      1037
+    ],
+    "strong_alpha_bbox": [
+      51,
+      63,
+      1397,
+      1020
+    ],
+    "center_alpha": 253
+  },
+  {
+    "file": "placeholder-cover.png",
+    "width": 1448,
+    "height": 1086,
+    "bytes": 785659,
+    "sha256": "67ab2fc0f521459abd549c267a16f585c46a0f7c590c42c3e5a976467ea24395",
+    "alpha_range": [
+      255,
+      255
+    ],
+    "alpha_bbox": [
+      0,
+      0,
+      1448,
+      1086
+    ],
+    "strong_alpha_bbox": [
+      0,
+      0,
+      1448,
+      1086
+    ],
+    "center_alpha": 255
+  }
+]

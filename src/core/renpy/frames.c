@@ -111,3 +111,23 @@ void frames_fit(int w, int h, int max_w, int max_h, int *out_w, int *out_h)
         *out_w = (int)(((long long)w * max_h + h / 2) / h);
     }
 }
+
+/* the arrow: X its outline, O its fill */
+static const char *const ARROW[] = {
+    "X           ", "XX          ", "XOX         ", "XOOX        ", "XOOOX       ", "XOOOOX      ", "XOOOOOX     ",
+    "XOOOOOOX    ", "XOOOOOOOX   ", "XOOOOOOOOX  ", "XOOOOOOOOOX ", "XOOOOOOXXXXX", "XOOOXOOX    ", "XOOXXOOX    ",
+    "XOX  XOOX   ", "XX   XOOX   ", "X     XOOX  ", "      XOOX  ", "       XX   ",
+};
+
+void frames_draw_cursor(uint32_t *pixels, int w, int h, int x, int y)
+{
+    const int scale = h >= 1000 ? 2 : 1, rows = (int)(sizeof(ARROW) / sizeof(ARROW[0]));
+    for (int r = 0; r < rows * scale; ++r)
+        for (int c = 0; c < 12 * scale; ++c)
+        {
+            const char m = ARROW[r / scale][c / scale];
+            const int px = x + c, py = y + r;
+            if (m != ' ' && px >= 0 && px < w && py >= 0 && py < h)
+                pixels[(size_t)py * (size_t)w + (size_t)px] = m == 'X' ? 0xFF000000u : 0xFFFFFFFFu;
+        }
+}

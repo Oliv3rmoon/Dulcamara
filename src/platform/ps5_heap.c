@@ -294,4 +294,10 @@ size_t ps5_heap_size_mb(void)
     heap_init();
     return init_state > 0 ? range_bytes >> 20 : 0;
 }
+
+/* For the log: the direct memory the heap holds now (its mapped segments). */
+size_t ps5_heap_mapped_bytes(void)
+{
+    return __atomic_load_n(&mapped_bytes, __ATOMIC_RELAXED);
+}
 #endif

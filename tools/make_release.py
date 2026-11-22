@@ -20,36 +20,31 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from update_payload import generate as generate_payload
+import release_metadata
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = "PPSA99010"
 
 
 def read_version():
-    text = (ROOT / "src/nightshade.h").read_text()
-    m = re.search(r'#define\s+NP_VERSION\s+"([^"]+)"', text)
-    if not m:
-        sys.exit("error: NP_VERSION not found in src/nightshade.h")
-    return m.group(1)
+    try:
+        return release_metadata.read(ROOT).version
+    except ValueError as error:
+        sys.exit(f"error: {error}")
 
 
 def sync_content_version(version):
-    """Writes NP_VERSION into sce_sys/param.json as contentVersion: 1.0.2 -> 01.000.002."""
-    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
-    if not m:
-        sys.exit(f'error: NP_VERSION "{version}" is not X.Y.Z')
-    major, minor, patch = (int(g) for g in m.groups())
-    if major > 99 or minor > 999 or patch > 999:
-        sys.exit(f'error: NP_VERSION "{version}" does not fit contentVersion (00-99.000-999.000-999)')
-    content = f"{major:02d}.{minor:03d}.{patch:03d}"
-    path = ROOT / "sce_sys/param.json"
-    text = path.read_text()
-    new, n = re.subn(r'("contentVersion"\s*:\s*)"[^"]*"', lambda mm: f'{mm.group(1)}"{content}"', text, count=1)
-    if n != 1:
-        sys.exit("error: contentVersion not found in sce_sys/param.json")
-    if new != text:
-        path.write_text(new)
-    print(f"==> contentVersion {content} (sce_sys/param.json)")
+    """Writes the release identity into sce_sys/param.json: contentVersion from NP_VERSION (1.0.2 -> 01.000.002) and
+    titleName from NP_NAME and NP_CODENAME (tools/release_metadata.py)."""
+    try:
+        meta = release_metadata.read(ROOT)
+        if meta.version != version:
+            sys.exit(f"error: NP_VERSION changed while running ({version} -> {meta.version})")
+        release_metadata.sync_param(ROOT / "sce_sys/param.json", meta)
+    except ValueError as error:
+        sys.exit(f"error: {error}")
+    print(f"==> contentVersion {meta.content_version}, titleName {meta.display_title} (sce_sys/param.json)")
 
 
 def build(jobs, use_nice):
@@ -75,6 +70,7 @@ def pack():
     app_dir = ROOT / "dist" / APP
     if not (app_dir / "eboot.bin").is_file():
         sys.exit(f"error: {app_dir / 'eboot.bin'} is missing: build first (drop --skip-build)")
+    generate_payload(app_dir)
     out = ROOT / f"{APP}.zip"
     if out.exists():
         out.unlink()
@@ -98,7 +94,7 @@ def main():
     args = ap.parse_args()
 
     version = read_version()
-    print(f"Dulcamara {version}")
+    print(f"{release_metadata.read(ROOT).display_title} {version}")
     if args.sync_version:
         sync_content_version(version)
         return

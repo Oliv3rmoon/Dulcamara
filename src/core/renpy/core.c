@@ -8,6 +8,7 @@
  */
 #include "libretro.h"
 
+#include "../dulcamara_libretro.h"
 #include "audio.h"
 #include "frames.h"
 #include "handoff.h"
@@ -17,10 +18,12 @@
 #include "python.h"
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #ifndef DR_ENGINE_FOLDER
 #define DR_ENGINE_FOLDER "renpy8" /* in the core assets folder */
@@ -39,13 +42,18 @@ static retro_log_printf_t log_cb;
 static retro_usec_t frame_usec = FRAME_USEC;
 static bool loaded, shutdown_sent, sound_by_callback, bitmasks;
 static int picture_w, picture_h;
+static struct retro_dulcamara_text_input text_told; /* what the frontend was last told of the text Ren'Py wants */
 
 static void emit(int level, const char *line)
 {
     if (log_cb)
         log_cb(level >= 2 ? RETRO_LOG_WARN : RETRO_LOG_INFO, "%s\n", line);
     else
-        fprintf(stderr, "%s\n", line);
+    {
+        /* straight to the descriptor: on the PS5 the core's fprintf is ps5_console.c's, which logs through here */
+        (void)!write(STDERR_FILENO, line, strlen(line));
+        (void)!write(STDERR_FILENO, "\n", 1);
+    }
 }
 
 static void frame_time(retro_usec_t usec)
@@ -88,13 +96,78 @@ static bool make_folders(const char *path)
     return mkdir(p, 0777) == 0 || errno == EEXIST;
 }
 
+static void read_keys(void); /* below, with the controller */
+
+/* A tester's switches: each DULCAMARA_<NAME>=<value> line of <the data folder>/renpy-test.txt is set for the game
+ * (the core's own settings set after it still win), in the log as it is: graphics and sound choices the core makes
+ * on the console (DULCAMARA_GL_CPU_LOAD, DULCAMARA_GL_WRITE_BACK, DULCAMARA_GL_READ_DIRECT, DULCAMARA_MIPMAPS, ...)
+ * can be tried one by one on a console without a build of their own. */
+static void read_test_switches(const char *folder)
+{
+    char path[1100], line[512];
+    snprintf(path, sizeof(path), "%s/renpy-test.txt", folder);
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return;
+    for (int n = 0; n < 64 && fgets(line, sizeof(line), f); ++n)
+    {
+        line[strcspn(line, "\r\n")] = '\0';
+        char *equals = strchr(line, '=');
+        if (!equals || strncmp(line, "DULCAMARA_", 10))
+            continue;
+        *equals = '\0';
+        bool name_ok = true;
+        for (const char *c = line; *c && name_ok; ++c)
+            name_ok = (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '_';
+        if (!name_ok)
+            continue;
+        setenv(line, equals + 1, 1);
+        log_queue(1, "renpy: renpy-test.txt sets %s=%s", line, equals + 1);
+    }
+    fclose(f);
+}
+
+/* The frontend's on-screen keyboard (RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK), while Ren'Py wants text: a character
+ * is Ren'Py's text; a key the input's own (Backspace, Return to confirm, the arrows, Home and End). */
+static void keyboard(bool down, unsigned keycode, uint32_t character, uint16_t modifiers)
+{
+    (void)modifiers;
+    if (character)
+    {
+        if (down)
+            input_type_text(character);
+        return;
+    }
+    static const struct
+    {
+        unsigned keycode;
+        const char *name; /* input_bind's */
+    } KEYS[] = {
+        {RETROK_BACKSPACE, "backspace"}, {RETROK_RETURN, "return"}, {RETROK_KP_ENTER, "return"},
+        {RETROK_DELETE, "delete"},       {RETROK_LEFT, "left"},     {RETROK_RIGHT, "right"},
+        {RETROK_HOME, "home"},           {RETROK_END, "end"},
+    };
+    for (size_t i = 0; i < sizeof(KEYS) / sizeof(KEYS[0]); ++i)
+        if (KEYS[i].keycode == keycode)
+            input_type_key(KEYS[i].name, down);
+}
+
 void retro_set_environment(retro_environment_t cb)
 {
     environ_cb = cb;
-    /* the core's one option (Dulcamara's Settings > Ren'Py) */
+    /* the core's options: Dulcamara's Settings > Ren'Py, a game's keys (each RetroPad button's action, input.h), and
+     * where its sounds' two files are (Sounds for this game: the path without .list and .txt, none by default) */
     static const struct retro_variable variables[] = {
         {"renpy_skip_unseen", "Fast-forward skips unread text too; off|on"},
-        {NULL, NULL},
+        {"renpy_sounds", "Sounds for this game, the path of its list and its sounds off; "},
+        {"renpy_key_b", "Cross; default"},       {"renpy_key_y", "Square; default"},
+        {"renpy_key_select", "Create; default"}, {"renpy_key_start", "Options; default"},
+        {"renpy_key_up", "Up; default"},         {"renpy_key_down", "Down; default"},
+        {"renpy_key_left", "Left; default"},     {"renpy_key_right", "Right; default"},
+        {"renpy_key_a", "Circle; default"},      {"renpy_key_x", "Triangle; default"},
+        {"renpy_key_l", "L1; default"},          {"renpy_key_r", "R1; default"},
+        {"renpy_key_l2", "L2; default"},         {"renpy_key_l3", "L3; default"},
+        {"renpy_key_r3", "R3; default"},         {NULL, NULL},
     };
     cb(RETRO_ENVIRONMENT_SET_VARIABLES, (void *)variables);
 }
@@ -133,6 +206,8 @@ void retro_init(void)
 
 void retro_deinit(void)
 {
+    if (loaded)
+        return; /* a timed-out interpreter still owns callbacks/resources */
     log_cb = NULL;
 }
 
@@ -214,19 +289,42 @@ bool retro_load_game(const struct retro_game_info *info)
     struct retro_audio_callback audio = {sound, sound_state};
     sound_by_callback = environ_cb(RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK, &audio);
     bitmasks = environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL);
+    struct retro_keyboard_callback typing = {keyboard};
+    environ_cb(RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK, &typing);
+    memset(&text_told, 0, sizeof(text_told));
     frame_usec = FRAME_USEC;
     picture_w = picture_h = 0;
     shutdown_sent = false;
 
     char error[256];
     log_step("the frontend's picture, clock and sound are set");
+    read_test_switches(save ? save : info->path);
     /* read by the engine's dulcamara_errors, which holds Ren'Py's preference to it */
     struct retro_variable skip_unseen = {"renpy_skip_unseen", NULL};
     const bool skip_all = environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &skip_unseen) && skip_unseen.value &&
                           !strcmp(skip_unseen.value, "on");
     setenv("DULCAMARA_SKIP_UNSEEN", skip_all ? "1" : "0", 1);
+    /* and the sounds' files: dulcamara_errors lists the game's sounds in <it>.list and plays nothing for those
+     * <it>.txt has off */
+    struct retro_variable sounds = {"renpy_sounds", NULL};
+    const char *sounds_base =
+        environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &sounds) && sounds.value ? sounds.value : "";
+    setenv("DULCAMARA_SOUNDS", sounds_base, 1);
+    /* and the logs' folder beside the frontend's dulcamara.log, where dulcamara_errors keeps Ren'Py's errors */
+    char logs[1100];
+    snprintf(logs, sizeof(logs), "%s/logs", save ? save : info->path);
+    setenv("DULCAMARA_LOGS", logs, 1);
+    if (*sounds_base)
+        log_queue(1, "renpy: the game's sounds are listed in %s.list, the ones off in %s.txt", sounds_base,
+                  sounds_base);
+    read_keys();
     log_step("starting Ren'Py's thread");
-    if (!python_start(engine, info->path, saves, error, sizeof(error)))
+    struct dr_runtime_interface runtime = {
+        DR_RUNTIME_VERSION, sizeof(runtime),      true,
+        handoff_save_copy,  handoff_save_release, python_request_stop,
+        python_poll_stop,   input_reset_transient};
+    bool protected_saves = environ_cb(DR_ENVIRONMENT_RUNTIME, &runtime);
+    if (!python_start(engine, info->path, saves, error, sizeof(error), protected_saves))
     {
         emit(2, error);
         return false;
@@ -247,9 +345,29 @@ void retro_unload_game(void)
 {
     if (!loaded)
         return;
-    python_stop();
+    if (python_stop())
+        loaded = false;
     log_flush(emit);
-    loaded = false;
+}
+
+/* each RetroPad button's renpy_key_* option (R2 is the frontend's fast-forward), given to input.c */
+static void read_keys(void)
+{
+    static const char *const NAMES[16] = {"b", "y",  "select", "start", "up", "down", "left", "right",
+                                          "a", "x",  "l",      "r",     "l2", NULL,   "l3",   "r3"};
+    for (unsigned b = 0; b < 16; ++b)
+    {
+        if (!NAMES[b])
+            continue;
+        char key[32];
+        snprintf(key, sizeof(key), "renpy_key_%s", NAMES[b]);
+        struct retro_variable v = {key, NULL};
+        const char *value = environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &v) ? v.value : NULL;
+        if (!input_bind(b, value))
+            log_queue(2, "renpy: %s = %s is not a key the core knows; the button keeps its own", key, value);
+        else if (value && *value && strcmp(value, "default"))
+            log_queue(1, "renpy: %s = %s", key, value);
+    }
 }
 
 static uint16_t pad_buttons(void)
@@ -265,25 +383,89 @@ static uint16_t pad_buttons(void)
     return bits;
 }
 
+/* The picture for the frontend: Ren'Py's newest, with the cursor on it while it is shown (a copy, redrawn as the
+ * cursor moves: Ren'Py does not draw again for a pointer that moves over nothing); NULL for the same as before. */
+static const uint32_t *picture_with_cursor(const uint32_t *picture, int w, int h, bool fresh)
+{
+    static uint32_t *copy;
+    static size_t capacity;
+    static bool drawn;
+    static int drawn_x, drawn_y;
+    int x = 0, y = 0;
+    const bool shown = picture && input_cursor(w, h, &x, &y);
+    if (!shown)
+    {
+        const bool restore = drawn && picture;
+        drawn = false;
+        return fresh || restore ? picture : NULL;
+    }
+    if (!fresh && drawn && x == drawn_x && y == drawn_y)
+        return NULL;
+    const size_t n = (size_t)w * (size_t)h;
+    if (n > capacity)
+    {
+        uint32_t *grown = realloc(copy, n * sizeof(uint32_t));
+        if (!grown)
+            return fresh ? picture : NULL;
+        copy = grown;
+        capacity = n;
+    }
+    memcpy(copy, picture, n * sizeof(uint32_t));
+    frames_draw_cursor(copy, w, h, x, y);
+    drawn = true;
+    drawn_x = x;
+    drawn_y = y;
+    return copy;
+}
+
 void retro_run(void)
 {
     if (input_poll_cb)
         input_poll_cb();
+    bool keys_changed = false;
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &keys_changed) && keys_changed)
+        read_keys();
     const int16_t lx = input_state_cb ? input_state_cb(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT,
                                                        RETRO_DEVICE_ID_ANALOG_X)
                                       : 0;
     const int16_t ly = input_state_cb ? input_state_cb(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT,
                                                        RETRO_DEVICE_ID_ANALOG_Y)
                                       : 0;
-    input_set(pad_buttons(), lx, ly);
+    const uint16_t buttons = pad_buttons();
+    static uint16_t last_buttons;
+    static int button_changes;
+    if (buttons != last_buttons && button_changes < 12)
+    {
+        ++button_changes;
+        log_queue(1, "renpy: the frontend's buttons: 0x%04x", buttons);
+    }
+    last_buttons = buttons;
+    input_set(buttons, lx, ly);
     bool fast = false;
-    input_set_skip(environ_cb(RETRO_ENVIRONMENT_GET_FASTFORWARDING, &fast) && fast);
+    const bool skip = environ_cb(RETRO_ENVIRONMENT_GET_FASTFORWARDING, &fast) && fast;
+    static bool last_skip;
+    static int skip_changes;
+    if (skip != last_skip && skip_changes < 40)
+    {
+        ++skip_changes;
+        log_queue(1, "renpy: fast-forward %s (Ren'Py's skip)", skip ? "on" : "off");
+    }
+    last_skip = skip;
+    input_set_skip(skip);
     if (input_state_cb)
         input_set_pointer(input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X),
                           input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y),
                           input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_PRESSED) != 0);
     handoff_frame(frame_usec, frame_usec * 3 / 4);
     log_flush(emit);
+    /* the text Ren'Py wants, as it changes: the frontend shows its keyboard for it, away from the game's own input */
+    struct retro_dulcamara_text_input text = {false, 0, 0};
+    text.wanted = input_text_wanted(&text.top, &text.bottom);
+    if (text.wanted != text_told.wanted || text.top != text_told.top || text.bottom != text_told.bottom)
+    {
+        text_told = text;
+        environ_cb(RETRO_ENVIRONMENT_DULCAMARA_TEXT_INPUT, &text);
+    }
 
     int w = 0, h = 0;
     bool fresh = false;
@@ -296,7 +478,7 @@ void retro_run(void)
         environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry);
     }
     if (video_cb)
-        video_cb(picture && fresh ? picture : NULL, w ? (unsigned)w : 1280, h ? (unsigned)h : 720,
+        video_cb(picture_with_cursor(picture, w, h, fresh), w ? (unsigned)w : 1280, h ? (unsigned)h : 720,
                  (size_t)(w ? w : 1280) * sizeof(uint32_t));
     if (!sound_by_callback)
         sound();

@@ -11,10 +11,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* The release identity. tools/release_metadata.py reads these lines: sce_sys/param.json's titleName and
+ * contentVersion are derived from them (make_release.py --sync-version) and checked against them by every app build.
+ * NP_VERSION is numeric X.Y.Z only (the updater compares it); a private test build's identifier is separate
+ * (tools/gen-watermark.py). Every 2.x release keeps the codename Eclipse; 3.0 gets another. */
 #define NP_NAME "Dulcamara"   /* identifiers: the User-Agent of network requests, the Vulkan application name */
-#define NP_TITLE "Dulcamara" /* what is shown on screen */
+#define NP_CODENAME "Eclipse"
+#define NP_TITLE NP_NAME " " NP_CODENAME /* what is shown on screen: "Dulcamara Eclipse" */
 #define NP_TITLE_ID "PPSA99010"
-#define NP_VERSION "0.2.3"
+#define NP_VERSION "2.1.0"
 #define NP_DATA "/data/dulcamara" /* the data folder on the console */
 #define NP_PATH_MAX 512
 
@@ -120,9 +125,14 @@ typedef struct
     int ui_volume;      /* 0..3 = 25/50/75/100 % */
     int game_volume;    /* 0..10, tenths of the game's sound */
     bool update_check;  /* look for a newer release at start */
+    bool update_test_builds; /* the update offers test builds (pre-releases) too (update.c) */
     bool community_seen; /* the empty library has shown nightly's line (community.h, ui/shelf.c): not again */
     int sort_mode;      /* the library's order: 0 title, 1 last played */
-    int last_game;      /* the library's cursor, by position */
+    int last_game;      /* legacy cursor, retained for older releases */
+    char selected_game_id[24]; /* stable selection; an empty value migrates last_game */
+    bool still_background;     /* reduced motion across the entire interface */
+    bool automatic_backups; /* local snapshots; game profiles can override */
+    int library_view;       /* 0 Story (the default), 1 the cover shelf (LIBRARY_VIEW_* in ui/story_model.h) */
 } Settings;
 
 /* Data layout below the data folder (NP_DATA on the console). */
@@ -135,6 +145,11 @@ typedef struct
     char cache[NP_PATH_MAX];   /* downloads (the update) */
     char config[NP_PATH_MAX];  /* root/settings.ini */
     char played[NP_PATH_MAX];  /* root/played.txt: when each game was last played */
+    char keys[NP_PATH_MAX];    /* root/keys: a Ren'Py game's keys, <the game's id>.txt (config.h) */
+    char metadata[NP_PATH_MAX]; /* root/library-user.txt: favorites and accumulated playtime */
+    char profiles[NP_PATH_MAX]; /* root/profiles: sparse overrides, <id>.ini */
+    char backups[NP_PATH_MAX]; /* root/backups: local native-save snapshots */
+    char sounds[NP_PATH_MAX];  /* root/sounds: a Ren'Py game's sounds, <the game's id>.list and .txt (config.h) */
 } Paths;
 
 void np_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
@@ -144,6 +159,8 @@ void np_log_open(const char *path);
 void str_copy(char *dst, size_t size, const char *src);
 void path_join(char *dst, size_t size, const char *a, const char *b);
 bool path_exists(const char *path);
+/* A local sidecar key: 1..23 ASCII letters/digits, underscore or hyphen. */
+bool game_id_valid(const char *id);
 bool path_is_dir(const char *path);
 bool make_dirs(const char *path);
 bool file_copy(const char *from, const char *to); /* replaces `to` */

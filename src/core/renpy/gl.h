@@ -3,7 +3,10 @@
  * Linux through EGL, gl_egl.c; on macOS through CGL, gl_cgl.c), and a framebuffer object of the window's size bound
  * as Ren'Py starts, which Ren'Py's gl2 then takes as the screen's (gl2draw.pyx, init_fbo). Each shown frame is read
  * into a pixel-pack buffer and copied out one frame later, when the read has finished, so the GPU is never waited
- * on; the last frame before Ren'Py waits is copied out when it waits (gl_flush_pending).
+ * on; the last frame before Ren'Py waits is copied out when it waits (gl_flush_pending). On the PS5, whose OpenGL
+ * reads on the CPU at once anyway, it is read straight into the frame. Three of Ren'Py's calls are watched (gl_proc):
+ * its draws, uploads and texture copies are timed for the log, and a copied texture's memory is written back from
+ * the CPU's cache first on the PS5 (gl.c says why).
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #ifndef DR_GL_H

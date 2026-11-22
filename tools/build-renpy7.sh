@@ -180,6 +180,12 @@ build_generate() {
     mkdir -p "$psrc" "$rsrc" "$deps/lib" "$out/gen"
     git -C "$pygame" archive HEAD | tar -x -C "$psrc"
     git -C "$renpy" archive HEAD | tar -x -C "$rsrc"
+    # Ren'Py 8's fixes to Ren'Py's C (tools/build-renpy.sh), the same code here
+    patch -s "$rsrc/module/ffmedia.c" <"$root/tools/patches/renpy-ffmedia-no-thread.diff" >>"$log/generate.log" 2>&1 &&
+        patch -s "$rsrc/module/ffmedia.c" <"$root/tools/patches/renpy-ffmedia-close-before-python-ends.diff" \
+            >>"$log/generate.log" 2>&1 &&
+        patch -s "$rsrc/module/renpysound_core.c" <"$root/tools/patches/renpy-renpysound-channels.diff" \
+            >>"$log/generate.log" 2>&1 || fail generate
     # what Ren'Py's own distribution writes (Ren'Py's setup.py imports Ren'Py, which reads it)
     printf "branch = 'fix'\nnightly = False\nofficial = False\nversion = '%s'\nversion_name = '%s'\n" \
         "$renpy_version" "$renpy_version_name" >"$rsrc/renpy/vc_version.py"
@@ -260,6 +266,8 @@ build_engine() {
     cp -R "$rsrc/renpy" "$engine/renpy"
     find "$engine/renpy" \( -name '*.pyx' -o -name '*.pxd' -o -name '*.pxi' -o -name '*.c' -o -name '*.h' \) -delete
     cp "$rsrc/renpy.py" "$engine/renpy.py"
+    patch -s -d "$engine" -p1 <"$root/tools/patches/renpy7-savepaths.patch"
+    cp "$root/src/core/renpy/savepaths.py" "$engine/dulcamara_savepaths.py"
     mkdir -p "$engine/pygame_sdl2"
     (cd "$psrc/src/pygame_sdl2" && find . -name '*.py' | while read -r f; do
         mkdir -p "$engine/pygame_sdl2/$(dirname "$f")"
@@ -269,8 +277,9 @@ build_engine() {
     cp "$root/src/core/renpy/errors2.py" "$engine/dulcamara_errors.py"
     unpack_wheels engine "$engine/lib/site-packages"
     find "$engine/lib/site-packages" -name '*.pyc' -delete
-    "$py" -m compileall -q -x '/renpy/common/' "$engine/renpy" "$engine/pygame_sdl2" "$engine/lib/site-packages" \
-        "$engine/dulcamara_errors.py" >"$log/engine.log" 2>&1 || fail engine
+    # co_filename is displayed by traceback on the console. Compile from the staged engine root.
+    (cd "$engine" && "$py" -m compileall -q -f -x '(^|/)renpy/common/' \
+        renpy pygame_sdl2 lib/site-packages dulcamara_errors.py) >"$log/engine.log" 2>&1 || fail engine
     find "$engine/renpy" "$engine/pygame_sdl2" "$engine/lib/site-packages" "$engine/dulcamara_errors.py" -name '*.py' \
         ! -path "$engine/renpy/__init__.py" ! -path "$engine/renpy/common/*" ! -path "$engine/lib/site-packages/chardet/*" |
         while read -r f; do
@@ -301,13 +310,13 @@ PY
 }
 
 generate_key="generate-3 $(git -C "$renpy" rev-parse HEAD) $(git -C "$pygame" rev-parse HEAD) $python_key $(
-    recipe build_generate)"
+    recipe build_generate) $(digest "$root"/tools/patches/renpy-*.diff)"
 if ! fresh generate "$generate_key"; then
     build_generate
     stamp generate "$generate_key"
 fi
 engine_key="engine-3 $renpy_version $generate_key $(recipe build_engine) $(
-    digest "$root"/src/core/renpy/{boot2,errors2}.py "$root/tools/renpy7/wheels.txt")"
+    digest "$root/tools/patches/renpy7-savepaths.patch" "$root/src/core/renpy/savepaths.py" "$root"/src/core/renpy/{boot2,errors2}.py "$root/tools/renpy7/wheels.txt")"
 if ! fresh engine "$engine_key"; then
     build_engine
     stamp engine "$engine_key"
@@ -343,6 +352,11 @@ for f in core python2 hooks input log handoff frames audio gl; do
     "$cc" "${own_flags[@]}" "${core_flags[@]}" -I"$libretro" -isystem "$out/python/include/python2.7" $(sdl_cflags) \
         -c "$root/src/core/renpy/$f.c" -o "$check/$f.o" >>"$log/core.log" 2>&1 || fail core
     objects+=("$check/$f.o")
+done
+# The headless native-save integration uses the production background service.
+for f in maintenance saves sha256; do
+    "$cc" "${own_flags[@]}" -c "$root/src/$f.c" -o "$check/save_$f.o" >>"$log/core.log" 2>&1 || fail core
+    objects+=("$check/save_$f.o")
 done
 "$cc" "${own_flags[@]}" -c "$gl_backend" -o "$check/gl_backend.o" >>"$log/core.log" 2>&1 || fail core
 "$cc" -O1 -g -w -I"$out/python/include/python2.7" -c "$out/gen/inittab.c" -o "$check/inittab.o" \

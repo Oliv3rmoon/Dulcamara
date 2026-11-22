@@ -108,5 +108,15 @@ int dirfd(DIR *dir)
 {
     return dir ? *(const int *)(const void *)dir : -1;
 }
+
+/* The link wraps fclose and fflush for the SDK platform layer's open_memstream (tooling/radv/radv-link.sh), and
+ * that layer's own references to the console's two functions are weak ones. With nothing else referring to them,
+ * a newer linker made both of the app's imports weak (candidates ecl200-n1 to n7, linked with LLD 23); the CI's
+ * LLD 18 made them strong, as every import of each build proven on a console is. These references keep them
+ * strong whichever linker links the app (tools/check-weak-imports.sh fails the build otherwise). */
+#include <stdio.h>
+int __real_fclose(FILE *stream);
+int __real_fflush(FILE *stream);
+__attribute__((used)) int (*const ps5_strong_stdio_imports[])(FILE *) = {__real_fclose, __real_fflush};
 #endif
 #endif

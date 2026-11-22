@@ -1,0 +1,92 @@
+Dulcamara: Python ends only once Ren'Py's decode threads have closed their files.
+
+media_close asks a movie's or sound's decode thread to end, and that thread closes the file on its own time: for a
+sound of a game's archive (which Dulcamara gives Ren'Py from memory or through Python's own file), through Python, with
+the GIL. As a game ended (Ren'Py stops its music), a close that came after Python had ended took the GIL of an
+interpreter that was gone: SIGSEGV in take_gil or new_threadstate under rwobject's close, found by the long-session
+test (tests/test_renpy_soak.py), where the process runs on as Dulcamara does after a game. Each close asked of a decode
+thread is now counted until it is done; media_python_ending, which the core calls (without the GIL) just before Python
+ends, waits for them, and a close asked after it leaves its file unclosed, gone with Python. Applied to Ren'Py 8's
+src/ffmedia.c and Ren'Py 7's module/ffmedia.c, after renpy-ffmedia-no-thread.diff.
+
+--- a/ffmedia.c
++++ b/ffmedia.c
+@@ -10,4 +10,18 @@
+ 
+ #include <stdlib.h>
++
++/* Dulcamara: a decode thread closes its file (through Python, for the sounds of a game's archives) once its media is
++ * closed, on its own time. Python must not end before it has: a close let run after Python ended took the GIL of an
++ * interpreter that was gone, and the process, which goes on after a game, crashed. Each close asked of a decode thread
++ * is counted until done; media_python_ending waits for them, and a close asked after it leaves the file unclosed
++ * (gone with Python). */
++#include <errno.h>
++#include <pthread.h>
++#include <time.h>
++
++static pthread_mutex_t dulcamara_closing_lock = PTHREAD_MUTEX_INITIALIZER;
++static pthread_cond_t dulcamara_closing_done = PTHREAD_COND_INITIALIZER;
++static int dulcamara_closing = 0;
++static int dulcamara_python_ended = 0;
+ 
+ #ifndef _WIN32
+@@ -1270,7 +1284,19 @@
+ 
+ 	SDL_UnlockMutex(ms->lock);
++
++	/* Dulcamara: with Python ended, its file is left as it is (see dulcamara_closing) */
++	pthread_mutex_lock(&dulcamara_closing_lock);
++	if (dulcamara_python_ended) {
++		ms->rwops = NULL;
++	}
++	pthread_mutex_unlock(&dulcamara_closing_lock);
+ 
+ 	deallocate(ms);
+ 
++	pthread_mutex_lock(&dulcamara_closing_lock);
++	dulcamara_closing -= 1;
++	pthread_cond_broadcast(&dulcamara_closing_done);
++	pthread_mutex_unlock(&dulcamara_closing_lock);
++
+ 	return 0;
+ }
+@@ -1628,4 +1654,9 @@
+ 		return;
+ 	}
++
++	/* Dulcamara: counted until its thread has closed it (see dulcamara_closing) */
++	pthread_mutex_lock(&dulcamara_closing_lock);
++	dulcamara_closing += 1;
++	pthread_mutex_unlock(&dulcamara_closing_lock);
+ 
+ 	/* Tell the decoder to terminate. It will deallocate everything for us. */
+@@ -1642,4 +1673,29 @@
+ }
+ 
++/* Dulcamara: called as Python is about to end, without the GIL (a closing thread takes it): waits up to `seconds`
++ * for the closes asked so far; from then on a decode thread leaves its file unclosed. Returns the closes still
++ * unfinished. */
++int media_python_ending(double seconds) {
++	struct timespec until;
++	clock_gettime(CLOCK_REALTIME, &until);
++	until.tv_sec += (time_t) seconds;
++	until.tv_nsec += (long) ((seconds - (double) (time_t) seconds) * 1e9);
++	if (until.tv_nsec >= 1000000000L) {
++		until.tv_sec += 1;
++		until.tv_nsec -= 1000000000L;
++	}
++
++	pthread_mutex_lock(&dulcamara_closing_lock);
++	while (dulcamara_closing > 0) {
++		if (pthread_cond_timedwait(&dulcamara_closing_done, &dulcamara_closing_lock, &until) == ETIMEDOUT) {
++			break;
++		}
++	}
++	dulcamara_python_ended = 1;
++	int unfinished = dulcamara_closing;
++	pthread_mutex_unlock(&dulcamara_closing_lock);
++	return unfinished;
++}
++
+ void media_advance_time(void) {
+ 	current_time = SPEED * av_gettime() * 1e-6;

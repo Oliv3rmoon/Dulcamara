@@ -1,18 +1,25 @@
 /*
  * Dulcamara - Settings: tabs (L1 / R1) of rows (up / down), each changed with left / right or Cross.
- * Opened from a game, the game shows behind it, so a shader or a scale is seen as it is chosen.
+ * Opened from a game, the game shows behind it, so a shader or a scale is seen as it is chosen. A Ren'Py game's
+ * Keys for this game and Sounds for this game (from its menu, or any one's from the Ren'Py tab) are pages of the same
+ * rows.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 #include "../app.h"
 #include "../community.h"
 #include "../config.h"
+#include "../profile.h"
 #include "../core/cores.h"
 #include "../core/host.h"
 #include "../i18n.h"
+#include "../insider.h"
 #include "../platform/platform.h"
 #include "../update.h"
 #include "draw.h"
+#include "panels.h"
 #include "icons.h"
+#include "insider_prompt.h"
+#include "links_ui.h"
 #include "qr.h"
 #include "sfx.h"
 #include "text.h"
@@ -29,6 +36,9 @@ enum Kind
     K_TOGGLE, /* a bool field */
     K_ACTION, /* Cross does something */
     K_INFO,   /* a line of text */
+    K_KEY,    /* Keys for this game: what a controller button presses in a Ren'Py game */
+    K_CORE,   /* Controls: whose buttons the rows under it show; in a game, its own, not to be changed */
+    K_GAME,   /* Ren'Py: one of the library's Ren'Py games, by title, whose Keys or Sounds for this game Cross opens */
 };
 
 enum Action
@@ -38,7 +48,13 @@ enum Action
     A_RESCAN,
     A_CHECK_UPDATE,
     A_CLOSE_APP,
-    A_COMMUNITY, /* nightly's card: its QR code (community.h) */
+    A_COMMUNITY,    /* nightly's card: its QR code (community.h) */
+    A_DEFAULT_KEYS, /* Keys for this game: every button back to the core's own */
+    A_SOUNDS,       /* a K_GAME row's: Cross opens the game's Sounds for this game, not its keys */
+    A_INSIDER_CODE, /* the insider code on Dulcamara's keyboard (insider.h): only in a build with INSIDER_URL */
+    A_LINKS_FILE,   /* games from the links in links.txt (links_ui.h); while it runs, Cross cancels */
+    A_INSTALL_SHELF,
+    A_LINK_TYPE,    /* a game from a link typed on Dulcamara's keyboard; likewise */
 };
 
 typedef struct
@@ -51,7 +67,7 @@ typedef struct
     int count;
     const int *values;         /* K_CHOICE: the stored values, NULL when they are 0..count-1 */
     int action;                /* K_ACTION */
-    int button;                /* the controls' rows: the controller button (BTN_*), else -1 */
+    int button;                /* the controls' and the keys' rows: the controller button (BTN_*), else -1 */
 } Row;
 
 #define FIELD(f) offsetof(Settings, f)
@@ -73,13 +89,26 @@ static const char *const VOLUMES[] = {"Off", "10%", "20%", "30%", "40%", "50%", 
 static const char *const UI_SOUNDS[] = {"Soft", "Wood", "Pop", "Chime", "Classic", "Off"};
 static const char *const UI_VOLUMES[] = {"25%", "50%", "75%", "100%"};
 static const char *const ORDERS[] = {"By title", "Last played first"};
+static const char *const VIEWS[] = {"Story", "Shelf"}; /* LIBRARY_VIEW_* (story_model.h) */
 /* the game's buttons (EasyRPG Player's names for them) */
 static const char *const GAME_BUTTONS[] = {"Decision (A)",     "Cancel (B)",        "Cancel and menu (X)",
                                            "Shift (Y)",        "EasyRPG settings (Start)", "Reset to title (Select)",
                                            "Key 0 (L3)",       "Key 5 (R3)",        "L (debug)",
-                                           "R (debug)",        "Nothing"};
+                                           "R (debug)",        "L2",                "Nothing"};
 static const int GAME_BUTTON_VALUES[] = {PAD_A, PAD_B, PAD_X, PAD_Y, PAD_START, PAD_SELECT,
-                                         PAD_L3, PAD_R3, PAD_L, PAD_R, PAD_NONE};
+                                         PAD_L3, PAD_R3, PAD_L, PAD_R, PAD_L2, PAD_NONE};
+/* the same buttons in Ren'Py's games: what each presses there (src/core/renpy/input.c) unless the game's own keys say
+ * otherwise (Keys for this game) */
+static const char *const RENPY_GAME_BUTTONS[] = {"Game menu and back (A)",  "Pick and go on (B)",
+                                                 "Skip on and off (X)",     "Hide the text (Y)",
+                                                 "Game menu (Start)",       "Free for a key (Select)",
+                                                 "Cursor on and off (L3)",  "Free for a key (R3)",
+                                                 "Roll back (L)",           "Roll forward (R)",
+                                                 "Free for a key (L2)",     "Nothing"};
+_Static_assert(N(RENPY_GAME_BUTTONS) == N(GAME_BUTTONS), "a Ren'Py name for each of the game's buttons");
+/* whose buttons Controls shows (CORE_* order): Ren'Py 8's games and Ren'Py 7's and 6's each have their own */
+static const char *const CORE_GAMES[] = {"RPG Maker", "Ren'Py 8", "Ren'Py 7 / 6"};
+_Static_assert(N(CORE_GAMES) == CORE_COUNT, "a name for each core");
 
 #define BUTTON_ROW(name, b)                                                                                        \
     {name, "Which of the game's buttons this one presses.", K_CHOICE, 0, GAME_BUTTONS, N(GAME_BUTTONS), GAME_BUTTON_VALUES, \
@@ -113,6 +142,9 @@ static const Row PLAYING[] = {
 };
 
 static const Row CONTROLS[] = {
+    {"Buttons of", "Whose buttons the rows below show and change: RPG Maker's games, Ren'Py 8's, or Ren'Py 7's and "
+                   "6's. Each keeps its own.",
+     K_CORE, 0, CORE_GAMES, N(CORE_GAMES), NULL, A_NONE, -1},
     BUTTON_ROW("Cross", BTN_CROSS),
     BUTTON_ROW("Circle", BTN_CIRCLE),
     BUTTON_ROW("Square", BTN_SQUARE),
@@ -123,12 +155,12 @@ static const Row CONTROLS[] = {
     BUTTON_ROW("L3", BTN_L3),
     BUTTON_ROW("R3", BTN_R3),
     BUTTON_ROW("OPTIONS", BTN_START),
-    {"Default buttons", "The core's own: for RPG Maker, Cross Decision, Circle Cancel, Triangle the menu; for Ren'Py, "
-                        "Cross on, Circle the game menu, L1 and R1 back and forward. Each core keeps its own buttons.",
+    {"Default buttons", "The buttons above back to their own: for RPG Maker, Cross Decision, Circle Cancel, "
+                        "Triangle the menu; for Ren'Py, as its tab lists them.",
      K_ACTION, 0, NULL, 0, NULL, A_DEFAULT_BUTTONS, -1},
     {"The D-pad and the left stick move; R2 fast-forwards (in Ren'Py, it skips read text too); pressing the "
-     "touchpad opens Dulcamara's menu, and in Ren'Py the touchpad is the mouse (a tap clicks).", NULL, K_INFO,
-     0, NULL, 0, NULL, A_NONE, -1},
+     "touchpad opens Dulcamara's menu. In Ren'Py the touchpad is the cursor, and Options held opens the menu.", NULL,
+     K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
 };
 
 static const Row RENPY_ROWS[] = {
@@ -136,13 +168,31 @@ static const Row RENPY_ROWS[] = {
                                             "own Skip setting says. Off: the game's setting decides. From the next "
                                             "Ren'Py game started.",
      K_TOGGLE, FIELD(renpy_skip_unseen), NULL, 0, NULL, A_NONE, -1},
-    {"Ren'Py's own preferences (text speed, volumes, auto-forward, rollback) are in each game's menu: Circle.", NULL,
-     K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
-    {"The touchpad is the mouse (a tap clicks); pressing it down opens Dulcamara's menu.", NULL, K_INFO, 0, NULL, 0,
-     NULL, A_NONE, -1},
-    {"Saves: " NP_DATA "/saves/renpy, one folder each game.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
-    {"Ren'Py 8 games run on Ren'Py 8.5, Ren'Py 7 and 6 games on 7.8; a second one starts the app again.", NULL,
-     K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"Keys for a game", "Keys a game needs of its own (its inventory's, say), as its menu's Keys for this game has "
+                        "them: Left and Right choose the game, Cross opens them.",
+     K_GAME, 0, NULL, 0, NULL, A_NONE, -1},
+    {"Sounds for a game", "A game's sounds on or off, as its menu's Sounds for this game has them: Left and Right "
+                          "choose the game, Cross opens them.",
+     K_GAME, 0, NULL, 0, NULL, A_SOUNDS, -1},
+    /* the buttons as a Ren'Py game has them unless Controls or its keys change them (core/cores.c, core/renpy/input.c),
+     * all on one page: nothing under the last row that can be chosen is scrolled to */
+    {"{Cross} picks and moves the story on; {Circle} and {Options} open the game's menu (save, load, preferences) and "
+     "go back.",
+     NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"The D-pad and the left stick move between choices; {L1} and {R1} roll back and forward; {Square} hides the text "
+     "window.",
+     NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"{Triangle} turns skipping on and off; {R2} fast-forwards (Ren'Py's own skip); {L2}, {R3} and Create are free for "
+     "a game's keys.",
+     NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"The cursor: {L3} turns it on and off, the left stick moves it, {Cross} clicks where it points; a touch on the "
+     "touchpad moves it, pressing it down clicks.",
+     NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"Dulcamara's menu: {Options} held for 0.6 s. A short press of {Options} is the game's menu.", NULL, K_INFO, 0,
+     NULL, 0, NULL, A_NONE, -1},
+    {"Saves: " NP_DATA "/saves/renpy. Ren'Py 8 games run on Ren'Py 8.5, Ren'Py 7 and 6 games on 7.8; a second one "
+     "starts the app again.",
+     NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
 };
 
 static const Row LIBRARY_ROWS[] = {
@@ -154,14 +204,41 @@ static const Row LIBRARY_ROWS[] = {
      A_NONE, -1},
     {"Look for games again", "Reads " NP_DATA "/games again, for games copied while the app was open.", K_ACTION, 0,
      NULL, 0, NULL, A_RESCAN, -1},
+    {"Add game from link", "Type a direct link to a game's .zip. Direct downloads only: no logins, store or download "
+                           "pages, launchers or patchers.",
+     K_ACTION, 0, NULL, 0, NULL, A_LINK_TYPE, -1},
+    {"Add games from links.txt", "Downloads each new direct link in " NP_DATA "/links.txt (one https:// link a line, "
+                                 "copied over FTP) and adds its ZIP's game.",
+     K_ACTION, 0, NULL, 0, NULL, A_LINKS_FILE, -1},
+    {"View", "Story: the library as an RPG menu with a text box. Shelf: the row of covers, as before; choose it if "
+             "Story mode misbehaves.",
+     K_CHOICE, FIELD(library_view), VIEWS, N(VIEWS), NULL, A_NONE, -1},
+    {"Install itch.io Shelf", "Adds the bundled shelf to your library. Open it to browse free Ren'Py games on itch.io.",
+     K_ACTION, 0, NULL, 0, NULL, A_INSTALL_SHELF, -1},
 };
 
 static const Row SYSTEM[] = {
-    {"Check for updates at start", "Asks github.com/Oliv3rmoon/Dulcamara for a newer release when the app "
-                                   "opens, and installs it (checked against its SHA256SUMS) for the next start.",
+    {"Still background / reduced motion",
+     "Stops background and interface motion; controls respond immediately.", K_TOGGLE,
+     FIELD(still_background), NULL, 0, NULL, A_NONE, -1},
+    {"Automatic local backups",
+     "Five successful automatic snapshots per game. Manual and recovery snapshots are retained. "
+     "Game preferences may override this default.",
+     K_TOGGLE, FIELD(automatic_backups), NULL, 0, NULL, A_NONE, -1},
+    {"Check for updates at start",
+     "Asks github.com/Oliv3rmoon/Dulcamara for a newer release when the app "
+     "opens, and offers it in a popup (checked against its SHA256SUMS).",
      K_TOGGLE, FIELD(update_check), NULL, 0, NULL, A_NONE, -1},
+    {"Test builds",
+     "Also offers test builds (GitHub's pre-releases) when they are newer; they may break things.",
+     K_TOGGLE, FIELD(update_test_builds), NULL, 0, NULL, A_NONE, -1},
+    {"Insider code",
+     "Your code from nightly's insider page: its members get test builds first. Cross types it; "
+     "nothing typed clears it.",
+     K_ACTION, 0, NULL, 0, NULL, A_INSIDER_CODE, -1},
     {"Check for updates now", "Asks GitHub now.", K_ACTION, 0, NULL, 0, NULL, A_CHECK_UPDATE, -1},
-    {"Close Dulcamara", "Closes the app. Save in the game first.", K_ACTION, 0, NULL, 0, NULL, A_CLOSE_APP, -1},
+    {"Close Dulcamara", "Closes the app. Save in the game first.", K_ACTION, 0, NULL, 0, NULL,
+     A_CLOSE_APP, -1},
 };
 
 static const Row ABOUT[] = {
@@ -204,10 +281,55 @@ static const Tab TABS[] = {
     {"About", ICON_INFO_CIRCLE, ABOUT, N(ABOUT)},
 };
 #define TAB_COUNT N(TABS)
+#define ROWS_MAX 16 /* the most a tab has */
 
 static int tab, row, top;
 static float bar_y = -1.0f;
-static bool community_open; /* nightly's card is up, over the page */
+static bool community_open;  /* nightly's card is up, over the page */
+static int controls_pick;    /* outside a game, whose buttons Controls shows (CORE_*) */
+static char keys_pick[24];   /* the Ren'Py tab's game for Keys and Sounds for a game: its id (the library's order
+                                * changes) */
+
+/* ---------------------------------------------------------------- the library's Ren'Py games */
+
+/* by title, as the library sorts them */
+static int by_title(const Game *a, const Game *b)
+{
+    const int c = str_icmp(a->title, b->title);
+    return c ? c : strcmp(a->location, b->location);
+}
+
+/* The library's Ren'Py game after (step 1) or before (-1) the game from by title, round from the last to the first;
+ * from -1, the first. from itself when it is the only one, -1 when there are none. */
+static int renpy_game_step(int from, int step)
+{
+    int next = -1, wrap = -1;
+    for (int i = 0; i < app.library.count; ++i)
+    {
+        const Game *g = &app.library.games[i];
+        if (i == from || !core_is_renpy(g->core))
+            continue;
+        if (from >= 0 && by_title(g, &app.library.games[from]) * step > 0 &&
+            (next < 0 || by_title(g, &app.library.games[next]) * step < 0))
+            next = i;
+        if (wrap < 0 || by_title(g, &app.library.games[wrap]) * step < 0)
+            wrap = i;
+    }
+    return next >= 0 ? next : wrap >= 0 ? wrap : from;
+}
+
+/* The game Keys and Sounds for a game show: the one chosen, else the first by title; -1 when the library has no
+ * Ren'Py game. */
+static int keys_pick_game(void)
+{
+    for (int i = 0; i < app.library.count; ++i)
+        if (core_is_renpy(app.library.games[i].core) && !strcmp(app.library.games[i].id, keys_pick))
+            return i;
+    const int first = renpy_game_step(-1, 1);
+    if (first >= 0)
+        str_copy(keys_pick, sizeof(keys_pick), app.library.games[first].id);
+    return first;
+}
 
 void settings_opened(void)
 {
@@ -215,25 +337,44 @@ void settings_opened(void)
     top = 0;
     bar_y = -1.0f;
     community_open = false;
+    /* Controls' buttons and Ren'Py's keys start at the game the app is at: the running one, else the shelf's */
+    const int at = app.game >= 0 ? app.game : app.settings.last_game;
+    if (at >= 0 && at < app.library.count)
+    {
+        controls_pick = app.library.games[at].core;
+        if (core_is_renpy(app.library.games[at].core))
+            str_copy(keys_pick, sizeof(keys_pick), app.library.games[at].id);
+    }
 }
 
 /* ---------------------------------------------------------------- values */
 
-/* The core whose buttons the Controls page shows: the running game's, else EasyRPG Player's. */
+/* The core whose buttons the Controls page shows: the running game's, else the one chosen at its top. */
 static int controls_core(void)
 {
-    return app.game >= 0 ? app.library.games[app.game].core : CORE_EASYRPG;
+    return app.game >= 0 ? app.library.games[app.game].core : controls_pick;
 }
 
 static int *int_field(const Row *r)
 {
+    static int value;
     if (r->button >= 0)
     {
-        static int value;
         value = app.settings.button_map[controls_core()][r->button];
         return &value;
     }
+    if (r->kind == K_CORE)
+    {
+        value = controls_core();
+        return &value;
+    }
     return (int *)((char *)&app.settings + r->field);
+}
+
+/* What a choice's values are called: the game's buttons by the core whose they are. */
+static const char *const *choice_names(const Row *r)
+{
+    return r->button >= 0 && core_is_renpy(controls_core()) ? RENPY_GAME_BUTTONS : r->names;
 }
 
 static int choice_index(const Row *r)
@@ -250,13 +391,56 @@ static void choice_set(const Row *r, int index)
     const int v = r->values ? r->values[index] : index;
     if (r->button >= 0)
         app.settings.button_map[controls_core()][r->button] = (int8_t)v;
+    else if (r->kind == K_CORE)
+        controls_pick = v;
     else
         *int_field(r) = v;
 }
 
 static bool selectable(const Row *r)
 {
-    return r->kind != K_INFO;
+    return r->kind != K_INFO && !(r->kind == K_CORE && app.game >= 0);
+}
+
+/* The rows a tab shows now: Keys and Sounds for a game only when the library has a Ren'Py game, Insider code only in
+ * a build with nightly's insider builds. */
+static int tab_rows(const Tab *t, const Row **rows)
+{
+    int n = 0;
+    for (int i = 0; i < t->count && n < ROWS_MAX; ++i)
+        if ((t->rows[i].kind != K_GAME || keys_pick_game() >= 0) &&
+            (t->rows[i].action != A_INSIDER_CODE || insider_enabled()))
+            rows[n++] = &t->rows[i];
+    return n;
+}
+
+/* s cut to max_width with "..." as text_draw_fit cuts it, for a value drawn in a choice's pill */
+static const char *fit_text(const char *s, float size, float max_width, char *out, size_t out_size)
+{
+    str_copy(out, out_size, s);
+    for (size_t len = strlen(out); len > 0 && text_width(size, FONT_REGULAR, out) > max_width;)
+    {
+        do
+            --len;
+        while (len > 0 && ((unsigned char)s[len] & 0xc0) == 0x80); /* stay on a UTF-8 boundary */
+        snprintf(out, out_size, "%.*s...", (int)len, s);
+    }
+    return out;
+}
+
+/* A controller button's (BTN_*) picture at the left of a row at y, x; returns its width. */
+static float draw_button(int button, float x, float y)
+{
+    static const int GLYPHS[MAP_BUTTONS] = {
+        [BTN_CROSS] = GLYPH_CROSS,       [BTN_SQUARE] = GLYPH_SQUARE, [BTN_SELECT] = GLYPH_SELECT,
+        [BTN_START] = GLYPH_START,       [BTN_UP] = GLYPH_UP,         [BTN_DOWN] = GLYPH_DOWN,
+        [BTN_LEFT] = GLYPH_LEFT,         [BTN_RIGHT] = GLYPH_RIGHT,   [BTN_CIRCLE] = GLYPH_CIRCLE,
+        [BTN_TRIANGLE] = GLYPH_TRIANGLE, [BTN_L1] = GLYPH_L1,         [BTN_R1] = GLYPH_R1,
+        [BTN_L2] = GLYPH_L2,             [BTN_R2] = GLYPH_R2,         [BTN_L3] = GLYPH_L3,
+        [BTN_R3] = GLYPH_R3};
+    const float gw = pad_glyph_width((enum PadGlyph)GLYPHS[button], 30);
+    draw_pad_glyph((enum PadGlyph)GLYPHS[button], x + gw * 0.5f, y + 38, 30);
+    return gw;
 }
 
 static void changed(const Row *r)
@@ -275,13 +459,10 @@ static void run_action(int action)
         app_toast("The buttons are back to their defaults.");
         break;
     case A_RESCAN:
-    {
         app_rescan();
-        char msg[64];
-        snprintf(msg, sizeof(msg), app.library.count == 1 ? "%d game found" : "%d games found", app.library.count);
-        app_toast(msg);
+        if (app.scan_status.state != LIBRARY_SCAN_ERROR)
+            app_toast("Looking for games...");
         break;
-    }
     case A_CHECK_UPDATE:
         if (update_state() != UPDATE_CHECKING && update_state() != UPDATE_INSTALLING)
             update_check();
@@ -290,7 +471,20 @@ static void run_action(int action)
         app_save_settings();
         app.quit_requested = true;
         break;
+    case A_INSTALL_SHELF: links_ui_install_shelf(); break;
     case A_COMMUNITY: community_open = true; break;
+    case A_INSIDER_CODE: insider_prompt_open(); break;
+    case A_LINKS_FILE:
+    case A_LINK_TYPE:
+        if (links_ui_busy())
+            links_ui_cancel();
+        else if (app.game >= 0)
+            app_message_box("Close the game first: nothing is downloaded while a game runs.");
+        else if (action == A_LINKS_FILE)
+            links_ui_from_file();
+        else
+            link_prompt_open();
+        break;
     default: break;
     }
 }
@@ -305,9 +499,27 @@ static const char *update_text(void)
     case UPDATE_AVAILABLE:
         snprintf(text, sizeof(text), tr("%s is available: Cross installs it"), update_version());
         return text;
-    case UPDATE_INSTALLING: return tr("Installing...");
+    case UPDATE_INSTALLING:
+    {
+        UpdateStatus job;
+        update_poll(&job);
+        if (job.phase==UPDATE_WAITING) return tr("Downloaded: waiting for game/save maintenance");
+        if (job.phase==UPDATE_VERIFYING) return tr("Verifying and staging update...");
+        if (job.phase==UPDATE_APPLYING) return tr("Installing update...");
+        if (job.phase==UPDATE_ROLLING_BACK) return tr("Restoring original installation...");
+        uint64_t done=job.done,total=job.total;
+        if (total == 0)
+            return tr("Installing...");
+        snprintf(text, sizeof(text), tr("Downloading... %d%% (%.1f of %.1f MB)"), (int)(done * 100 / total),
+                 (double)done / 1048576.0, (double)total / 1048576.0);
+        return text;
+    }
     case UPDATE_INSTALLED: return tr("Installed: restart to use it");
-    case UPDATE_FAILED: return update_message();
+    case UPDATE_FAILED:
+        if (!update_can_retry())
+            return update_message();
+        snprintf(text, sizeof(text), tr("%s: Cross tries again"), update_message());
+        return text;
     default: return "";
     }
 }
@@ -403,6 +615,10 @@ void settings_screen(uint32_t pressed)
         }
         pressed = 0;
     }
+    if (insider_prompt_input(pressed)) /* the insider code's keyboard is up: it takes the buttons */
+        pressed = 0;
+    if (link_prompt_input(pressed)) /* so does a link's */
+        pressed = 0;
     if (pressed & BIT(BTN_CIRCLE))
     {
         leave();
@@ -420,8 +636,12 @@ void settings_screen(uint32_t pressed)
         bar_y = -1.0f;
         sfx_play(SFX_CLICK);
     }
+    const Row *rows[ROWS_MAX];
+    const int count = tab_rows(t, rows);
+    if (row >= count)
+        row = count - 1;
     /* the first row that can be chosen */
-    while (row < t->count - 1 && !selectable(&t->rows[row]))
+    while (row < count - 1 && !selectable(rows[row]))
         ++row;
     if (pressed & (BIT(BTN_UP) | BIT(BTN_DOWN)))
     {
@@ -429,21 +649,22 @@ void settings_screen(uint32_t pressed)
         int r = row;
         do
             r += step;
-        while (r >= 0 && r < t->count && !selectable(&t->rows[r]));
-        if (r >= 0 && r < t->count)
+        while (r >= 0 && r < count && !selectable(rows[r]));
+        if (r >= 0 && r < count)
         {
             row = r;
             sfx_play(SFX_CLICK);
         }
     }
-    const Row *r = &t->rows[row];
+    const Row *r = rows[row];
     if (selectable(r))
     {
-        if (r->kind == K_CHOICE && (pressed & (BIT(BTN_LEFT) | BIT(BTN_RIGHT) | BIT(BTN_CROSS))))
+        if ((r->kind == K_CHOICE || r->kind == K_CORE) && (pressed & (BIT(BTN_LEFT) | BIT(BTN_RIGHT) | BIT(BTN_CROSS))))
         {
             const int step = pressed & BIT(BTN_LEFT) ? -1 : 1;
             choice_set(r, (choice_index(r) + step + r->count) % r->count);
-            changed(r);
+            if (r->kind == K_CHOICE)
+                changed(r);
             sfx_play(SFX_CLICK);
         }
         else if (r->kind == K_TOGGLE && (pressed & (BIT(BTN_LEFT) | BIT(BTN_RIGHT) | BIT(BTN_CROSS))))
@@ -452,10 +673,36 @@ void settings_screen(uint32_t pressed)
             *b = !*b;
             changed(r);
             sfx_play(SFX_CLICK);
+            /* Test builds on in a build with nightly's insider builds, and no code yet: it is asked for */
+            if (r->field == FIELD(update_test_builds) && *b && insider_enabled() && !insider_has_code())
+                insider_prompt_open();
+        }
+        else if (r->kind == K_GAME && (pressed & (BIT(BTN_LEFT) | BIT(BTN_RIGHT))))
+        {
+            const int g = renpy_game_step(keys_pick_game(), pressed & BIT(BTN_LEFT) ? -1 : 1);
+            if (g >= 0)
+                str_copy(keys_pick, sizeof(keys_pick), app.library.games[g].id);
+            sfx_play(SFX_CLICK);
+        }
+        else if (r->kind == K_GAME && (pressed & BIT(BTN_CROSS)))
+        {
+            /* the game's keys or sounds, as its menu has them, and Circle back here */
+            sfx_play(SFX_SELECT);
+            if (r->action == A_SOUNDS)
+            {
+                sounds_open(keys_pick_game(), SCREEN_SETTINGS);
+                sounds_screen(0); /* drawn now */
+            }
+            else
+            {
+                keys_open(keys_pick_game(), SCREEN_SETTINGS);
+                keys_screen(0);
+            }
+            return;
         }
         else if (r->kind == K_ACTION && (pressed & BIT(BTN_CROSS)))
         {
-            if (r->action == A_CHECK_UPDATE && update_state() == UPDATE_AVAILABLE)
+            if (r->action == A_CHECK_UPDATE && (update_state() == UPDATE_AVAILABLE || update_can_retry()))
                 update_install();
             else
                 run_action(r->action);
@@ -474,7 +721,7 @@ void settings_screen(uint32_t pressed)
 
     const float x = TH_MARGIN + 40, w = plat_width() - 2 * (TH_MARGIN + 40);
     draw_rrect(TH_MARGIN + 6, 60, 10, 34, 5, TH_FOCUS);
-    text_draw(TH_MARGIN + 32, 54, 40, FONT_BOLD, TH_TEXT, ALIGN_LEFT, tr("Settings"));
+    text_draw(TH_MARGIN + 32, 54, 40, FONT_BOLD, TH_TEXT, ALIGN_LEFT, tr("Global settings"));
     /* the tabs */
     float tx = x;
     const float ty = 138;
@@ -492,10 +739,10 @@ void settings_screen(uint32_t pressed)
     }
     draw_pad_glyph(GLYPH_R1, tx + 30, ty + 28, 26);
 
-    /* the rows: eight a page; About, which has nothing to scroll to, all of its own on one */
-    const int visible = t->rows == ABOUT ? t->count : 8;
+    /* the rows: eight a page; About and Ren'Py, which have nothing to scroll to, all of theirs on one */
+    const int visible = t->rows == ABOUT || t->rows == RENPY_ROWS ? t->count : 8;
     const float list_y = 236, row_h = 8 * 78.0f / visible;
-    top = list_top_row(top, row, visible, t->count);
+    top = list_top_row(top, row, visible, count);
     draw_rrect(x - 20, list_y - 16, w + 40, visible * row_h + 32, TH_RADIUS, TH_CARD_A(0xe6));
     const float target = list_y + (row - top) * row_h;
     if (bar_y < 0)
@@ -506,37 +753,63 @@ void settings_screen(uint32_t pressed)
         draw_rrect(x, bar_y, w, row_h - 8, TH_RADIUS_SMALL, TH_ROW_SELECTED);
         draw_rect(x, bar_y + 16, 5, row_h - 40, TH_FOCUS);
     }
-    for (int i = top; i < t->count && i < top + visible; ++i)
+    for (int i = top; i < count && i < top + visible; ++i)
     {
-        const Row *it = &t->rows[i];
+        const Row *it = rows[i];
         const float ry = list_y + (i - top) * row_h;
         const bool on = i == row && selectable(it);
         if (it->kind == K_INFO)
         {
-            text_draw_fit(x + 28, ry + 22, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT, w - 56, tr(it->label));
+            const char *info = tr(it->label);
+            if (text_width(26, FONT_REGULAR, info) > w - 56)
+            {
+                char first[1024];
+                str_copy(first, sizeof(first), info);
+                size_t split = strlen(first);
+                while (split > 0 && text_width(24, FONT_REGULAR, first) > w - 56)
+                {
+                    while (split > 0 && first[split - 1] != ' ')
+                        split--;
+                    if (split > 0)
+                        first[--split] = 0;
+                    else
+                        break;
+                }
+                if (split > 0)
+                {
+                    text_draw(x + 28, ry + 10, 24, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT, first);
+                    text_draw_fit(x + 28, ry + 38, 24, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT,
+                                  w - 56, info + split + 1);
+                }
+                else
+                    text_draw_fit(x + 28, ry + 22, 24, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT,
+                                  w - 56, info);
+            }
+            else
+                text_draw(x + 28, ry + 22, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT, info);
             continue;
         }
         float lx = x + 28;
         if (it->button >= 0)
-        {
-            /* the controller button's own picture before its name */
-            static const int GLYPHS[MAP_BUTTONS] = {
-                [BTN_CROSS] = GLYPH_CROSS, [BTN_SQUARE] = GLYPH_SQUARE, [BTN_SELECT] = GLYPH_SELECT,
-                [BTN_START] = GLYPH_START, [BTN_UP] = GLYPH_UP,         [BTN_DOWN] = GLYPH_DOWN,
-                [BTN_LEFT] = GLYPH_LEFT,   [BTN_RIGHT] = GLYPH_RIGHT,   [BTN_CIRCLE] = GLYPH_CIRCLE,
-                [BTN_TRIANGLE] = GLYPH_TRIANGLE, [BTN_L1] = GLYPH_L1,  [BTN_R1] = GLYPH_R1,
-                [BTN_L2] = GLYPH_L2,       [BTN_R2] = GLYPH_R2,         [BTN_L3] = GLYPH_L3,
-                [BTN_R3] = GLYPH_R3};
-            const float gw = pad_glyph_width((enum PadGlyph)GLYPHS[it->button], 30);
-            draw_pad_glyph((enum PadGlyph)GLYPHS[it->button], lx + gw * 0.5f, ry + 38, 30);
-            lx += gw + 20;
-        }
+            lx += draw_button(it->button, lx, ry) + 20; /* the controller button's own picture before its name */
         text_draw_fit(lx, ry + 21, 28, on ? FONT_BOLD : FONT_REGULAR, on ? TH_TEXT : TH_TEXT_SOFT, ALIGN_LEFT,
                       w * 0.5f, tr(it->label));
         const float right = x + w - 24;
-        if (it->kind == K_CHOICE)
+        if (it->kind == K_CORE && !selectable(it))
+            /* in a game: its own core's buttons, which the page does not change */
+            text_draw_fit(right, ry + 23, 24, FONT_REGULAR, TH_TEXT_DIM, ALIGN_RIGHT, w * 0.45f,
+                          tr(it->names[choice_index(it)]));
+        else if (it->kind == K_CHOICE || it->kind == K_CORE)
             draw_choice(right, ry + 12, 48, 24, on ? TH_PILL : TH_PILL_A(0x90), on ? TH_TEXT : TH_TEXT_SOFT,
-                        tr(it->names[choice_index(it)]));
+                        tr(choice_names(it)[choice_index(it)]));
+        else if (it->kind == K_GAME)
+        {
+            /* the game's title, cut to leave its name room: the pill is the title and 98 pixels */
+            char title[sizeof(app.library.games[0].title) + 4];
+            const int g = keys_pick_game();
+            draw_choice(right, ry + 12, 48, 24, on ? TH_PILL : TH_PILL_A(0x90), on ? TH_TEXT : TH_TEXT_SOFT,
+                        fit_text(g >= 0 ? app.library.games[g].title : "", 24, w * 0.45f - 98, title, sizeof(title)));
+        }
         else if (it->kind == K_TOGGLE)
         {
             const bool v = *(const bool *)((const char *)&app.settings + it->field);
@@ -548,6 +821,8 @@ void settings_screen(uint32_t pressed)
             snprintf(community, sizeof(community), "%s  \xC2\xB7  %s", COMMUNITY_NAME, COMMUNITY_LINK);
             const char *value = it->action == A_CHECK_UPDATE ? update_text()
                                 : it->action == A_COMMUNITY  ? community
+                                : it->action == A_INSIDER_CODE ? (insider_has_code() ? tr("Set") : tr("Not set"))
+                                : it->action == A_LINKS_FILE || it->action == A_LINK_TYPE ? links_ui_status()
                                                              : "";
             if (value[0])
                 text_draw_fit(right, ry + 23, 24, FONT_REGULAR, TH_TEXT_DIM, ALIGN_RIGHT, w * 0.45f, value);
@@ -558,9 +833,513 @@ void settings_screen(uint32_t pressed)
     /* the chosen row's explanation */
     if (selectable(r) && r->help)
         text_draw_fit(x, list_y + visible * row_h + 40, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT, w, tr(r->help));
+    /* under Test builds and Insider code: where a code comes from, while there is none or the last answer refused it */
+    if (selectable(r) &&
+        ((r->kind == K_TOGGLE && r->field == FIELD(update_test_builds)) || r->action == A_INSIDER_CODE) &&
+        insider_hint())
+        text_draw_fit(x, list_y + visible * row_h + 76, 26, FONT_REGULAR, TH_FOCUS, ALIGN_LEFT, w,
+                      tr("Insider builds: get a code in the nightly Discord, discord.gg/pSqgRU3YP9"));
     static const int glyphs[] = {GLYPH_CROSS, GLYPH_CIRCLE};
     static const char *const labels[] = {"Change", "Back"};
     app_draw_hints(glyphs, labels, 2, app.game >= 0 ? host_core_name() : NP_TITLE " " NP_VERSION);
+    insider_prompt_draw();
+    link_prompt_draw();
     if (community_open)
         draw_community();
+}
+
+/* ---------------------------------------------------------------- Keys for this game */
+
+/* Keys for this game, from a Ren'Py game's menu (Dulcamara's) or for any of the library's Ren'Py games from Settings >
+ * Ren'Py: what each of the controller's buttons presses in it. A button reaches the core as the RetroPad button
+ * Settings > Controls gives the game's core, and that button's renpy_key_* option (its action in the game's keys,
+ * config.h) is the core's own, nothing, a key or a click. The running game's keys are app.keys, and a change goes to
+ * its core at once: it reads its options at its next frame. Another game's come from its file, and its core has them
+ * when it starts. Leaving the page keeps the game's keys in their file (app_save_keys). */
+#define KEY_ROW(name, b) {name, NULL, K_KEY, 0, NULL, 0, NULL, A_NONE, b}
+
+static const Row KEY_ROWS[] = {
+    KEY_ROW("Cross", BTN_CROSS),       KEY_ROW("Circle", BTN_CIRCLE), KEY_ROW("Square", BTN_SQUARE),
+    KEY_ROW("Triangle", BTN_TRIANGLE), KEY_ROW("L1", BTN_L1),         KEY_ROW("R1", BTN_R1),
+    KEY_ROW("L2", BTN_L2),             KEY_ROW("L3", BTN_L3),         KEY_ROW("R3", BTN_R3),
+    KEY_ROW("Options", BTN_START),     KEY_ROW("Create", BTN_SELECT), KEY_ROW("Up", BTN_UP),
+    KEY_ROW("Down", BTN_DOWN),         KEY_ROW("Left", BTN_LEFT),     KEY_ROW("Right", BTN_RIGHT),
+    {"Default keys", "Every button back to Ren'Py's own, the one each shows as (default).", K_ACTION, 0, NULL, 0, NULL,
+     A_DEFAULT_KEYS, -1},
+};
+
+static int key_row, key_top;
+static float key_bar_y = -1.0f;
+static bool keys_changed;             /* since the page opened: the game's file is written as it closes */
+static int key_game = -1;             /* the library's game the page is for */
+static int8_t key_copy[MAP_BUTTONS];  /* the keys of a game that is not running, from its file */
+static Settings key_effective;
+static int8_t *page_keys = key_copy;  /* the page's: app.keys for the running game, else key_copy */
+static enum Screen key_back;          /* where Circle goes: the game's menu, or Settings */
+
+void keys_open(int index, enum Screen back_to)
+{
+    key_game = index;
+    key_back = back_to;
+    key_effective = app.settings;
+    if (index >= 0 && index < app.library.count)
+    {
+        GameProfile profile;
+        char name[40], path[NP_PATH_MAX];
+        snprintf(name, sizeof(name), "%s.ini", app.library.games[index].id);
+        path_join(path, sizeof(path), app.paths.profiles, name);
+        profile_load(&profile, path);
+        profile_resolve(&app.settings, &profile, &key_effective);
+    }
+    if (index == app.game)
+        page_keys = app.keys; /* the ones its core has */
+    else
+    {
+        app_load_keys(index, key_copy);
+        page_keys = key_copy;
+    }
+    app.screen = SCREEN_KEYS;
+    key_row = key_top = 0;
+    key_bar_y = -1.0f;
+    keys_changed = false;
+}
+
+/* The page's game is the running one: its keys go to its core as they change. */
+static bool key_game_runs(void)
+{
+    return key_game >= 0 && key_game == app.game;
+}
+
+/* The RetroPad button a row's controller button gives the page's game (Settings > Controls, its core's), or -1 when
+ * it gives it none that a key can go on. */
+static int key_pad(const Row *r)
+{
+    const int pad = key_game >= 0 && key_game < app.library.count
+                        ? key_effective.button_map[app.library.games[key_game].core][r->button]
+                        : PAD_NONE;
+    return config_key_option(pad) ? pad : -1;
+}
+
+/* The action after (step 1) or before (-1) this one, past the one the core's own already is ("default"). */
+static int next_key(int pad, int action, int step)
+{
+    const int own = config_key_default(pad);
+    do
+        action = (action + step + KEY_ACTION_COUNT) % KEY_ACTION_COUNT;
+    while (action == own);
+    return action;
+}
+
+/* L1 and R1: the first action of the kind before or after this one (the core's own and the mouse, the keys, the
+ * letters, the digits, the F keys), or of its own kind when it is not that kind's first. */
+static int jump_key(int pad, int action, int step)
+{
+    const int from = action;
+    for (;;)
+    {
+        do
+            action = (action + step + KEY_ACTION_COUNT) % KEY_ACTION_COUNT;
+        while (action && KEY_ACTIONS[action].kind == KEY_ACTIONS[action - 1].kind);
+        const int to = action == config_key_default(pad) ? next_key(pad, action, 1) : action;
+        if (to != from)
+            return to;
+    }
+}
+
+/* What a row shows: its button's action, or the core's own, marked (default). */
+static const char *key_text(const Row *r, char *out, size_t size)
+{
+    const int pad = key_pad(r);
+    if (pad < 0)
+        return tr("Nothing (Settings > Controls)");
+    if (page_keys[pad])
+        return tr(KEY_ACTIONS[page_keys[pad]].name);
+    snprintf(out, size, tr("%s (default)"), tr(KEY_ACTIONS[config_key_default(pad)].name));
+    return out;
+}
+
+static const char *key_help(const Row *r)
+{
+    const int pad = key_pad(r);
+    if (pad < 0)
+        return tr("Settings > Controls gives this button nothing in Ren'Py's games, so it presses no key.");
+    const int action = page_keys[pad] ? page_keys[pad] : config_key_default(pad);
+    if (!strcmp(KEY_ACTIONS[action].value, "cursor"))
+        return tr("Turns the cursor on and off: the left stick moves it, and {Cross} clicks whatever it presses.");
+    return tr("What it presses in this game: Ren'Py's own, one of the game's keys, a click, or nothing.");
+}
+
+void keys_screen(uint32_t pressed)
+{
+    const int count = N(KEY_ROWS);
+    if (pressed & BIT(BTN_CIRCLE))
+    {
+        if (keys_changed && !app_save_keys(key_game, page_keys))
+        {
+            app_load_keys(key_game, page_keys);
+            if (key_game == app.game)
+            {
+                memcpy(app.keys, page_keys, MAP_BUTTONS);
+                app_apply_keys();
+            }
+            keys_changed = false;
+            return;
+        }
+        sfx_play(SFX_BACK);
+        app.screen = key_back;
+        if (key_back == SCREEN_SETTINGS)
+            settings_screen(0); /* drawn now, as it was */
+        else if (key_back == SCREEN_DETAILS)
+            panels_screen(0);
+        else
+            app_draw_game(105);
+        return;
+    }
+    if (pressed & (BIT(BTN_UP) | BIT(BTN_DOWN)))
+    {
+        const int to = key_row + (pressed & BIT(BTN_UP) ? -1 : 1);
+        if (to >= 0 && to < count)
+        {
+            key_row = to;
+            sfx_play(SFX_CLICK);
+        }
+    }
+    const Row *r = &KEY_ROWS[key_row];
+    const int pad = r->kind == K_KEY ? key_pad(r) : -1;
+    const uint32_t change = BIT(BTN_LEFT) | BIT(BTN_RIGHT) | BIT(BTN_CROSS), jump = BIT(BTN_L1) | BIT(BTN_R1);
+    if (pad >= 0 && (pressed & (change | jump)))
+    {
+        const int step = pressed & (BIT(BTN_LEFT) | BIT(BTN_L1)) ? -1 : 1;
+        const int action =
+            pressed & change ? next_key(pad, page_keys[pad], step) : jump_key(pad, page_keys[pad], step);
+        int8_t previous = page_keys[pad];
+        page_keys[pad] = (int8_t)action;
+        if (!app_save_keys(key_game, page_keys))
+        {
+            page_keys[pad] = previous;
+            return;
+        }
+        if (key_game_runs())
+            app_apply_keys();
+        keys_changed = false;
+        sfx_play(SFX_CLICK);
+    }
+    else if (r->kind == K_ACTION && r->action == A_DEFAULT_KEYS && (pressed & BIT(BTN_CROSS)))
+    {
+        int8_t previous[MAP_BUTTONS];
+        memcpy(previous, page_keys, MAP_BUTTONS);
+        memset(page_keys, 0, MAP_BUTTONS);
+        if (!app_save_keys(key_game, page_keys))
+        {
+            memcpy(page_keys, previous, MAP_BUTTONS);
+            return;
+        }
+        if (key_game_runs())
+            app_apply_keys();
+        keys_changed = false;
+        app_toast("Every button presses Ren'Py's own again.");
+        sfx_play(SFX_SELECT);
+    }
+
+    /* behind it: the running game, darkened, as under Settings, or the library's backdrop */
+    if (app.game >= 0)
+    {
+        app_draw_game(110);
+        draw_rect(0, 0, (float)plat_width(), (float)plat_height(), 0x60000000u);
+    }
+    else
+        shelf_backdrop();
+    const float x = TH_MARGIN + 40, w = plat_width() - 2 * (TH_MARGIN + 40);
+    draw_rrect(TH_MARGIN + 6, 60, 10, 34, 5, TH_FOCUS);
+    text_draw(TH_MARGIN + 32, 54, 40, FONT_BOLD, TH_TEXT, ALIGN_LEFT, tr("Keys for this game"));
+    /* the game, where Settings has its tabs */
+    const Game *g = key_game >= 0 && key_game < app.library.count ? &app.library.games[key_game] : NULL;
+    icon_draw(ICON_KEYBOARD, x, 148, 36, TH_FOCUS);
+    text_draw_fit(x + 52, 150, 30, FONT_BOLD, TH_TEXT_SOFT, ALIGN_LEFT, w - 52, g ? g->title : "");
+
+    /* the rows, eight a page, and how far down the page is on the card's right */
+    const int visible = 8;
+    const float list_y = 236, row_h = 78;
+    key_top = list_top_row(key_top, key_row, visible, count);
+    draw_rrect(x - 20, list_y - 16, w + 40, visible * row_h + 32, TH_RADIUS, TH_CARD_A(0xe6));
+    if (count > visible)
+    {
+        const float track = visible * row_h - 8, thumb = track * visible / count;
+        draw_rrect(x + w + 8, list_y, 4, track, 2, TH_DIVIDER);
+        draw_rrect(x + w + 8, list_y + (track - thumb) * key_top / (count - visible), 4, thumb, 2, TH_TEXT_DIM);
+    }
+    const float target = list_y + (key_row - key_top) * row_h;
+    if (key_bar_y < 0)
+        key_bar_y = target;
+    anim_approach(&key_bar_y, target, app.dt, TH_SNAP);
+    draw_rrect(x, key_bar_y, w, row_h - 8, TH_RADIUS_SMALL, TH_ROW_SELECTED);
+    draw_rect(x, key_bar_y + 16, 5, row_h - 40, TH_FOCUS);
+    for (int i = key_top; i < count && i < key_top + visible; ++i)
+    {
+        const Row *it = &KEY_ROWS[i];
+        const float ry = list_y + (i - key_top) * row_h, right = x + w - 24;
+        const bool on = i == key_row;
+        float lx = x + 28;
+        if (it->button >= 0)
+            lx += draw_button(it->button, lx, ry) + 20;
+        text_draw_fit(lx, ry + 21, 28, on ? FONT_BOLD : FONT_REGULAR, on ? TH_TEXT : TH_TEXT_SOFT, ALIGN_LEFT,
+                      w * 0.5f, tr(it->label));
+        if (it->kind == K_ACTION)
+        {
+            icon_draw(ICON_CHEVRON_RIGHT, right - 34, ry + 20, 32, on ? TH_FOCUS : TH_TEXT_DIM);
+            continue;
+        }
+        char text[96];
+        const int it_pad = key_pad(it);
+        const char *value = key_text(it, text, sizeof(text));
+        if (it_pad < 0)
+            text_draw_fit(right, ry + 23, 24, FONT_REGULAR, TH_TEXT_DIM, ALIGN_RIGHT, w * 0.45f, value);
+        else
+            draw_choice(right, ry + 12, 48, 24, on ? TH_PILL : TH_PILL_A(0x90),
+                        on || page_keys[it_pad] ? TH_TEXT : TH_TEXT_SOFT, value);
+    }
+    /* the chosen row's explanation, and the page's */
+    const float hy = list_y + visible * row_h + 40;
+    text_draw_fit(x, hy, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT, w, r->kind == K_KEY ? key_help(r) : tr(r->help));
+    const char *page = key_game_runs() ? tr("A change applies at once, and Dulcamara keeps this game's keys for it.")
+                                       : tr("Dulcamara keeps this game's keys for it, and the game has them when it "
+                                            "starts.");
+    text_draw_fit(x, hy + 40, 24, FONT_REGULAR, TH_HINT, ALIGN_LEFT, w, page);
+    static const int glyphs[] = {GLYPH_CROSS, GLYPH_CIRCLE}, jumps[] = {GLYPH_L1, GLYPH_R1};
+    static const char *const labels[] = {"Change", "Back"};
+    app_draw_hints(glyphs, labels, 2, NULL);
+    const char *jump_label = "Keys, letters, digits, F keys";
+    draw_hint_combo(plat_width() - TH_MARGIN - hint_combo_width(jumps, 2, jump_label, 26), TH_HINT_Y, jumps, 2, '/',
+                    jump_label, 26, TH_HINT);
+}
+
+/* ---------------------------------------------------------------- Sounds for this game */
+
+/* Sounds for this game, from a Ren'Py game's menu (Dulcamara's) or for any of the library's Ren'Py games from
+ * Settings > Ren'Py: each of the game's sounds, on or off. The game's core lists them once a run, from its archives and
+ * its folder, and plays a second of silence for each one the game's off list has (config.h), which it reads again
+ * within a second of a change: Cross switches a sound and writes the list at once, and the game itself is never
+ * changed. A visual novel has thousands (its voices): the page draws the rows it shows and no more, sliding them as it
+ * scrolls inside its card, and L1 and R1 move a page, Left and Right a folder. */
+static SoundList sound_list;      /* the page's game's sounds, from its files */
+static bool sounds_listed;        /* the game has a list: it has been started since it came */
+static int sound_row, sound_top, sound_offs, sound_game = -1;
+/* how far the rows are still to slide, in rows, eased toward 0 (anim_approach stops within 0.2 % of where it goes: a
+ * place in a list of thousands would be reached at once); and where the highlight is */
+static float sound_slide, sound_bar_y = -1.0f;
+static enum Screen sound_back;    /* where Circle goes: the game's menu, or Settings */
+
+/* The characters of the names beyond Latin-1 (a Japanese game's), each once, into the font atlases: the same text
+ * again, as the page opens again, is wanted already. */
+static void want_sound_names(void)
+{
+    static uint8_t seen[0x10000 / 8];
+    char wanted[3 * 1024 + 1];
+    size_t used = 0;
+    memset(seen, 0, sizeof(seen));
+    for (int i = 0; i < sound_list.count; ++i)
+        for (const unsigned char *p = (const unsigned char *)sound_list.names[i]; *p;)
+        {
+            /* a character of two or three bytes, read when its bytes are all there; any other byte on its own */
+            int n = *p >= 0xC0 && *p < 0xE0 ? 2 : *p >= 0xE0 && *p < 0xF0 ? 3 : 1;
+            for (int k = 1; k < n; ++k)
+                if ((p[k] & 0xC0) != 0x80)
+                    n = 1;
+            const unsigned cp = n == 3   ? (p[0] & 0x0Fu) << 12 | (p[1] & 0x3Fu) << 6 | (p[2] & 0x3Fu)
+                                : n == 2 ? (p[0] & 0x1Fu) << 6 | (p[1] & 0x3Fu)
+                                         : 0;
+            if (cp > 0xFF && !(seen[cp >> 3] & (1u << (cp & 7))) && used + (size_t)n < sizeof(wanted))
+            {
+                seen[cp >> 3] |= (uint8_t)(1u << (cp & 7));
+                memcpy(wanted + used, p, (size_t)n);
+                used += (size_t)n;
+            }
+            p += n;
+        }
+    wanted[used] = '\0';
+    if (used)
+        text_want(wanted);
+}
+
+void sounds_open(int index, enum Screen back_to)
+{
+    sound_game = index;
+    sound_back = back_to;
+    sounds_listed = app_load_sounds(index, &sound_list);
+    sound_offs = 0;
+    for (int i = 0; i < sound_list.count; ++i)
+        sound_offs += sound_list.off[i];
+    want_sound_names();
+    app.screen = SCREEN_SOUNDS;
+    sound_row = sound_top = 0;
+    sound_slide = 0.0f;
+    sound_bar_y = -1.0f;
+}
+
+/* Two sounds in the same folder: their names alike up to their last '/'. */
+static bool same_folder(int a, int b)
+{
+    const char *x = sound_list.names[a], *y = sound_list.names[b], *sx = strrchr(x, '/'), *sy = strrchr(y, '/');
+    const size_t nx = sx ? (size_t)(sx - x) : 0, ny = sy ? (size_t)(sy - y) : 0;
+    return nx == ny && !memcmp(x, y, nx);
+}
+
+/* Right: the first sound after this folder's (the last when this is the last folder). Left: this folder's first, or
+ * the folder before's first when the row is that already. */
+static int folder_step(int from, int step)
+{
+    int to = from;
+    if (step > 0)
+    {
+        while (to < sound_list.count && same_folder(to, from))
+            ++to;
+        return to < sound_list.count ? to : sound_list.count - 1;
+    }
+    if (to > 0 && !same_folder(to - 1, from))
+        from = --to;
+    while (to > 0 && same_folder(to - 1, from))
+        --to;
+    return to;
+}
+
+void sounds_screen(uint32_t pressed)
+{
+    const int visible = 8, count = sound_list.count;
+    if (pressed & BIT(BTN_CIRCLE))
+    {
+        config_free_sounds(&sound_list);
+        sfx_play(SFX_BACK);
+        app.screen = sound_back;
+        if (sound_back == SCREEN_SETTINGS)
+            settings_screen(0);
+        else if (sound_back == SCREEN_DETAILS)
+            panels_screen(0); /* drawn now, as it was */
+        else
+            app_draw_game(105);
+        return;
+    }
+    if (count)
+    {
+        int to = sound_row;
+        if (pressed & (BIT(BTN_UP) | BIT(BTN_DOWN)))
+            to += pressed & BIT(BTN_UP) ? -1 : 1;
+        else if (pressed & (BIT(BTN_L1) | BIT(BTN_R1)))
+            to += pressed & BIT(BTN_L1) ? -visible : visible;
+        else if (pressed & (BIT(BTN_LEFT) | BIT(BTN_RIGHT)))
+            to = folder_step(sound_row, pressed & BIT(BTN_LEFT) ? -1 : 1);
+        to = to < 0 ? 0 : to >= count ? count - 1 : to;
+        if (to != sound_row)
+        {
+            sound_row = to;
+            sfx_play(SFX_CLICK);
+        }
+        if (pressed & BIT(BTN_CROSS))
+        {
+            sound_list.off[sound_row] = !sound_list.off[sound_row];
+            sound_offs += sound_list.off[sound_row] ? 1 : -1;
+            if (!app_save_sounds(sound_game, &sound_list))
+            {
+                sound_offs -= sound_list.off[sound_row] ? 1 : -1;
+                sound_list.off[sound_row] = !sound_list.off[sound_row];
+            }
+            sfx_play(SFX_CLICK);
+        }
+    }
+
+    /* behind it: the running game, darkened, as under Settings, or the library's backdrop */
+    if (app.game >= 0)
+    {
+        app_draw_game(110);
+        draw_rect(0, 0, (float)plat_width(), (float)plat_height(), 0x60000000u);
+    }
+    else
+        shelf_backdrop();
+    const float x = TH_MARGIN + 40, w = plat_width() - 2 * (TH_MARGIN + 40);
+    draw_rrect(TH_MARGIN + 6, 60, 10, 34, 5, TH_FOCUS);
+    text_draw(TH_MARGIN + 32, 54, 40, FONT_BOLD, TH_TEXT, ALIGN_LEFT, tr("Sounds for this game"));
+    /* the game, where Settings has its tabs, and how many of its sounds are off */
+    const Game *g = sound_game >= 0 && sound_game < app.library.count ? &app.library.games[sound_game] : NULL;
+    char tally[64] = "";
+    if (count == 1)
+        str_copy(tally, sizeof(tally), sound_offs ? tr("1 sound, 1 off") : tr("1 sound"));
+    else if (count && sound_offs)
+        snprintf(tally, sizeof(tally), tr("%d sounds, %d off"), count, sound_offs);
+    else if (count)
+        snprintf(tally, sizeof(tally), tr("%d sounds"), count);
+    const float tally_w = tally[0] ? text_width(26, FONT_REGULAR, tally) + 40 : 0;
+    icon_draw(ICON_VOLUME, x, 148, 36, TH_FOCUS);
+    text_draw_fit(x + 52, 150, 30, FONT_BOLD, TH_TEXT_SOFT, ALIGN_LEFT, w - 52 - tally_w, g ? g->title : "");
+    if (tally[0])
+        text_draw(x + w, 154, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_RIGHT, tally);
+
+    const float list_y = 236, row_h = 78, hy = list_y + visible * row_h + 40;
+    draw_rrect(x - 20, list_y - 16, w + 40, visible * row_h + 32, TH_RADIUS, TH_CARD_A(0xe6));
+    if (!count)
+    {
+        /* none to show: the game has not been started since it came, or it has no sounds */
+        text_draw(x + w * 0.5f, list_y + 3 * row_h, 30, FONT_BOLD, TH_TEXT_SOFT, ALIGN_CENTER,
+                  sounds_listed ? tr("The game has no sounds of its own.")
+                                : tr("Start the game once to see its sounds."));
+        if (!sounds_listed)
+            text_draw(x + w * 0.5f, list_y + 3 * row_h + 52, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_CENTER,
+                      tr("As it starts, Dulcamara lists them here, from its archives and its folder."));
+        static const int glyphs[] = {GLYPH_CIRCLE};
+        static const char *const labels[] = {"Back"};
+        app_draw_hints(glyphs, labels, 1, NULL);
+        return;
+    }
+
+    /* the rows slide to where the list is, a row behind it at most (held, Up and Down go 25 rows a second) */
+    const int top = list_top_row(sound_top, sound_row, visible, count);
+    sound_slide += (float)(top - sound_top);
+    sound_top = top;
+    sound_slide = sound_slide > 1 ? 1 : sound_slide < -1 ? -1 : sound_slide;
+    anim_approach(&sound_slide, 0.0f, app.dt, TH_SNAP);
+    const float sound_scroll = (float)sound_top - sound_slide; /* the first row shown, and how much of it */
+    if (count > visible)
+    {
+        const float track = visible * row_h - 8, thumb = track * visible / count > 24 ? track * visible / count : 24;
+        draw_rrect(x + w + 8, list_y, 4, track, 2, TH_DIVIDER);
+        draw_rrect(x + w + 8, list_y + (track - thumb) * sound_scroll / (count - visible), 4, thumb, 2, TH_TEXT_DIM);
+    }
+    const float target = list_y + (sound_row - sound_top) * row_h;
+    if (sound_bar_y < 0)
+        sound_bar_y = target;
+    anim_approach(&sound_bar_y, target, app.dt, TH_SNAP);
+    draw_rrect(x, sound_bar_y, w, row_h - 8, TH_RADIUS_SMALL, TH_ROW_SELECTED);
+    draw_rect(x, sound_bar_y + 16, 5, row_h - 40, TH_FOCUS);
+    /* the rows shown, and the parts of the two at the ends that have slid into the card, cut at its edges */
+    plat_set_clip((int)(x - 20), (int)(list_y - 16), (int)(w + 40), (int)(visible * row_h + 32));
+    for (int i = sound_scroll > 0 ? (int)sound_scroll : 0; i < count && i - sound_scroll < visible; ++i)
+    {
+        const float ry = list_y + (i - sound_scroll) * row_h, right = x + w - 24;
+        const bool on = i == sound_row, off = sound_list.off[i];
+        text_draw_fit(x + 28, ry + 21, 28, on ? FONT_BOLD : FONT_REGULAR,
+                      on ? TH_TEXT : off ? TH_TEXT_DIM : TH_TEXT_SOFT, ALIGN_LEFT, w - 200, sound_list.names[i]);
+        /* On or Off, in a pill the same width for both */
+        const float pw = 112, px = right - pw;
+        draw_rrect(px, ry + 12, pw, 48, 24, off ? argb_alpha(TH_DANGER, 0.45f) : on ? TH_PILL : TH_PILL_A(0x90));
+        text_draw(px + pw * 0.5f, ry + 12 + (48 - 24 * 1.2f) * 0.5f, 24, FONT_REGULAR,
+                  on || off ? TH_TEXT : TH_TEXT_SOFT, ALIGN_CENTER, off ? tr("Off") : tr("On"));
+    }
+    plat_set_clip(0, 0, 0, 0);
+    /* the chosen row's explanation, and the page's */
+    const char *help = sound_list.off[sound_row]
+                           ? tr("Off: the game plays a second of silence in its place. Cross turns it back on.")
+                           : tr("Cross switches it off: the game then plays nothing for it, and its files stay as "
+                                "they are.");
+    text_draw_fit(x, hy, 26, FONT_REGULAR, TH_TEXT_DIM, ALIGN_LEFT, w, help);
+    const char *page = sound_game == app.game
+                           ? tr("A change applies the next time the game plays the sound, and Dulcamara keeps it.")
+                           : tr("Dulcamara keeps this game's sounds for it, and the game has them when it starts.");
+    text_draw_fit(x, hy + 40, 24, FONT_REGULAR, TH_HINT, ALIGN_LEFT, w, page);
+    static const int glyphs[] = {GLYPH_CROSS, GLYPH_CIRCLE}, pages[] = {GLYPH_L1, GLYPH_R1},
+                     folders[] = {GLYPH_LEFT, GLYPH_RIGHT};
+    static const char *const labels[] = {"Switch", "Back"};
+    app_draw_hints(glyphs, labels, 2, NULL);
+    const char *page_label = tr("A page"), *folder_label = tr("A folder");
+    float hx = plat_width() - TH_MARGIN - hint_combo_width(folders, 2, folder_label, 26);
+    draw_hint_combo(hx, TH_HINT_Y, folders, 2, '/', folder_label, 26, TH_HINT);
+    hx -= hint_combo_width(pages, 2, page_label, 26) + 40;
+    draw_hint_combo(hx, TH_HINT_Y, pages, 2, '/', page_label, 26, TH_HINT);
 }

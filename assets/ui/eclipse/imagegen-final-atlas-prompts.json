@@ -1,0 +1,10 @@
+[
+  {
+    "key": "icon-atlas-opaque",
+    "prompt": "Create a precise production sprite sheet for a real dark UI. OPAQUE perfectly uniform pure black #000000 background across the whole square canvas. Exactly sixteen crisp flat white and crimson (#ef3f4b) icons on an exact 4 by 4 grid of equal invisible square cells. Each icon centered, with very generous black margins and fully separate from all others. Reading order row1: magnifier, heart outline, clock, filter sliders. Row2: gear, monitor showing a picture, speaker, game controller. Row3: folder outline, backup archive box, curved restore arrow, play triangle. Row4: information i inside circle, warning triangle, trash bin, download arrow into tray. Minimal clean vector-like pictograms with consistent medium solid strokes. White main shapes and small red details. NO glow, NO transparency, NO haze, NO texture, NO speckles, NO shadows, NO bevels, NO gradients, NO 3D. The black background is absolutely clean and uniform. No captions, labels, cell borders, extra decorations or watermark. All 16 symbols must be legible at 32px."
+  },
+  {
+    "key": "controller-atlas-opaque",
+    "prompt": "Create a precise production controller-glyph sprite sheet, landscape 4:3 canvas. OPAQUE perfectly uniform pure black #000000 background. Exactly twelve flat crisp white/crimson symbols centered in an exact grid of 4 columns and 3 rows, equal square cells and generous equal black spacing. Reading order row1: Cross X, Circle outline, Square outline, Triangle outline. Row2: exact text L1, L2, R1, R2 in simple bold sans-serif. Row3: Options three horizontal lines, Touchpad a wide rectangle with two tiny dots, four-way D-pad arrows, curved Back arrow pointing left. Each sprite sits within a thin solid dark-crimson circular rim; primary symbol is flat white with a small solid crimson accent. NO glow, NO shadows, NO bevels, NO texture, NO haze, NO speckles, NO transparency, NO perspective or 3D. Background must be absolutely clean uniform pure black. No labels outside the sprites, no other text, no grid lines, no watermark. Readable at 32px."
+  }
+]

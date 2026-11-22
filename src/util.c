@@ -29,6 +29,25 @@ void np_log_open(const char *path)
     log_file = fopen(path, "w");
 }
 
+/* An insider build's download address (insider.h) is <service>/v1/download/<token>, and whoever holds the token can
+ * download the build while it lasts: net.c's lines name the address they fetch, so the token never reaches the log. */
+static void hide_download_tokens(char *line)
+{
+    static const char path[] = "/v1/download/";
+    for (char *at = strstr(line, path); at; at = strstr(at, path))
+    {
+        at += sizeof(path) - 1;
+        const size_t token = strspn(at, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~%");
+        if (token >= 3)
+        {
+            memmove(at + 3, at + token, strlen(at + token) + 1); /* "..." in its place: never longer than it */
+            memcpy(at, "...", 3);
+        }
+        else
+            memset(at, '.', token);
+    }
+}
+
 void np_log(const char *fmt, ...)
 {
     char line[1024];
@@ -36,6 +55,7 @@ void np_log(const char *fmt, ...)
     va_start(args, fmt);
     vsnprintf(line, sizeof(line), fmt, args);
     va_end(args);
+    hide_download_tokens(line);
 
     size_t len = strlen(line);
     const char *nl = (len > 0 && line[len - 1] == '\n') ? "" : "\n";
@@ -65,6 +85,17 @@ void path_join(char *dst, size_t size, const char *a, const char *b)
         snprintf(dst, size, "%s%s", a, b);
     else
         snprintf(dst, size, "%s/%s", a, b);
+}
+
+bool game_id_valid(const char *id)
+{
+    if (!id || !*id || strlen(id) >= 24)
+        return false;
+    for (const unsigned char *p = (const unsigned char *)id; *p; ++p)
+        if (!((*p >= '0' && *p <= '9') || (*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+              *p == '_' || *p == '-'))
+            return false;
+    return true;
 }
 
 bool path_exists(const char *path)

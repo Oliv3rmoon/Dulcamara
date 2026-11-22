@@ -327,8 +327,8 @@ class CommunityTest(unittest.TestCase):
         self.assertIn('tr("Scan to join %s on Discord"), COMMUNITY_NAME', card)
         self.assertIn("ALIGN_CENTER, COMMUNITY_LINK);", card)
         self.assertRegex(screen, r"if \(community_open\)\n\s+draw_community\(\);\n\}")
-        # all of About on one page: nothing on it can be scrolled to
-        self.assertIn("const int visible = t->rows == ABOUT ? t->count : 8;", screen)
+        # all of About on one page: nothing on it can be scrolled to (and the Ren'Py tab's, since 0.2.10)
+        self.assertRegex(screen, r"const int visible = t->rows == ABOUT( \|\| t->rows == RENPY_ROWS)? \? t->count : 8;")
         # the QR code is made by qr_encode, as community_check.c makes it, and compiled in
         draw = re.search(r"static void draw_url_qr\(.*?\n\}", screen, re.S).group(0)
         self.assertIn("qr_encode(text, qr, temp)", draw)
