@@ -519,13 +519,15 @@ const char *plat_sandbox_probe(void)
 bool plat_prepare_storage(char *root, size_t capacity, char *error, size_t size)
 {
 #if defined(__PROSPERO__)
-    if (storage_portable_root(root, capacity, drive_paths + DRIVE_EXT_COUNT, DRIVE_USB_COUNT) < 0)
+    int portable = storage_portable_root(root, capacity, drive_paths + DRIVE_EXT_COUNT, DRIVE_USB_COUNT);
+    const char *app_root = portable ? NULL : "/download0/dulcamara";
+    if (portable < 0)
     {
         str_copy(error, size, "Several USB libraries are marked. Connect just the one you want to use.");
         return false;
     }
 #else
-    (void)capacity;
+    const char *app_root = SDL_getenv("NP_APP_STORAGE");
     const char *sandboxed = SDL_getenv("NP_SANDBOXED");
     if (sandboxed && *sandboxed)
     {
@@ -535,7 +537,7 @@ bool plat_prepare_storage(char *root, size_t capacity, char *error, size_t size)
     if (!path_is_dir(root))
         make_dirs(root);
 #endif
-    if (!storage_check_library(root, error, size))
+    if (!storage_select_root(root, capacity, app_root, error, size))
         return false;
     str_copy(sandbox_probe, sizeof(sandbox_probe), "the games folder is readable and its data root is writable");
     return true;

@@ -46,6 +46,7 @@ enum Action
     A_NONE,
     A_DEFAULT_BUTTONS,
     A_RESCAN,
+    A_LIBRARY_PATH,
     A_CHECK_UPDATE,
     A_CLOSE_APP,
     A_COMMUNITY,    /* nightly's card: its QR code (community.h) */
@@ -256,6 +257,7 @@ static const Row ABOUT[] = {
      0, NULL, 0, NULL, A_NONE, -1},
     {"Games go in the selected library’s games folder. For a USB library, create dulcamara/portable.txt on one drive.",
      NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"Active games folder", NULL, K_INFO, 0, NULL, 0, NULL, A_LIBRARY_PATH, -1},
     {"The library has rtp/2000 and rtp/2003. RPG Maker saves stay in each game’s folder. Ren’Py saves use saves/renpy.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
     {"Licences and credits: the licenses folder of the app, and THIRD_PARTY_NOTICES.md on GitHub.", NULL, K_INFO, 0,
      NULL, 0, NULL, A_NONE, -1},
@@ -459,7 +461,7 @@ static void run_action(int action)
         break;
     case A_RESCAN:
         app_rescan();
-        if (app.scan_status.state != LIBRARY_SCAN_ERROR)
+        if (!app.sandboxed && app.scan_status.state != LIBRARY_SCAN_ERROR)
             app_toast("Looking for games...");
         break;
     case A_CHECK_UPDATE:
@@ -759,7 +761,7 @@ void settings_screen(uint32_t pressed)
         const bool on = i == row && selectable(it);
         if (it->kind == K_INFO)
         {
-            const char *info = tr(it->label);
+            const char *info = it->action == A_LIBRARY_PATH ? app.paths.games : tr(it->label);
             if (text_width(26, FONT_REGULAR, info) > w - 56)
             {
                 char first[1024];

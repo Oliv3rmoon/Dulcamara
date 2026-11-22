@@ -313,6 +313,15 @@ bool app_rebuild_library_view(void)
 
 void app_rescan(void)
 {
+    if (app.sandboxed)
+    {
+        app_retry_storage();
+        return;
+    }
+    SavesStatus recovery;
+    saves_poll(&recovery);
+    if (recovery.operation == SAVES_RECOVER && recovery.state == SAVES_ERROR && !host_owns_runtime())
+        saves_init(app.paths.root);
     if (!app.scanner) app.scanner = library_scanner_create();
     char cache[NP_PATH_MAX]; path_join(cache, sizeof(cache), app.paths.cache, "library-index.bin");
     if (!library_scanner_request(app.scanner, app.paths.games, cache)) {
@@ -375,41 +384,7 @@ static void restart_file(char *out, size_t size)
 #if defined(__PROSPERO__)
 extern int sceSystemServiceLoadExec(const char *path, const char **arguments);
 
-/* Starts the app again. The console's shell may refuse to start a title from itself: then the app closes, as its own
- * exit does. Does not return. */
-static void start_again(void)
-{
-    /* In storage-error mode no recovery or game can start. Square can reopen the app to retry. */
-    if (saves_busy() || (!app.sandboxed && !maintenance_restart_ready()))
-    {
-        app_message_box("Wait for save recovery or maintenance to finish before restarting.");
-        return;
-    }
-    if (host_owns_runtime())
-    {
-        app_message_box("The game has not safely stopped. Close it before restarting.");
-        return;
-    }
-    char eboot[NP_PATH_MAX];
-    plat_asset_path(eboot, sizeof(eboot), "../eboot.bin");
-    app_save_settings();
-    eclipse_shutdown();
-    icons_shutdown();
-    text_shutdown();
-    plat_release();
-    fflush(NULL);
-    int rc = sceSystemServiceLoadExec(eboot, NULL);
-    np_log("app: LoadExec %s refused rc=0x%x; closing, open Dulcamara again", eboot, (unsigned)rc);
-    fflush(NULL);
-    for (;;)
-    {
-        rc = sceSystemServiceLoadExec("exit", NULL);
-        plat_sleep_us(1000000);
-    }
-}
-
-/* Starts the app again for g, which opens at the next start (also when the shell refuses and the app closes). Does not
- * return. */
+/* LoadExec replaces the process on success. Keep the UI alive if the console declines. */
 static void restart_for(const Game *g)
 {
     char file[NP_PATH_MAX];
@@ -419,25 +394,26 @@ static void restart_for(const Game *g)
         app_message_box("The previous game has not safely stopped.");
         return;
     }
+    if (saves_busy() || !maintenance_restart_ready())
+    {
+        app_message_box("Wait for save protection to finish before restarting.");
+        return;
+    }
     if (!restart_write(file, g->id))
     {
         app_message_box("Could not record the restart.");
         return;
     }
     np_log("game: starting again for %s", g->title);
-    start_again();
+    char eboot[NP_PATH_MAX];
+    plat_asset_path(eboot, sizeof(eboot), "../eboot.bin");
+    app_save_settings();
+    fflush(NULL);
+    int rc = sceSystemServiceLoadExec(eboot, NULL);
+    np_log("game: relaunch returned 0x%x for %s", (unsigned)rc, g->title);
+    app_message_box("Close and reopen Dulcamara to start the selected Ren'Py game.");
 }
 #endif
-
-void app_unlock_again(void)
-{
-    np_log("storage: restarting to check the application data folder (%s)", app.sandbox_reason);
-#if defined(__PROSPERO__)
-    start_again();
-#else
-    app_rescan();
-#endif
-}
 
 /* A Ren'Py game's keys (Keys for this game, from its menu or Settings > Ren'Py: ui/settings.c): keys/<its id>.txt in
  * the data folder. */
@@ -586,6 +562,11 @@ static void start_game_now(int index)
         app_message_box("The previous game has not safely stopped.");
         return;
     }
+    if (app.sandboxed)
+    {
+        app_message_box(app.storage_error);
+        return;
+    }
     if (!maintenance_ready() || saves_busy())
     {
         app_message_box("Wait for save recovery or maintenance to finish before playing.");
@@ -602,7 +583,10 @@ static void start_game_now(int index)
     }
 #if defined(__PROSPERO__)
     if (core_is_renpy(g->core) && app.renpy_ran)
-        restart_for(g); /* either Ren'Py's: each brings its own SDL and OpenGL driver, set up once in a process */
+    {
+        restart_for(g);
+        return; /* never re-enter either Ren'Py runtime in the same process */
+    }
 #endif
     if (!maintenance_launch())
     {
@@ -687,8 +671,9 @@ static void runtime_tick(void)
         reported_recovery != saved.serial)
     {
         reported_recovery = saved.serial;
-        app_message_box(
-            "Recovery is incomplete. Game launches remain locked. Close and reopen Dulcamara to retry.");
+        char reason[560];
+        snprintf(reason, sizeof(reason), NP_TITLE " " NP_VERSION "\n%s\nPress Square in the library to retry recovery.", saved.result.error);
+        app_message_box(reason);
         np_log("saves: %s", saved.result.error);
     }
     /* a finished recovery that left some game's backups as found names them; launches stay unlocked */
@@ -1085,19 +1070,13 @@ static void make_folders(void)
         make_dirs(dirs[i]);
 }
 
-int main(int argc, char **argv)
+static void select_storage(void)
 {
-#if defined(NP_PREVIEW)
-    uint64_t startup_wall = SDL_GetPerformanceCounter();
-#endif
-    (void)argc;
-    (void)argv;
     char root[NP_PATH_MAX];
     plat_default_root(root, sizeof(root));
     app.sandboxed = !plat_prepare_storage(root, sizeof(root), app.sandbox_reason, sizeof(app.sandbox_reason));
     config_paths(&app.paths, root);
-    if (app.sandboxed)
-        str_copy(app.storage_error, sizeof(app.storage_error), app.sandbox_reason);
+    str_copy(app.storage_error, sizeof(app.storage_error), app.sandboxed ? app.sandbox_reason : "");
     /* The folders, the log and the crash report come first, before the screen, the font and the startup recovery:
      * candidate ecl200-n5 stopped at launch on the console and left nothing at all, so each step now says it has
      * begun, and a crash in any of them is written down. */
@@ -1108,9 +1087,63 @@ int main(int argc, char **argv)
     if (!app.sandboxed)
         np_log_open(log_path);
     np_log(NP_TITLE " %s starting, data folder %s", NP_VERSION, app.paths.root);
-    np_log(app.sandboxed ? "storage: sandboxed (%s)" : "storage: unlocked%s", app.sandboxed ? app.sandbox_reason : "");
+    np_log("storage: %s. %s", app.sandboxed ? "unavailable" : app.paths.root, app.sandbox_reason);
     if (!app.sandboxed)
         ps5_crash_install(log_path);
+}
+
+static void start_recovery(void)
+{
+    maintenance_recovery_begin(MAINT_RECOVER_SAVES | MAINT_RECOVER_UPDATE);
+    saves_set_update_recovery(update_recover_startup, NULL);
+    const bool update_ready = update_init(NULL);
+    ps5_crash_step("startup: save recovery start");
+    const bool saves_ready = !app.sandboxed && saves_init(app.paths.root);
+    np_log("startup: update recovery %s, save recovery %s", update_ready ? "set up" : "has no usable app folder path",
+           saves_ready ? "started" : "could not start");
+    if (!saves_ready && !app.sandboxed)
+        app_message_box("Save recovery could not start. Game launches remain locked.");
+}
+
+static void storage_notice(void)
+{
+    char message[600];
+    if (!app.sandbox_reason[0])
+        return;
+    if (app.sandboxed)
+        snprintf(message, sizeof(message), NP_TITLE " " NP_VERSION "\n%s\nCheck the drive, then press Square to retry storage.", app.storage_error);
+    else
+        snprintf(message, sizeof(message), NP_TITLE " " NP_VERSION "\n%s\nUsing a separate library in %s. Your original games and saves stay in their folder. Use a marked USB library for larger games.", app.sandbox_reason, app.paths.root);
+    app_message_box(message);
+}
+
+void app_retry_storage(void)
+{
+    if (!app.sandboxed || host_owns_runtime() || saves_busy())
+        return;
+    select_storage();
+    if (!app.sandboxed)
+    {
+        config_defaults(&app.settings);
+        config_load(&app.settings, app.paths.config);
+        user_metadata_load(&app.metadata, app.paths.metadata);
+        app_apply_settings();
+        start_recovery();
+        links_cleanup(app.paths.games);
+        app_rescan();
+        app_toast("Storage available. Looking for games.");
+    }
+    storage_notice();
+}
+
+int main(int argc, char **argv)
+{
+#if defined(NP_PREVIEW)
+    uint64_t startup_wall = SDL_GetPerformanceCounter();
+#endif
+    (void)argc;
+    (void)argv;
+    select_storage();
     ps5_crash_step("startup: screen");
     np_log("startup: screen");
     setenv("PS5_VIDEOOUT_PARAM_JSON", "/nonexistent", 1);
@@ -1137,15 +1170,7 @@ int main(int argc, char **argv)
     ps5_klog_capture_stderr(""); /* nc <PS5 IP> 3232 shows the log live */
 #endif
     ps5_crash_step("startup: update recovery setup");
-    maintenance_recovery_begin(MAINT_RECOVER_SAVES | MAINT_RECOVER_UPDATE);
-    saves_set_update_recovery(update_recover_startup, NULL);
-    const bool update_ready = update_init(NULL);
-    ps5_crash_step("startup: save recovery start");
-    const bool saves_ready = !app.sandboxed && saves_init(app.paths.root);
-    np_log("startup: update recovery %s, save recovery %s", update_ready ? "set up" : "has no usable app folder path",
-           saves_ready ? "started" : "could not start");
-    if (!saves_ready && !app.sandboxed)
-        app_message_box("Save recovery could not start. Game launches remain locked.");
+    start_recovery();
     ps5_crash_step("startup");
     np_log("screen: %s", plat_screen_info());
     for (int i = 0; i < CORE_COUNT; ++i)
@@ -1174,8 +1199,7 @@ int main(int argc, char **argv)
     if (!app.storage_error[0])
         app_rescan();
     shelf_open();
-    if (app.storage_error[0])
-        app_message_box(app.storage_error);
+    storage_notice();
 
     bool quit = false;
     PadState pads[NP_MAX_PADS];

@@ -2,7 +2,7 @@
 # Dulcamara - the release identity: one source (src/nightshade.h) for the version, codename and display title, and
 # the PS5 package metadata (sce_sys/param.json) derived from it and checked against it.
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Eclipse is 2.1.1: display name "Dulcamara Eclipse", PS5 contentVersion 02.001.001. The canonical name, title ID,
+"""Eclipse is 2.1.2: display name "Dulcamara Eclipse", PS5 contentVersion 02.001.002. The canonical name, title ID,
 archive name and data folder do not change. Every 2.x keeps the Eclipse codename. The private test-build identifier
 is separate metadata (tools/gen-watermark.py), never part of the numeric version."""
 
@@ -23,10 +23,10 @@ import release_metadata  # noqa: E402
 class ReleaseIdentityTest(unittest.TestCase):
     def test_eclipse_identity_comes_from_the_shared_metadata(self):
         meta = release_metadata.read(ROOT)
-        self.assertEqual(meta.version, "2.1.1")
+        self.assertEqual(meta.version, "2.1.2")
         self.assertEqual(meta.codename, "Eclipse")
         self.assertEqual(meta.display_title, "Dulcamara Eclipse")
-        self.assertEqual(meta.content_version, "02.001.001")
+        self.assertEqual(meta.content_version, "02.001.002")
 
     def test_canonical_paths_and_title_id_are_unchanged(self):
         meta = release_metadata.read(ROOT)
@@ -57,7 +57,7 @@ class ReleaseIdentityTest(unittest.TestCase):
             release_metadata.sync_param(param, meta)
             release_metadata.check_param(param, meta)
             synced = json.loads(param.read_text(encoding="utf-8"))
-            self.assertEqual(synced["contentVersion"], "02.001.001")
+            self.assertEqual(synced["contentVersion"], "02.001.002")
             self.assertEqual(synced["localizedParameters"]["en-US"]["titleName"], "Dulcamara Eclipse")
             self.assertEqual(synced["titleId"], "PPSA99010")
 

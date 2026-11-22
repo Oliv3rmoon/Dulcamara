@@ -142,6 +142,7 @@ static void initialize(void)
 {
     created = loads = fonts = allocations = draws = 0;
     eclipse_init();
+    assert(!eclipse_glyph(GLYPH_START, 0, 0, 24, 1)); /* use the measured OPTIONS label */
     assert(created == 10 && loads == 9 && fonts == 10);
 }
 int main(void)

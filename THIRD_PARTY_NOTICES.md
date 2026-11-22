@@ -237,7 +237,7 @@ The frontend is Mandrake's (formerly Nightshade Station), which is [darkxex's Sw
 | Component | Use | License |
 | --- | --- | --- |
 | [stb_image, stb_truetype](https://github.com/nothings/stb) | title picture decoding, font rendering (`third_party/stb`) | Public domain / MIT |
-| [Inter](https://github.com/rsms/inter) | interface font (`assets/fonts`) | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |
+| [Inter](https://github.com/rsms/inter) | interface font (`assets/fonts`), also embedded for recovery | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |
 | [SDL2](https://www.libsdl.org/) (PacBrew port) | events, controllers, audio, software renderer | zlib |
 | [dlmalloc](https://gee.cs.oswego.edu/dl/html/malloc.html) 2.8.6 by Doug Lea | allocator for the direct-memory heap (`third_party/dlmalloc`) | Public domain (CC0) |
 | [QR Code generator](https://www.nayuki.io/page/qr-code-generator-library) by Project Nayuki | the QR code of nightly's invitation on Settings > About (`third_party/qrcodegen`, Mandrake's copy, unmodified; compiled in by `src/vendor.c`) | MIT (`third_party/qrcodegen/LICENSE.txt`) |

@@ -1233,13 +1233,19 @@ bool save_recover(const char *root, const MtObserver *o, char *e, size_t es)
         return error(e, es, "Invalid maintenance root");
     if (!maintenance_acquire(MAINT_RECOVERY))
         return error(e, es, "Runtime or maintenance busy");
+    if (e && es)
+        e[0] = 0;
     char base[MT_PATH_MAX];
-    bool ok = mt_path(base, root, "save-transactions") && mt_mkdirs(base);
+    bool ok = mt_path(base, root, "save-transactions");
     DIR *d = ok ? opendir(base) : NULL;
-    if (!d)
+    /* A fresh library has no restore journal. Its first restore creates the directory. */
+    if (ok && !d && errno != ENOENT)
+    {
+        if (e && es) snprintf(e, es, "Cannot open %.160s (%s)", base, strerror(errno));
         ok = false;
+    }
     struct dirent *entry;
-    while (ok && (entry = next_entry(d, &ok)))
+    while (ok && d && (entry = next_entry(d, &ok)))
     {
         if (entry->d_name[0] == '.')
             continue;
@@ -1263,7 +1269,9 @@ bool save_recover(const char *root, const MtObserver *o, char *e, size_t es)
     maintenance_release(MAINT_RECOVERY, restart);
     if (ok && note[0] && e && es)
         snprintf(e, es, "%s (their cleanup records need attention; other games are unaffected)", note);
-    return ok ? true : error(e, es, "Recovery incomplete; launch remains locked");
+    if (!ok && e && es && !*e)
+        error(e, es, "Recovery incomplete; launch remains locked");
+    return ok;
 }
 
 static pthread_mutex_t service_lock = PTHREAD_MUTEX_INITIALIZER;

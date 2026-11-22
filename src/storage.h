@@ -17,6 +17,10 @@ int storage_portable_root(char *root, size_t size, const char *const *mounts, si
 /* Check or create the library and test read/write access using an exclusive temporary file. */
 bool storage_check_library(const char *root, char *error, size_t size);
 
+/* On a permission or read-only failure, try the app-owned library. On successful fallback,
+ * detail retains the primary path and its error for display. */
+bool storage_select_root(char *root, size_t capacity, const char *app_root, char *detail, size_t size);
+
 /* Creates an exclusive sibling temporary file. Parent directory must already exist. */
 bool storage_begin(StorageFile *write, const char *path);
 /* Checks stream errors, flush, supported fsync, close and rename. Always consumes write.

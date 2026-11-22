@@ -52,6 +52,44 @@ class PreviewTest(unittest.TestCase):
         reason=build_preview()
         if reason:raise unittest.SkipTest(reason)
 
+    def test_denied_library_and_missing_font_folder(self):
+        with tempfile.TemporaryDirectory() as td:
+            work = Path(td)
+            shared = work / "shared"
+            fallback = work / "title-library"
+            assets = work / "assets"
+            shared.mkdir()
+            assets.mkdir()
+            for asset in (ROOT / "assets").iterdir():
+                if asset.name != "fonts":
+                    (assets / asset.name).symlink_to(asset)
+            saved = shared / "old-slot"
+            saved.write_bytes(b"original save")
+            game = fallback / "games/Story/game"
+            game.mkdir(parents=True)
+            (game / "script.rpy").write_text("label start:\n    return\n")
+            (fallback / "settings.ini").write_text("update_check = 0\ncommunity_seen = 1\n")
+            shared.chmod(0)
+            try:
+                env = {"NP_ROOT": str(shared), "NP_APP_STORAGE": str(fallback),
+                       "NP_ASSETS": str(assets)}
+                steps = ["wait 80", "press cross", "assert games 1", "press start",
+                         "assert screen settings", "press circle", "assert screen library", "quit"]
+                code, log = run_preview(work, steps, env_extra=env)
+                self.assertEqual(code, 0, log)
+                self.assertNotIn("ASSERT FAIL", log)
+                self.assertIn("fonts: using built-in Inter", log)
+                self.assertIn("save recovery started", log)
+                env["NP_APP_STORAGE"] = ""
+                steps = ["wait 20", "press cross", "press square", "press cross",
+                         "press start", "assert screen settings", "quit"]
+                code, log = run_preview(work, steps, env_extra=env)
+                self.assertEqual(code, 0, log)
+                self.assertIn("ASSERT PASS screen expected=settings", log)
+            finally:
+                shared.chmod(0o700)
+            self.assertEqual(saved.read_bytes(), b"original save")
+
     def test_library_profile_search_filters(self):
         with tempfile.TemporaryDirectory(prefix='eclipse-ui-v4-') as td:
             root=Path(td);games=root/'games';games.mkdir()

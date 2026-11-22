@@ -114,11 +114,21 @@ static bool open_library_directory(const char *path, char *error, size_t size)
         dir = opendir(path);
     if (!dir)
     {
-        snprintf(error, size, "Cannot open %s (%s).", path, strerror(errno));
+        int cause = errno;
+        snprintf(error, size, "Cannot open %s (%s).", path, strerror(cause));
+        errno = cause;
         return false;
     }
-    closedir(dir);
-    return true;
+    errno = 0;
+    struct dirent *entry = readdir(dir);
+    int cause = entry ? 0 : errno;
+    if (closedir(dir) != 0 && !cause)
+        cause = errno;
+    if (!cause)
+        return true;
+    snprintf(error, size, "Cannot list %s (%s).", path, strerror(cause));
+    errno = cause;
+    return false;
 }
 
 bool storage_check_library(const char *root, char *error, size_t size)
@@ -131,13 +141,16 @@ bool storage_check_library(const char *root, char *error, size_t size)
     {
         if (errno != ENOENT || (mkdir(root, 0755) != 0 && errno != EEXIST))
         {
-            snprintf(error, size, "Cannot access %s (%s).", root, strerror(errno));
+            int cause = errno;
+            snprintf(error, size, "Cannot access %s (%s).", root, strerror(cause));
+            errno = cause;
             return false;
         }
     }
     else if (!S_ISDIR(st.st_mode))
     {
         snprintf(error, size, "%s is not a directory.", root);
+        errno = ENOTDIR;
         return false;
     }
     if (!open_library_directory(games, error, size))
@@ -146,9 +159,31 @@ bool storage_check_library(const char *root, char *error, size_t size)
     StorageFile file;
     if (!storage_begin(&file, probe))
     {
-        snprintf(error, size, "Cannot write to %s (%s).", root, strerror(errno));
+        int cause = errno;
+        snprintf(error, size, "Cannot write to %s (%s).", root, strerror(cause));
+        errno = cause;
         return false;
     }
     storage_abort(&file);
+    return true;
+}
+
+bool storage_select_root(char *root, size_t capacity, const char *app_root, char *detail, size_t size)
+{
+    detail[0] = 0;
+    if (storage_check_library(root, detail, size))
+        return true;
+    if (!app_root || !*app_root || strlen(app_root) >= capacity ||
+        (errno != EACCES && errno != EPERM && errno != EROFS))
+        return false;
+    char secondary[180];
+    if (!storage_check_library(app_root, secondary, sizeof(secondary)))
+    {
+        size_t used = strlen(detail);
+        if (used < size)
+            snprintf(detail + used, size - used, " %s", secondary);
+        return false;
+    }
+    str_copy(root, capacity, app_root);
     return true;
 }

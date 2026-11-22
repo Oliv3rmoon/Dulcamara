@@ -245,8 +245,7 @@ bool eclipse_glyph(int g, float cx, float cy, float size, float alpha)
         c = 7;
         break;
     case GLYPH_START:
-        c = 8;
-        break;
+        return false; /* draw_pad_glyph renders the full OPTIONS label at its measured width */
     case GLYPH_TOUCHPAD:
         c = 9;
         break;

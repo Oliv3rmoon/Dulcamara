@@ -576,18 +576,16 @@ static void draw_empty_card(void)
 {
     const float x = CG_X, y = CG_Y, w = CG_W, h = CG_H;
     draw_window(x, y, w, h, app.sandboxed ? "CAN'T SEE YOUR GAMES" : app.library.count ? "NO MATCHES" : "NO GAMES YET");
-    const char *empty[] = {"Copy each game's folder, the one that holds RPG_RT.ldb and RPG_RT.lmt",
-                           "(or a Ren'Py game's folder), into " NP_DATA "/games, over FTP for example.",
+    const char *empty[] = {"Copy each RPG Maker or Ren'Py game folder into", app.paths.games,
                            ".zip and .easyrpg archives of an RPG Maker game work as they are.",
-                           "Games that need the RPG Maker run-time package (RTP): put it in",
-                           NP_DATA "/rtp/2000 or rtp/2003.",
+                           "Put RPG Maker run-time assets in the 2000 or 2003 folder under",
+                           app.paths.rtp,
                            "No games come with Dulcamara: copy your own."};
     char reason[260];
     snprintf(reason, sizeof(reason), "Why: %s.", app.sandbox_reason[0] ? app.sandbox_reason : "not known");
-    const char *sandboxed[] = {"Dulcamara could not open its data folder at startup. Check",
-                               "the folder shown below.", reason,
+    const char *sandboxed[] = {"Dulcamara could not open its library.", app.paths.games, reason,
                                "USB library: place portable.txt in the drive’s dulcamara folder.",
-                               "Press {Square} to reopen Dulcamara after checking storage."};
+                               "Press {Square} to retry after checking storage."};
     const char *matches[] = {"No game matches the search and filters.", "{L2} edits the search.",
                              "{R2} changes or clears the filters."};
     const char *const *lines = app.sandboxed ? sandboxed : app.library.count ? matches : empty;
@@ -794,8 +792,8 @@ void story_screen(uint32_t pressed)
         draw_empty_card();
         choices = (Choices){NULL, 0, 0, NULL};
         if (app.sandboxed)
-            snprintf(text, sizeof(text), "Dulcamara couldn't open the games folder at startup. "
-                                         "Press {Square} to reopen Dulcamara after checking storage.");
+            snprintf(text, sizeof(text), "I can't open the library. "
+                                         "Check storage, then press {Square} to try again.");
         else if (app.scan_status.state == LIBRARY_SCAN_RUNNING)
             snprintf(text, sizeof(text), "Looking for games...");
         else if (app.scan_status.state == LIBRARY_SCAN_ERROR)
@@ -804,9 +802,8 @@ void story_screen(uint32_t pressed)
             snprintf(text, sizeof(text), "No game matches. {L2} edits the search; {R2} changes or clears the "
                                          "filters.");
         else
-            snprintf(text, sizeof(text), "No games yet. Copy your games into %s/games, then press {Square} to "
-                                         "look again.",
-                     NP_DATA);
+            snprintf(text, sizeof(text), "No games yet. Copy your games into %s, then press {Square} to look again.",
+                     app.paths.games);
     }
     draw_list(c, count, extra); /* over the picture's halo */
     say(text);

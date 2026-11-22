@@ -35,6 +35,10 @@ typedef struct
     PlatTexture *texture;
 } Atlas;
 
+static const unsigned char recovery_face[] = {
+#include "inter_regular.inc"
+};
+
 static unsigned char *font_data[4]; /* regular, bold (the theme's), mono, pixel (Story mode) */
 static stbtt_fontinfo font_info[4];
 static bool font_ok[4];
@@ -102,7 +106,12 @@ static bool load_fonts(const char *regular, const char *bold)
         font_info[w] = info;
         font_ok[w] = true;
     }
-    if (!font_ok[FONT_BOLD] && font_ok[FONT_REGULAR])
+    if (!font_ok[FONT_REGULAR])
+    {
+        font_ok[FONT_REGULAR] = stbtt_InitFont(&font_info[FONT_REGULAR], recovery_face, 0);
+        np_log("fonts: using built-in Inter; restore assets/fonts from the full app ZIP");
+    }
+    if (!font_data[FONT_BOLD] && font_ok[FONT_REGULAR])
     {
         font_info[FONT_BOLD] = font_info[FONT_REGULAR];
         font_ok[FONT_BOLD] = true;
@@ -120,6 +129,8 @@ void text_set_fonts(const char *regular, const char *bold)
 bool text_init(void)
 {
     load_fonts("fonts/Inter-400.ttf", "fonts/Inter-600.ttf");
+    if (font_ok[FONT_REGULAR] && !font_data[FONT_REGULAR])
+        plat_notify("Dulcamara is using its built-in font. Restore assets/fonts from the full app ZIP.");
     char mono_path[NP_PATH_MAX];
     plat_asset_path(mono_path, sizeof(mono_path), "fonts/IBMPlexMono-400.ttf");
     font_data[FONT_MONO] = read_file(mono_path);
@@ -348,7 +359,8 @@ static Atlas *get_atlas(int weight, float size)
     stbtt_pack_context pc;
     stbtt_PackBegin(&pc, alpha, a->width, a->height, 0, 1, NULL);
     stbtt_PackSetOversampling(&pc, (unsigned)over, 1);
-    stbtt_PackFontRange(&pc, font_data[weight] ? font_data[weight] : font_data[0], 0,
+    const unsigned char *face = font_data[weight] ? font_data[weight] : font_data[FONT_REGULAR];
+    stbtt_PackFontRange(&pc, face ? face : recovery_face, 0,
                         (float)px, FIRST_CP, CP_COUNT, a->chars);
     if (a->extra)
         pack_extra(&pc, a, weight, px);

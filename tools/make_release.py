@@ -70,6 +70,11 @@ def pack():
     app_dir = ROOT / "dist" / APP
     if not (app_dir / "eboot.bin").is_file():
         sys.exit(f"error: {app_dir / 'eboot.bin'} is missing: build first (drop --skip-build)")
+    fonts = ROOT / "assets/fonts"
+    for source in fonts.iterdir():
+        installed = app_dir / "assets/fonts" / source.name
+        if source.is_file() and (not installed.is_file() or source.read_bytes() != installed.read_bytes()):
+            sys.exit(f"error: release font asset missing or different: {installed}")
     generate_payload(app_dir)
     out = ROOT / f"{APP}.zip"
     if out.exists():

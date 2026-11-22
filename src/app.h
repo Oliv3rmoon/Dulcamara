@@ -63,9 +63,8 @@ int app_nav_pad(void);
 void app_rescan(void);
 /* Rebuild after main-thread filter/metadata changes; selection ID is retained. */
 bool app_rebuild_library_view(void);
-/* Sandboxed (app.sandboxed: /data wasn't unlocked as the app started, so no game can be listed): starts the app again,
- * which asks for the unlock again. Does not return on the PS5. */
-void app_unlock_again(void);
+/* Recheck inaccessible storage without leaving the current screen. */
+void app_retry_storage(void);
 void app_start_game(int index);
 void app_stop_game(void);
 /* Explicit Task5 save-error actions; errors hold the exact native checkpoint. */

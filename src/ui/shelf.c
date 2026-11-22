@@ -296,11 +296,11 @@ static void draw_sandboxed(void)
     char reason[260];
     snprintf(reason, sizeof(reason), tr("Why: %s."), app.sandbox_reason[0] ? app.sandbox_reason : tr("not known"));
     const char *lines[] = {
-        "Dulcamara could not open the selected library.",
+        "Dulcamara could not open its library.",
         "The library needs a readable games folder and writable storage.",
         reason,
         "USB library: place portable.txt in the drive’s dulcamara folder.",
-        "Press Square to reopen Dulcamara after checking storage.",
+        "Press Square to retry after checking storage.",
     };
     float ly = y + 160;
     for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); ++i, ly += 48)
@@ -334,10 +334,10 @@ static void draw_empty(void)
     text_draw(x + 150, y + 62, 40, FONT_BOLD, TH_TEXT, ALIGN_LEFT, tr("No games yet"));
     const char *lines[] = {
         "Copy each game's folder, the one that holds RPG_RT.ldb and RPG_RT.lmt, into",
-        NP_DATA "/games  (over FTP, for example).",
+        app.paths.games,
         ".zip and .easyrpg archives of a game work as they are.",
-        "Games that need the RPG Maker run-time package (RTP): put it in",
-        NP_DATA "/rtp/2000 or rtp/2003.",
+        "Put RPG Maker run-time assets in the 2000 or 2003 folder under",
+        app.paths.rtp,
         "No games come with Dulcamara: copy your own.",
     };
     float ly = y + 160;
@@ -374,14 +374,13 @@ void shelf_toggle_sort(void)
     sfx_play(SFX_CLICK);
 }
 
-/* Square on the library, in either view: start again when sandboxed and empty, else cancel a running scan or look
- * again. */
+/* Both library views use Square to retry storage or rescan. */
 void shelf_square(void)
 {
-    if (app.sandboxed && app.library.count == 0)
+    if (app.sandboxed)
     {
         sfx_play(SFX_SELECT);
-        app_unlock_again(); /* on the PS5 it doesn't come back */
+        app_retry_storage();
     }
     else
     {
@@ -402,7 +401,7 @@ void shelf_square(void)
 /* The Square hint's label, as the button does now. */
 const char *shelf_square_label(void)
 {
-    return app.sandboxed                                   ? "Start again"
+    return app.sandboxed                                   ? "Retry storage"
            : app.scan_status.state == LIBRARY_SCAN_RUNNING ? "Cancel scan"
                                                            : "Rescan";
 }
