@@ -525,7 +525,11 @@ const char *plat_sandbox_probe(void)
 bool plat_prepare_storage(char *root, size_t capacity, char *error, size_t size)
 {
 #if defined(__PROSPERO__)
-    int portable = storage_portable_root(root, capacity, drive_paths + DRIVE_EXT_COUNT, DRIVE_USB_COUNT);
+    /* The same USB drive can be visible through its app mount and its /mnt name. */
+    const char *mounts[DRIVE_USB_COUNT * 2] = {"/usb0", "/usb1", "/usb2", "/usb3", "/usb4", "/usb5", "/usb6", "/usb7"};
+    for (int i = 0; i < DRIVE_USB_COUNT; ++i)
+        mounts[DRIVE_USB_COUNT + i] = drive_paths[DRIVE_EXT_COUNT + i];
+    int portable = storage_portable_root(root, capacity, mounts, sizeof(mounts) / sizeof(mounts[0]));
     const char *app_root = portable ? NULL : "/download0/dulcamara";
     if (portable < 0)
     {

@@ -1114,7 +1114,7 @@ static void storage_notice(void)
     if (!app.sandbox_reason[0])
         return;
     if (app.sandboxed)
-        snprintf(message, sizeof(message), NP_TITLE " " NP_VERSION "\n%s\nCheck the drive, then press Square to retry storage.", app.storage_error);
+        snprintf(message, sizeof(message), NP_TITLE " " NP_VERSION " (" NP_TITLE_ID ")\n%s\nCheck the drive, then press Square to retry storage.", app.storage_error);
     else
         snprintf(message, sizeof(message), NP_TITLE " " NP_VERSION "\n%s\nUsing a separate library in %s. Your original games and saves stay in their folder. Use a marked USB library for larger games.", app.sandbox_reason, app.paths.root);
     app_message_box(message);

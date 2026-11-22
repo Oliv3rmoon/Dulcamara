@@ -83,8 +83,22 @@ static void portable_library(const char *dir)
     assert(storage_portable_root(root, sizeof(root), mounts, 1) == 0);
     assert(unlink(marker) == 0);
     put(marker, "");
-    const char *conflict[] = {dir, dir};
+    char alias[NP_PATH_MAX], second[NP_PATH_MAX], second_library[NP_PATH_MAX];
+    path_join(alias, sizeof(alias), dir, "usb-alias");
+    assert(symlink(dir, alias) == 0);
+    const char *aliases[] = {dir, alias};
+    assert(storage_portable_root(root, sizeof(root), aliases, 2) == 1 && !strcmp(root, library));
+    path_join(second, sizeof(second), dir, "second-usb");
+    assert(mkdir(second, 0700) == 0);
+    path_join(second_library, sizeof(second_library), second, "dulcamara");
+    assert(mkdir(second_library, 0700) == 0);
+    path_join(marker, sizeof(marker), second_library, "portable.txt");
+    put(marker, "");
+    const char *conflict[] = {dir, second};
     assert(storage_portable_root(root, sizeof(root), conflict, 2) == -1);
+    path_join(active, sizeof(active), dir, "unmounted/dulcamara");
+    assert(storage_select_root(active, sizeof(active), local, error, sizeof(error)));
+    assert(!strcmp(active, local) && strstr(error, "unmounted"));
 }
 
 static void checked_storage(const char *dir)

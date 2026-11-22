@@ -87,18 +87,27 @@ bool storage_remove(const char *path)
 int storage_portable_root(char *root, size_t size, const char *const *mounts, size_t count)
 {
     char selected[NP_PATH_MAX] = "";
+    struct stat selected_dir = {0};
     for (size_t i = 0; i < count; ++i)
     {
         char dir[NP_PATH_MAX], marker[NP_PATH_MAX];
-        struct stat st;
+        struct stat library_dir, st;
         int n = snprintf(dir, sizeof(dir), "%s/dulcamara", mounts[i]);
-        if (n < 0 || (size_t)n >= sizeof(dir) || lstat(dir, &st) || !S_ISDIR(st.st_mode))
+        if (n < 0 || (size_t)n >= sizeof(dir) || lstat(dir, &library_dir) || !S_ISDIR(library_dir.st_mode))
             continue;
         n = snprintf(marker, sizeof(marker), "%s/portable.txt", dir);
         if (n < 0 || (size_t)n >= sizeof(marker) || lstat(marker, &st) || !S_ISREG(st.st_mode))
             continue;
-        if (selected[0] || strlen(dir) >= size)
+        if (selected[0])
+        {
+            if (!strcmp(dir, selected) || (library_dir.st_ino && library_dir.st_ino == selected_dir.st_ino &&
+                                           library_dir.st_dev == selected_dir.st_dev))
+                continue; /* Two mount paths can name the same marked directory. */
             return -1;
+        }
+        if (strlen(dir) >= size)
+            return -1;
+        selected_dir = library_dir;
         str_copy(selected, sizeof(selected), dir);
     }
     if (!selected[0])
@@ -110,8 +119,17 @@ int storage_portable_root(char *root, size_t size, const char *const *mounts, si
 static bool open_library_directory(const char *path, char *error, size_t size)
 {
     DIR *dir = opendir(path);
-    if (!dir && errno == ENOENT && (mkdir(path, 0755) == 0 || errno == EEXIST))
+    if (!dir && errno == ENOENT)
+    {
+        if (mkdir(path, 0755) != 0 && errno != EEXIST)
+        {
+            int cause = errno;
+            snprintf(error, size, "Cannot create %s (%s).", path, strerror(cause));
+            errno = cause;
+            return false;
+        }
         dir = opendir(path);
+    }
     if (!dir)
     {
         int cause = errno;
@@ -174,7 +192,7 @@ bool storage_select_root(char *root, size_t capacity, const char *app_root, char
     if (storage_check_library(root, detail, size))
         return true;
     if (!app_root || !*app_root || strlen(app_root) >= capacity ||
-        (errno != EACCES && errno != EPERM && errno != EROFS))
+        (errno != EACCES && errno != EPERM && errno != EROFS && errno != ENOENT))
         return false;
     char secondary[180];
     if (!storage_check_library(app_root, secondary, sizeof(secondary)))
