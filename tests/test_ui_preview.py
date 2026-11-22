@@ -262,8 +262,8 @@ class PreviewTest(unittest.TestCase):
             (root/'settings.ini').write_text('update_check = 0\ncommunity_seen = 1\n')
             steps = ['wait 100', 'press start', 'assert screen settings'] + ['press r1']*4 + ['press down']*7
             self.assert_run(root, steps + ['press cross', 'wait 10', 'press circle', 'wait 100',
-                                           'assert filtered 1', 'assert selected Dulcamara itch.io Shelf', 'quit'])
-            self.assertTrue((root/'games/Dulcamara itch.io Shelf/game/shelf.rpy').is_file())
+                                           'assert filtered 1', 'assert selected Dulcamara itch.io Shelf 1.1', 'quit'])
+            self.assertTrue((root/'games/Dulcamara itch.io Shelf 1.1/game/shelf.rpy').is_file())
 
     def test_story_view_setting_switch_and_persist(self):
         """Story is the default; Settings > Library > View switches to the shelf, which then works as before (Right

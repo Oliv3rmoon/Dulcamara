@@ -267,6 +267,7 @@ build_engine() {
     find "$engine/renpy" \( -name '*.pyx' -o -name '*.pxd' -o -name '*.pxi' -o -name '*.c' -o -name '*.h' \) -delete
     cp "$rsrc/renpy.py" "$engine/renpy.py"
     patch -s -d "$engine" -p1 <"$root/tools/patches/renpy7-savepaths.patch"
+    patch -s -d "$engine" -p1 <"$root/tools/patches/renpy7-empty-composite.patch"
     cp "$root/src/core/renpy/savepaths.py" "$engine/dulcamara_savepaths.py"
     mkdir -p "$engine/pygame_sdl2"
     (cd "$psrc/src/pygame_sdl2" && find . -name '*.py' | while read -r f; do
@@ -316,7 +317,7 @@ if ! fresh generate "$generate_key"; then
     stamp generate "$generate_key"
 fi
 engine_key="engine-3 $renpy_version $generate_key $(recipe build_engine) $(
-    digest "$root/tools/patches/renpy7-savepaths.patch" "$root/src/core/renpy/savepaths.py" "$root"/src/core/renpy/{boot2,errors2}.py "$root/tools/renpy7/wheels.txt")"
+    digest "$root/tools/patches/renpy7-savepaths.patch" "$root/tools/patches/renpy7-empty-composite.patch" "$root/src/core/renpy/savepaths.py" "$root"/src/core/renpy/{boot2,errors2}.py "$root/tools/renpy7/wheels.txt")"
 if ! fresh engine "$engine_key"; then
     build_engine
     stamp engine "$engine_key"

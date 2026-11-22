@@ -46,6 +46,13 @@ class InstallTests(unittest.TestCase):
     def install(self, project=None):
         return shelf.install(project or self.project, "42", self.shelf)
 
+    def test_store_reports_which_connection_step_failed(self):
+        for cause, detail in ((shelf.socket.gaierror(-2, "lookup"), "DNS"),
+                              (shelf.ssl.SSLCertVerificationError(1, "x509"), "certificate"),
+                              (TimeoutError(), "too long")):
+            with self.subTest(cause=cause):
+                self.assertIn(detail, shelf.error_message(shelf.URLError(cause)))
+
     def test_install_and_duplicate_preserves_existing_data(self):
         list(self.install())
         self.assertTrue((self.dest / "game/script.rpy").is_file())

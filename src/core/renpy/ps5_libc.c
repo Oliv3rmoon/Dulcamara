@@ -907,7 +907,7 @@ int scePadSetVibrationMode(int handle, int mode)
     return NO_PAD;
 }
 
-/* ---------------------------------------------------------------- names: the console's resolver is not used */
+/* ---------------------------------------------------------------- legacy name database calls */
 
 int *__h_errno(void)
 {
@@ -953,29 +953,7 @@ struct servent *getservbyport(int port, const char *protocol)
     return NULL;
 }
 
-int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **result)
-{
-    (void)node, (void)service, (void)hints;
-    *result = NULL;
-    return EAI_FAIL;
-}
-
-void freeaddrinfo(struct addrinfo *list)
-{
-    (void)list; /* getaddrinfo never makes one */
-}
-
-const char *gai_strerror(int error)
-{
-    (void)error;
-    return "Name resolution is not available";
-}
-
-int getnameinfo(const struct sockaddr *address, socklen_t length, char *host, size_t host_size, char *service,
-                size_t service_size, int flags)
-{
-    (void)address, (void)length, (void)host, (void)host_size, (void)service, (void)service_size, (void)flags;
-    return EAI_FAIL;
-}
+/* Python's HTTPS clients use the app's getaddrinfo, freeaddrinfo, getnameinfo and
+ * gai_strerror from console_curl_ps5.c. They share the system resolver used by the updater. */
 
 #endif

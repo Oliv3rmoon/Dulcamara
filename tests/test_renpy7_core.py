@@ -29,6 +29,21 @@ class Renpy7CoreTest(renpy8.RenpyCoreTest):
     # the Ren'Py 7 line changed its volume sliders at 7.6
     OLD_RENPY, NEW_RENPY = "7.5.3.22090809", "7.6.0.23051307"
 
+    def test_sized_empty_composite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            game = renpy8.make_game(work / "TransparentCanvas")
+            marker = work / "result"
+            (game / "game/+config.rpy").write_text(
+                "init python:\n"
+                "    canvas = im.Composite((42, 17))\n"
+                "    surface = canvas.load()\n"
+                "    assert surface.get_size() == (42, 17)\n"
+                "    assert surface.get_at((1, 1))[3] == 0\n"
+                f"    with open({str(marker)!r}, 'w') as f:\n        f.write('ok')\n")
+            self.run_core("start", game, work / "data")
+            self.assertEqual(marker.read_text(), "ok")
+
     def test_legacy_loadsave_dumps(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)

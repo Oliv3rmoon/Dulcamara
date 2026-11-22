@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import ssl
 import stat
 import zipfile
@@ -329,7 +330,14 @@ def error_message(exc):
         return str(exc)
     if isinstance(exc, HTTPError):
         return "itch.io returned HTTP %d. Check the creator’s page or retry." % exc.code
-    if isinstance(exc, (URLError, TimeoutError, ConnectionError)):
+    cause = exc.reason if isinstance(exc, URLError) else exc
+    if isinstance(cause, socket.gaierror):
+        return "The store’s hostname could not be found. Check the console’s DNS settings and retry."
+    if isinstance(cause, ssl.SSLCertVerificationError):
+        return "Could not verify the store’s HTTPS certificate. Check the console’s date and time."
+    if isinstance(cause, TimeoutError):
+        return "The store took too long to respond. Retry the connection."
+    if isinstance(exc, (URLError, ConnectionError)):
         return "The store connection failed. Check your connection and retry."
     if isinstance(exc, (zipfile.BadZipFile, NotImplementedError)):
         return "This ZIP is damaged or uses an unsupported format."

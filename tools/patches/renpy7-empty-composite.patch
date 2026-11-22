@@ -1,0 +1,9 @@
+--- a/renpy/display/im.py
++++ b/renpy/display/im.py
+@@ -898,2 +898,4 @@
+-        # Only supports all the images having the same oversample factor
+-        self.oversample = self.images[0].get_oversample()
++        # Older games use a sized, empty composite as a transparent canvas.
++        if not self.images and not self.size:
++            raise Exception("An empty Composite requires a size.")
++        self.oversample = self.images[0].get_oversample() if self.images else 1

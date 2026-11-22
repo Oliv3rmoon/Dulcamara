@@ -54,7 +54,7 @@ build_python_ps5() {
         patch -d "$src" -p1 <"$p" >>"$log/python.log" 2>&1 || fail python
     done
     cp "$root/tools/renpy7/Setup.local" "$src/Modules/Setup.local"
-    # cross answers: no pseudo-terminals; getaddrinfo is the console's (the core stands in for it, ps5_libc.c); the
+    # cross answers: no pseudo-terminals; getaddrinfo uses the app's console resolver; the
     # rest is what an x86-64 FreeBSD answers
     printf '%s\n' ac_cv_file__dev_ptmx=no ac_cv_file__dev_ptc=no ac_cv_buggy_getaddrinfo=no \
         ac_cv_have_long_long_format=yes ac_cv_little_endian_double=yes ac_cv_x87_double_rounding=no \
@@ -187,6 +187,9 @@ rm -f "$out/librenpy7.a"
 "$ar" rcs "$out/librenpy7.a" "$work/renpy7-ps5.o"
 
 # What is still undefined must come from the console (its libc and modules) or the app: anything else is reported.
+for name in getaddrinfo freeaddrinfo getnameinfo gai_strerror; do
+    grep -qx "$name" "$work/undefined.txt" || { echo "Ren'Py must link the app's $name" >&2; exit 1; }
+done
 : >"$work/console.txt"
 for stub in "$sdk/target/lib"/*.so; do
     # WebKit's module and libkernel_sys's stub give a title nothing at run time (the latter's functions not also in
@@ -202,6 +205,8 @@ grep -ohE '\bsceAgc[A-Za-z0-9_]+[[:space:]]*\(' "$root"/tooling/ps5-stubs/*.c | 
 "$nm" --defined-only "$sdk/target/lib/libc++.a" "$sdk/target/lib/libc++abi.a" "$sdk/target/lib/libunwind.a" \
     "$sdk/target/lib/libps5platform.a" 2>/dev/null | awk 'NF >= 2 && $2 ~ /[TDBRVW]/ { print $NF }' |
     sed 's/^ps5_//' >>"$work/console.txt"
+# src/platform/console_curl_ps5.c provides the resolver and numeric address formatter.
+printf '%s\n' getaddrinfo freeaddrinfo getnameinfo gai_strerror >>"$work/console.txt"
 echo __emutls_get_address >>"$work/console.txt"
 LC_ALL=C sort -u -o "$work/console.txt" "$work/console.txt"
 LC_ALL=C comm -23 "$work/undefined.txt" "$work/console.txt" | grep -vxE 'dirfd|nl_langinfo|uselocale|strcasestr|___mb_cur_max|__dso_handle|ps5_heap_mapped_bytes' \
