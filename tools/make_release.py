@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Compiles Dulcamara and packs the release asset, PPSA99010.zip, in the project root.
+"""Compiles Dulcamara and packs the release asset, PPSA75483.zip, in the project root.
 
-    python3 tools/make_release.py                 # make, then PPSA99010.zip
+    python3 tools/make_release.py                 # make, then PPSA75483.zip
     python3 tools/make_release.py --skip-build    # only pack what dist/ already holds
     python3 tools/make_release.py --jobs 12 --no-nice
     python3 tools/make_release.py --ip 192.168.1.90 [--port 2121]   # also deploys to the PS5 over FTP
 
-The zip holds just the app folder, PPSA99010/: what the in-app updater installs, and what you copy to
+The zip holds just the app folder, PPSA75483/: what the in-app updater installs, and what you copy to
 /data/homebrew. The release tag is the version from NP_VERSION in src/nightshade.h, without a "v" (0.1.0).
 (From Mandrake's, which is SwanStationPS5's.)
 
@@ -24,7 +24,7 @@ from update_payload import generate as generate_payload
 import release_metadata
 
 ROOT = Path(__file__).resolve().parent.parent
-APP = "PPSA99010"
+APP = "PPSA75483"
 
 
 def read_version():

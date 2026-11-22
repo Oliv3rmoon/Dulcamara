@@ -63,7 +63,7 @@ def next_version(version):
 
 
 def the_zip():
-    # A real ZIP with no PPSA99010 folder in it: an install that gets as far as unpacking it writes nothing.
+    # A real ZIP with no PPSA75483 folder in it: an install that gets as far as unpacking it writes nothing.
     data = io.BytesIO()
     with zipfile.ZipFile(data, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("README.txt", "not an app\n" * 4000)
@@ -155,7 +155,7 @@ class Service(http.server.BaseHTTPRequestHandler):
         return json.dumps({
             "status": "update", "app": "dulcamara",
             "build": {"version": NEWER, "tag": NEWER, "title": f"Dulcamara {NEWER} (insider build)",
-                      "file": "PPSA99010.zip", "size": len(ZIP) if size is None else size,
+                      "file": "PPSA75483.zip", "size": len(ZIP) if size is None else size,
                       "sha256": hashlib.sha256(ZIP).hexdigest(), "notes": "Fixes.\n\"url\": \"https://evil/\"",
                       "published_at": "2026-11-08T05:00:00Z", "public_after": "2026-11-15T05:00:00Z",
                       "url": url or f"http://127.0.0.1:{Service.port}{base}/v1/download/{TOKEN}",
@@ -388,7 +388,7 @@ class UpdateWithInsiderBuildTest(unittest.TestCase):
         self.assertIn(f"going on from {len(JUNK)} bytes", log)  # net.c names the address there: without its token
         self.assertIn("/upd/v1/download/...", log)
         self.assertIn("update: insider status=update http=200", log)
-        self.assertIn(f"update: downloading 127.0.0.1:{Service.port}, PPSA99010.zip", log)
+        self.assertIn(f"update: downloading 127.0.0.1:{Service.port}, PPSA75483.zip", log)
         self.private(data, log, out)
         # what the service was sent: the code and the version, nothing else
         path, headers, body = Service.requests[0]

@@ -46,7 +46,7 @@ static char *update_answer(const char *version, const char *url, const char *sha
         n += (size_t)snprintf(fields + n, sizeof(fields) - n, "\"version\": %s, ", version);
     n += (size_t)snprintf(fields + n, sizeof(fields) - n,
                           "\"tag\": \"0.2.14\", \"title\": \"Dulcamara 0.2.14 (insider build)\", "
-                          "\"file\": \"PPSA99010.zip\", ");
+                          "\"file\": \"PPSA75483.zip\", ");
     if (size)
         n += (size_t)snprintf(fields + n, sizeof(fields) - n, "\"size\": %s, ", size);
     if (sha)
@@ -144,7 +144,7 @@ static void test_update(void)
     InsiderResult r = read_answer(200, json, &b);
     CHECK(r.status == INSIDER_UPDATE && r.http == 200 && !strcmp(r.answer, "update") && !r.why);
     CHECK(!strcmp(b.version, "0.2.14") && !strcmp(b.url, good_url) && !strcmp(b.sha256, SHA) && b.size == 81234567);
-    CHECK(!strcmp(b.file, "PPSA99010.zip"));
+    CHECK(!strcmp(b.file, "PPSA75483.zip"));
     free(json);
     /* "v" before the version, and an answer with no "app" */
     json = update_answer("\"v0.3.0\"", quoted(good_url), quoted(SHA), "1", NULL);
@@ -156,14 +156,14 @@ static void test_update(void)
     /* the same in one line, with no spaces, and a "hint" after the build */
     char line[2048];
     snprintf(line, sizeof(line),
-             "{\"status\":\"update\",\"app\":\"dulcamara\",\"build\":{\"version\":\"0.2.14\",\"file\":\"PPSA99010.zip\","
+             "{\"status\":\"update\",\"app\":\"dulcamara\",\"build\":{\"version\":\"0.2.14\",\"file\":\"PPSA75483.zip\","
              "\"size\":5,\"sha256\":\"%s\",\"url\":\"%s\"},\"hint\":null}",
              SHA, good_url);
     r = read_answer(200, line, &b);
     CHECK(r.status == INSIDER_UPDATE && b.size == 5);
     /* a file name that can't be shown is left out of the log, not a reason to refuse the build */
     json = update_answer("\"0.2.14\"", quoted(good_url), quoted(SHA), "7", NULL);
-    char *file = strstr(json, "PPSA99010.zip");
+    char *file = strstr(json, "PPSA75483.zip");
     memcpy(file, "../../x y.zip", strlen("../../x y.zip"));
     r = read_answer(200, json, &b);
     CHECK(r.status == INSIDER_UPDATE && !strcmp(b.file, ""));
@@ -544,7 +544,7 @@ static void test_download(const char *scratch)
     snprintf(missing, sizeof(missing), "%s/missing.zip", scratch);
     CHECK(!insider_size_matches(BASE, good_url, missing, size) && !installer_accepts(good_url, missing, sha, size));
     /* a GitHub release's size is GitHub's, not checked here: its SHA-256 alone, as before */
-    const char *github = "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.14/PPSA99010.zip";
+    const char *github = "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.14/PPSA75483.zip";
     CHECK(insider_size_matches(BASE, github, path, size + 100));
     CHECK(installer_accepts(github, path, sha, size + 100));
     CHECK(write_file(path, tampered, size) && !installer_accepts(github, path, sha, size));
@@ -558,12 +558,12 @@ static void test_download(const char *scratch)
 static void test_log(const char *scratch)
 {
     char out[160];
-    CHECK(!strcmp(insider_loggable_url(BASE, good_url, "PPSA99010.zip", out, sizeof(out)),
-                  "nightly-insider.example.workers.dev, PPSA99010.zip"));
+    CHECK(!strcmp(insider_loggable_url(BASE, good_url, "PPSA75483.zip", out, sizeof(out)),
+                  "nightly-insider.example.workers.dev, PPSA75483.zip"));
     CHECK(!strstr(out, TOKEN) && !strstr(out, "/v1/download/"));
     CHECK(!strcmp(insider_loggable_url(BASE, good_url, "", out, sizeof(out)),
                   "nightly-insider.example.workers.dev, (no file name)"));
-    const char *github = "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.14/PPSA99010.zip";
+    const char *github = "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.14/PPSA75483.zip";
     CHECK(!strcmp(insider_loggable_url(BASE, github, "x", out, sizeof(out)), github));
     CHECK(!strcmp(insider_loggable_url("", good_url, "x", out, sizeof(out)), good_url)); /* not this build's */
 
@@ -574,7 +574,7 @@ static void test_log(const char *scratch)
     np_log("net: %s: going on from %d bytes", good_url, 1000);
     np_log("net: %s -> curl %d (%s), http %ld", good_url, 28, "Operation timed out", 0L);
     np_log("net: https://h.example/v1/download/ab and https://h.example/v1/download/%s?x", TOKEN);
-    np_log("update: downloading %s", "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.14/PPSA99010.zip");
+    np_log("update: downloading %s", "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.14/PPSA75483.zip");
     np_log_open(path); /* closes it (and keeps it as .old.log) */
     char old[1100];
     snprintf(old, sizeof(old), "%s/dulcamara.old.log", scratch);
@@ -589,7 +589,7 @@ static void test_log(const char *scratch)
     CHECK(!strstr(text, TOKEN) && !strstr(text, "c2lnbmF0dXJl"));
     CHECK(strstr(text, "net: https://nightly-insider.example.workers.dev/v1/download/...: going on from 1000 bytes"));
     CHECK(strstr(text, "https://h.example/v1/download/.. and https://h.example/v1/download/...?x"));
-    CHECK(strstr(text, "releases/download/0.2.14/PPSA99010.zip")); /* GitHub's addresses stay whole */
+    CHECK(strstr(text, "releases/download/0.2.14/PPSA75483.zip")); /* GitHub's addresses stay whole */
     printf("log:\n%s", text);
 
     CHECK(!insider_hint_wanted(false, true, false, INSIDER_EXPIRED_CODE)); /* no service in this build: never */

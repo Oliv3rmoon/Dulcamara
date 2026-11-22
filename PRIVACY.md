@@ -8,7 +8,7 @@ Last updated: 2026-10-29.
 
 ## What stays on your console
 
-Everything lives under `/data/dulcamara/` (and the app under `/data/homebrew/PPSA99010/`):
+Everything lives under `/data/dulcamara/` (and the app under `/data/homebrew/PPSA75483/`):
 
 - `settings.ini`: the settings; `played.txt`: when each game was last played.
 - `easyrpg-player/`: EasyRPG Player's own settings (its OPTIONS menu).
@@ -21,7 +21,7 @@ None of this is sent anywhere by the app. You can delete it at any time with an 
 
 | To | When | What is sent | Why |
 | --- | --- | --- | --- |
-| api.github.com and github.com | If "Check for updates at start" is on, or when you check from Settings | A request for the latest release of `Oliv3rmoon/Dulcamara`, then its `SHA256SUMS`, with the User-Agent `Dulcamara/<version>` | The update check; installing an update downloads that release's `PPSA99010.zip` from GitHub and checks it against `SHA256SUMS` |
+| api.github.com and github.com | If "Check for updates at start" is on, or when you check from Settings | A request for the latest release of `Oliv3rmoon/Dulcamara`, then its `SHA256SUMS`, with the User-Agent `Dulcamara/<version>` | The update check; installing an update downloads that release's `PPSA75483.zip` from GitHub and checks it against `SHA256SUMS` |
 
 These servers receive the usual network metadata (your IP address, and the User-Agent above) and are governed by
 their own privacy policies. Nothing else is sent, no game is downloaded, and the app talks to no server run by the

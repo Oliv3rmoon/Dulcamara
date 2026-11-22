@@ -57,7 +57,7 @@ class LibraryTest(unittest.TestCase):
     def test_the_app_is_dulcamara(self):
         header = (ROOT / "src/nightshade.h").read_text(encoding="utf-8")
         self.assertIn('#define NP_NAME "Dulcamara"', header)
-        self.assertIn('#define NP_TITLE_ID "PPSA99010"', header)
+        self.assertIn('#define NP_TITLE_ID "PPSA75483"', header)
         self.assertIn('#define NP_DATA "/data/dulcamara"', header)
 
     def test_a_sandboxed_start_says_why_there_are_no_games(self):

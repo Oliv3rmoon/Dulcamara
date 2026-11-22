@@ -221,13 +221,13 @@ int net_request(const char *url, const char *post, const char *ct, const char *a
     (void)agent;
     char json[4096];
     if (strstr(url, "SHA256SUMS"))
-        snprintf(json, sizeof(json), "%s  PPSA99010.zip\n", digest);
+        snprintf(json, sizeof(json), "%s  PPSA75483.zip\n", digest);
     else
         snprintf(json, sizeof(json),
                  "{\"tag_name\":\"" OFFERED_VERSION "\",\"draft\":false,\"prerelease\":false,\"assets\":[{"
-                 "\"name\":\"PPSA99010.zip\",\"state\":\"uploaded\",\"size\":%llu,\"browser_"
+                 "\"name\":\"PPSA75483.zip\",\"state\":\"uploaded\",\"size\":%llu,\"browser_"
                  "download_url\":\"https://github.com/Oliv3rmoon/Dulcamara/releases/download/" OFFERED_VERSION "/"
-                 "PPSA99010.zip\"},{\"name\":\"SHA256SUMS\",\"state\":\"uploaded\",\"size\":100,"
+                 "PPSA75483.zip\"},{\"name\":\"SHA256SUMS\",\"state\":\"uploaded\",\"size\":100,"
                  "\"browser_download_url\":\"https://github.com/Oliv3rmoon/Dulcamara/releases/"
                  "download/" OFFERED_VERSION "/SHA256SUMS\"}]}",
                  (unsigned long long)bytes);

@@ -29,7 +29,7 @@ class UpdateProductionTest(unittest.TestCase):
    base=Path(d);app=base/'installed';app.mkdir();(app/'eboot.bin').write_bytes(b'old executable');zip_path=base/'offer.zip'
    (app/'untouched').write_bytes(b'user data')
    with zipfile.ZipFile(zip_path,'w',zipfile.ZIP_DEFLATED) as z:
-    for p,b in manifested(REQUIRED).items():z.writestr('PPSA99010/'+p,b)
+    for p,b in manifested(REQUIRED).items():z.writestr('PPSA75483/'+p,b)
    r=subprocess.run([str(self.exe),str(base),str(zip_path),str(app),mode],capture_output=True,text=True,timeout=30)
    print(mode+': '+r.stdout.strip(),flush=True)
    self.assertEqual(r.returncode,0,r.stdout+r.stderr)

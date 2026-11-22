@@ -15,7 +15,7 @@ typedef enum
 } NetResult;
 
 /* When a download is given up: when it stays under NET_STALL_BYTES a second for NET_STALL_SECONDS. There is no limit
- * on how long the whole download takes: the update's PPSA99010.zip is over 70 MB, and the limit of 25 seconds on all
+ * on how long the whole download takes: the update's PPSA75483.zip is over 70 MB, and the limit of 25 seconds on all
  * of it (Mandrake's, meant for small files) failed every update slower than 3 MB/s, every time ("The download
  * failed", curl 28, 0.2.12 and before). */
 #ifndef NET_STALL_SECONDS

@@ -14,7 +14,7 @@
  * builds is off (update_state()). A release is offered only when it is not a draft (nor a
  * pre-release, unless Test builds is on) and:
  *   1. its tag is a version, X.Y.Z (or vX.Y.Z), newer than the running one;
- *   2. it carries both UPDATE_ZIP ("PPSA99010.zip") and UPDATE_SUMS ("SHA256SUMS"), uploaded,
+ *   2. it carries both UPDATE_ZIP ("PPSA75483.zip") and UPDATE_SUMS ("SHA256SUMS"), uploaded,
  *      and both download addresses are this repository's own release files for that tag;
  *   3. SHA256SUMS lists the ZIP on one well-formed line (release_sums_lookup()), and, when GitHub
  *      reports the asset's digest, the two agree.
@@ -32,7 +32,7 @@
 #include <stdint.h>
 
 #define UPDATE_REPO "Oliv3rmoon/Dulcamara"
-#define UPDATE_ZIP "PPSA99010.zip"
+#define UPDATE_ZIP "PPSA75483.zip"
 #define UPDATE_SUMS "SHA256SUMS"
 #define UPDATE_LATEST_URL "https://api.github.com/repos/" UPDATE_REPO "/releases/latest"
 #define UPDATE_LIST_URL "https://api.github.com/repos/" UPDATE_REPO "/releases?per_page=20" /* Test builds on */
@@ -45,7 +45,7 @@ typedef enum
     RELEASE_UNREADABLE,    /* not the JSON GitHub sends */
     RELEASE_NOT_PUBLISHED, /* a draft, or a pre-release where they are not offered */
     RELEASE_BAD_TAG,       /* the tag is not X.Y.Z */
-    RELEASE_NO_ZIP,        /* no uploaded PPSA99010.zip */
+    RELEASE_NO_ZIP,        /* no uploaded PPSA75483.zip */
     RELEASE_NO_SUMS,       /* no uploaded SHA256SUMS */
     RELEASE_FOREIGN_FILE,  /* a file's address is not this repository's release download */
 } ReleaseVerdict;
@@ -53,7 +53,7 @@ typedef enum
 typedef struct
 {
     char version[16];    /* "1.6.0" (the tag without a "v") */
-    char zip_url[256];   /* https://github.com/Oliv3rmoon/Dulcamara/releases/download/<tag>/PPSA99010.zip */
+    char zip_url[256];   /* https://github.com/Oliv3rmoon/Dulcamara/releases/download/<tag>/PPSA75483.zip */
     char sums_url[256];  /* the same for SHA256SUMS */
     char zip_digest[65]; /* the ZIP's SHA-256 as GitHub reports it (lowercase hex), or "" */
     uint64_t zip_size;

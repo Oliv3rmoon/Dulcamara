@@ -18,4 +18,4 @@ Bug reports, fixes and testing of Dulcamara are all welcome. Ask for help on the
 - Never commit games, test games, the RTP, keys, `.env`, `build/` or `dist/`.
 - Release tags are `MAJOR.MINOR.PATCH` (`0.1.0`), matching `NP_VERSION` in `src/nightshade.h` and the
   `contentVersion` of `sce_sys/param.json` (`00.001.000`). A tag pushed to Oliv3rmoon/Dulcamara builds and
-  publishes the release (`PPSA99010.zip` and `SHA256SUMS`).
+  publishes the release (`PPSA75483.zip` and `SHA256SUMS`).

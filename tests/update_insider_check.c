@@ -5,7 +5,7 @@
  *   update-insider-check <data folder> <installs>
  * stores the insider code as Settings does, checks for an update with Test builds on, then installs the update
  * up to <installs> times (a failed install is tried again, as "Try again" does), printing after each what update.c says
- * and what is left in the cache; with 0, turns Test builds off instead. The ZIP the server sends has no PPSA99010 folder, so an install whose download passed its
+ * and what is left in the cache; with 0, turns Test builds off instead. The ZIP the server sends has no PPSA75483 folder, so an install whose download passed its
  * checks ends in "Couldn't write the new files" and nothing is written outside the data folder.
  * SPDX-FileCopyrightText: Copyright 2026 Oliv3rmoon
  * SPDX-License-Identifier: GPL-3.0-or-later

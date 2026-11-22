@@ -18,8 +18,8 @@
 #define NP_NAME "Dulcamara"   /* identifiers: the User-Agent of network requests, the Vulkan application name */
 #define NP_CODENAME "Eclipse"
 #define NP_TITLE NP_NAME " " NP_CODENAME /* what is shown on screen: "Dulcamara Eclipse" */
-#define NP_TITLE_ID "PPSA99010"
-#define NP_VERSION "2.1.2"
+#define NP_TITLE_ID "PPSA75483"
+#define NP_VERSION "2.1.3"
 #define NP_DATA "/data/dulcamara" /* the data folder on the console */
 #define NP_PATH_MAX 512
 

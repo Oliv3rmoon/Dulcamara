@@ -2,9 +2,7 @@
 # Dulcamara - the release identity: one source (src/nightshade.h) for the version, codename and display title, and
 # the PS5 package metadata (sce_sys/param.json) derived from it and checked against it.
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Eclipse is 2.1.2: display name "Dulcamara Eclipse", PS5 contentVersion 02.001.002. The canonical name, title ID,
-archive name and data folder do not change. Every 2.x keeps the Eclipse codename. The private test-build identifier
-is separate metadata (tools/gen-watermark.py), never part of the numeric version."""
+"""Verify the Eclipse release metadata and the title dedicated to Dulcamara since 2.1.3."""
 
 import json
 import shutil
@@ -23,22 +21,22 @@ import release_metadata  # noqa: E402
 class ReleaseIdentityTest(unittest.TestCase):
     def test_eclipse_identity_comes_from_the_shared_metadata(self):
         meta = release_metadata.read(ROOT)
-        self.assertEqual(meta.version, "2.1.2")
+        self.assertEqual(meta.version, "2.1.3")
         self.assertEqual(meta.codename, "Eclipse")
         self.assertEqual(meta.display_title, "Dulcamara Eclipse")
-        self.assertEqual(meta.content_version, "02.001.002")
+        self.assertEqual(meta.content_version, "02.001.003")
 
-    def test_canonical_paths_and_title_id_are_unchanged(self):
+    def test_dedicated_title_and_shared_game_data(self):
         meta = release_metadata.read(ROOT)
         self.assertEqual(meta.name, "Dulcamara")
-        self.assertEqual(meta.title_id, "PPSA99010")
+        self.assertEqual(meta.title_id, "PPSA75483")
         self.assertEqual(meta.data, "/data/dulcamara")
         header = (ROOT / "src/update_release.h").read_text(encoding="utf-8")
-        self.assertIn('#define UPDATE_ZIP "PPSA99010.zip"', header)
+        self.assertIn('#define UPDATE_ZIP "PPSA75483.zip"', header)
         param = json.loads((ROOT / "sce_sys/param.json").read_text(encoding="utf-8"))
-        self.assertEqual(param["titleId"], "PPSA99010")
-        self.assertEqual(param["contentId"], "UP9000-PPSA99010_00-DULCAMARA0000000")
-        self.assertEqual(param["conceptId"], "99010")
+        self.assertEqual(param["titleId"], "PPSA75483")
+        self.assertEqual(param["contentId"], "UP9000-PPSA75483_00-DULCAMARA0000000")
+        self.assertEqual(param["conceptId"], "75483")
 
     def test_the_package_metadata_is_in_sync(self):
         release_metadata.check_param(ROOT / "sce_sys/param.json", release_metadata.read(ROOT))
@@ -57,9 +55,9 @@ class ReleaseIdentityTest(unittest.TestCase):
             release_metadata.sync_param(param, meta)
             release_metadata.check_param(param, meta)
             synced = json.loads(param.read_text(encoding="utf-8"))
-            self.assertEqual(synced["contentVersion"], "02.001.002")
+            self.assertEqual(synced["contentVersion"], "02.001.003")
             self.assertEqual(synced["localizedParameters"]["en-US"]["titleName"], "Dulcamara Eclipse")
-            self.assertEqual(synced["titleId"], "PPSA99010")
+            self.assertEqual(synced["titleId"], "PPSA75483")
 
     def test_the_build_check_refuses_a_stale_title(self):
         with tempfile.TemporaryDirectory() as directory:

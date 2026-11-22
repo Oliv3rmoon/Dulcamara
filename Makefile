@@ -257,7 +257,7 @@ desktop:
 help:
 	@printf '%s\n' \
 	  'Dulcamara:' \
-	  'make                 Build the PS5 app folder dist/PPSA99010 (the cores + the frontend)' \
+	  'make                 Build the PS5 app folder dist/PPSA75483 (the cores + the frontend)' \
 	  'make test            All relevant application suites once (docs/testing.md)' \
 	  'make desktop         The app for this computer (SDL2 window), for the interface' \
 	  'make deploy PS5_HOST=<ip>  Build and upload to /data/homebrew over FTP' \

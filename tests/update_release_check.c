@@ -76,8 +76,8 @@ static const char *const OURS = "Oliv3rmoon/Dulcamara";
 static void both(char *out, size_t size, const char *repo, const char *tag, const char *digest)
 {
     char zip[1024], sums[1024], exfat[1024];
-    asset(exfat, sizeof(exfat), repo, tag, "PPSA99010.exfat", "uploaded", SHA_B);
-    asset(zip, sizeof(zip), repo, tag, "PPSA99010.zip", "uploaded", digest);
+    asset(exfat, sizeof(exfat), repo, tag, "PPSA75483.exfat", "uploaded", SHA_B);
+    asset(zip, sizeof(zip), repo, tag, "PPSA75483.zip", "uploaded", digest);
     asset(sums, sizeof(sums), repo, tag, "SHA256SUMS", "uploaded", SHA_B);
     snprintf(out, size, "%s,%s,%s", exfat, zip, sums);
 }
@@ -154,7 +154,7 @@ static void test_offer(void)
     char *json = release("1.6.1", PUBLISHED, files, "- Fixes.\\r\\n- More fixes.");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_OFFER);
     CHECK(!strcmp(r.version, "1.6.1"));
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/1.6.1/PPSA99010.zip"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/1.6.1/PPSA75483.zip"));
     CHECK(!strcmp(r.sums_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/1.6.1/SHA256SUMS"));
     CHECK(!strcmp(r.zip_digest, SHA_A));
     CHECK(r.zip_size == 18267896u);
@@ -168,7 +168,7 @@ static void test_offer(void)
     json = release("v1.7.0", PUBLISHED, files, "");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_OFFER);
     CHECK(!strcmp(r.version, "1.7.0"));
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/v1.7.0/PPSA99010.zip"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/v1.7.0/PPSA75483.zip"));
     CHECK(r.zip_digest[0] == '\0'); /* no digest from GitHub: SHA256SUMS alone */
     free(json);
 
@@ -214,20 +214,20 @@ static void test_not_offered(void)
     free(json);
 
     /* one file of another tag, or another host */
-    asset(one, sizeof(one), OURS, "1.6.0", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(one, sizeof(one), OURS, "1.6.0", "PPSA75483.zip", "uploaded", SHA_A);
     asset(two, sizeof(two), OURS, "1.6.1", "SHA256SUMS", "uploaded", NULL);
     snprintf(files, sizeof(files), "%s,%s", one, two);
     json = release("1.6.1", PUBLISHED, files, "");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_FOREIGN_FILE);
     free(json);
-    asset(one, sizeof(one), "Oliv3rmoon/Dulcamara.evil.example/x", "1.6.1", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(one, sizeof(one), "Oliv3rmoon/Dulcamara.evil.example/x", "1.6.1", "PPSA75483.zip", "uploaded", SHA_A);
     snprintf(files, sizeof(files), "%s,%s", one, two);
     json = release("1.6.1", PUBLISHED, files, "");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_FOREIGN_FILE);
     free(json);
 
     /* a file missing, or not uploaded yet */
-    asset(one, sizeof(one), OURS, "1.6.1", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(one, sizeof(one), OURS, "1.6.1", "PPSA75483.zip", "uploaded", SHA_A);
     json = release("1.6.1", PUBLISHED, one, "");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_NO_SUMS);
     free(json);
@@ -235,7 +235,7 @@ static void test_not_offered(void)
     json = release("1.6.1", PUBLISHED, one, "");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_NO_ZIP);
     free(json);
-    asset(one, sizeof(one), OURS, "1.6.1", "PPSA99010.zip", "starter", SHA_A);
+    asset(one, sizeof(one), OURS, "1.6.1", "PPSA75483.zip", "starter", SHA_A);
     snprintf(files, sizeof(files), "%s,%s", one, two);
     json = release("1.6.1", PUBLISHED, files, "");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_NO_ZIP);
@@ -263,18 +263,18 @@ static void test_notes_are_not_fields(void)
     both(files, sizeof(files), OURS, "1.6.1", SHA_A);
     char *json = release("1.6.1", PUBLISHED, files,
                          "Not \\\"tag_name\\\": \\\"9.9.9\\\", \\\"prerelease\\\": true, \\\"draft\\\": true,\\n"
-                         "\\\"assets\\\": [{\\\"name\\\": \\\"PPSA99010.zip\\\", \\\"browser_download_url\\\": "
-                         "\\\"https://evil.example/PPSA99010.zip\\\"}] \\u00e9\\u65e5 \\\\ \\/ done");
+                         "\\\"assets\\\": [{\\\"name\\\": \\\"PPSA75483.zip\\\", \\\"browser_download_url\\\": "
+                         "\\\"https://evil.example/PPSA75483.zip\\\"}] \\u00e9\\u65e5 \\\\ \\/ done");
     CHECK(evaluate(json, "1.6.0", &r) == RELEASE_OFFER);
     CHECK(!strcmp(r.version, "1.6.1"));
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/1.6.1/PPSA99010.zip"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/1.6.1/PPSA75483.zip"));
     free(json);
 
     /* GitHub's own escape of a slash in an address is read as the slash */
     const char *escaped =
         "{\"tag_name\":\"1.6.1\",\"draft\":false,\"prerelease\":false,\"assets\":["
-        "{\"name\":\"PPSA99010.zip\",\"state\":\"uploaded\",\"size\":1,\"digest\":null,\"browser_download_url\":"
-        "\"https:\\/\\/github.com\\/Oliv3rmoon\\/Dulcamara\\/releases\\/download\\/1.6.1\\/PPSA99010.zip\"},"
+        "{\"name\":\"PPSA75483.zip\",\"state\":\"uploaded\",\"size\":1,\"digest\":null,\"browser_download_url\":"
+        "\"https:\\/\\/github.com\\/Oliv3rmoon\\/Dulcamara\\/releases\\/download\\/1.6.1\\/PPSA75483.zip\"},"
         "{\"name\":\"SHA256SUMS\",\"state\":\"uploaded\",\"size\":80,\"digest\":null,\"browser_download_url\":"
         "\"https://github.com/Oliv3rmoon/Dulcamara/releases/download/1.6.1/SHA256SUMS\"}]}";
     CHECK(evaluate(escaped, "1.6.0", &r) == RELEASE_OFFER);
@@ -284,7 +284,7 @@ static void test_unreadable(void)
 {
     Release r;
     const char *const bad[] = {"", "[]", "null", "{", "{\"tag_name\":", "{\"tag_name\":\"1.6.1\"",
-                               "{\"tag_name\":\"1.6.1\",\"assets\":[{\"name\":\"PPSA99010.zip\"}",
+                               "{\"tag_name\":\"1.6.1\",\"assets\":[{\"name\":\"PPSA75483.zip\"}",
                                "{\"tag_name\":\"1.6.1\" \"draft\":false}", "{\"draft\":maybe}",
                                "{\"body\":\"\\q\"}", "{\"body\":\"line\nbreak\"}"};
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i)
@@ -312,7 +312,7 @@ static void test_list_test_builds(void)
     char *json = list(rel, 2);
     CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_OFFER);
     CHECK(!strcmp(r.version, "0.2.10") && r.prerelease);
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/PPSA99010.zip"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/PPSA75483.zip"));
     CHECK(!strcmp(r.sums_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/SHA256SUMS"));
     CHECK(!strcmp(r.zip_digest, SHA_A) && r.zip_size == 18267896u);
     CHECK(evaluate_list(json, "0.2.9", false, &r) == RELEASE_NOT_NEWER);
@@ -345,21 +345,21 @@ static void test_list_passes_over(void)
     char *rel[5];
     both(files, sizeof(files), "darkxex/SwanStationPS5", "0.2.14", SHA_A);
     rel[0] = release("0.2.14", PRERELEASE, files, "");
-    asset(zip, sizeof(zip), "Oliv3rmoon/Dulcamara.evil.example/x", "0.2.13", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(zip, sizeof(zip), "Oliv3rmoon/Dulcamara.evil.example/x", "0.2.13", "PPSA75483.zip", "uploaded", SHA_A);
     asset(sums, sizeof(sums), OURS, "0.2.13", "SHA256SUMS", "uploaded", NULL);
     snprintf(files, sizeof(files), "%s,%s", zip, sums);
     rel[1] = release("0.2.13", PRERELEASE, files, "");
-    asset(zip, sizeof(zip), OURS, "0.2.10", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(zip, sizeof(zip), OURS, "0.2.10", "PPSA75483.zip", "uploaded", SHA_A);
     asset(sums, sizeof(sums), OURS, "0.2.12", "SHA256SUMS", "uploaded", NULL);
     snprintf(files, sizeof(files), "%s,%s", zip, sums);
     rel[2] = release("0.2.12", PRERELEASE, files, "");
-    asset(zip, sizeof(zip), OURS, "0.2.11", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(zip, sizeof(zip), OURS, "0.2.11", "PPSA75483.zip", "uploaded", SHA_A);
     rel[3] = release("0.2.11", PRERELEASE, zip, "");
     rel[4] = ours("0.2.10", PRERELEASE);
     char *json = list(rel, 5);
     CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_OFFER);
     CHECK(!strcmp(r.version, "0.2.10"));
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/PPSA99010.zip"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/PPSA75483.zip"));
     CHECK(!strcmp(r.sums_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/SHA256SUMS"));
     /* with nothing to fall back on, nothing is offered, and the newest says why */
     CHECK(evaluate_list(json, "0.2.10", true, &r) == RELEASE_FOREIGN_FILE);
@@ -391,14 +391,14 @@ static void test_list_order(void)
     char *rel[] = {ours("0.2.9", PRERELEASE), ours("0.2.10", PRERELEASE), ours("0.2.1", PRERELEASE)};
     char *json = list(rel, 3);
     CHECK(evaluate_list(json, "0.2.8", true, &r) == RELEASE_OFFER && !strcmp(r.version, "0.2.10"));
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/PPSA99010.zip"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/0.2.10/PPSA75483.zip"));
     discard(rel, 3, json);
     char *other[] = {ours("0.2.10", PRERELEASE), ours("v0.2.9", PUBLISHED), ours("0.10.0", PRERELEASE),
                      ours("0.9.99", PRERELEASE)};
     json = list(other, 4);
     CHECK(evaluate_list(json, "0.2.8", true, &r) == RELEASE_OFFER && !strcmp(r.version, "0.10.0"));
     CHECK(evaluate_list(json, "0.2.8", false, &r) == RELEASE_OFFER && !strcmp(r.version, "0.2.9"));
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/v0.2.9/PPSA99010.zip"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/v0.2.9/PPSA75483.zip"));
     /* not newer: the newest of them is named */
     CHECK(evaluate_list(json, "0.10.0", true, &r) == RELEASE_NOT_NEWER && !strcmp(r.version, "0.10.0"));
     discard(other, 4, json);
@@ -406,7 +406,7 @@ static void test_list_order(void)
     char *twice[] = {ours("v0.2.10", PRERELEASE), ours("0.2.10", PRERELEASE)};
     json = list(twice, 2);
     CHECK(evaluate_list(json, "0.2.9", true, &r) == RELEASE_OFFER);
-    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/v0.2.10/PPSA99010.zip"));
+    CHECK(!strcmp(r.zip_url, "https://github.com/Oliv3rmoon/Dulcamara/releases/download/v0.2.10/PPSA75483.zip"));
     discard(twice, 2, json);
 }
 
@@ -415,7 +415,7 @@ static void test_sums_of_another_tag(void)
     Release r;
     /* the ZIP is the tag's own but SHA256SUMS another tag's, or another host's: never offered, alone or listed */
     char files[4096], zip[1024], sums[1024];
-    asset(zip, sizeof(zip), OURS, "0.2.10", "PPSA99010.zip", "uploaded", SHA_A);
+    asset(zip, sizeof(zip), OURS, "0.2.10", "PPSA75483.zip", "uploaded", SHA_A);
     asset(sums, sizeof(sums), OURS, "0.2.9", "SHA256SUMS", "uploaded", NULL);
     snprintf(files, sizeof(files), "%s,%s", zip, sums);
     char *json = release("0.2.10", PUBLISHED, files, "");
@@ -482,25 +482,25 @@ static void test_list_unreadable(void)
 static void test_sums(void)
 {
     char sha[65], text[512];
-    snprintf(text, sizeof(text), "%s  PPSA99010.zip\n", SHA_A);
-    CHECK(release_sums_lookup(text, strlen(text), "PPSA99010.zip", sha) == 1 && !strcmp(sha, SHA_A));
-    snprintf(text, sizeof(text), "%s *PPSA99010.zip", SHA_A);
-    CHECK(release_sums_lookup(text, strlen(text), "PPSA99010.zip", sha) == 1 && !strcmp(sha, SHA_A));
-    snprintf(text, sizeof(text), "%s  SwanStationPS5-DiscDaemon.elf\r\n%s  PPSA99010.zip\r\n", SHA_B, SHA_A);
-    CHECK(release_sums_lookup(text, strlen(text), "PPSA99010.zip", sha) == 1 && !strcmp(sha, SHA_A));
-    snprintf(text, sizeof(text), "4DEF0FD289A935CB37B5DF04BF19DBC3523C8A2DE8C7B1F92020EA0D63C77BCA  PPSA99010.zip\n");
-    CHECK(release_sums_lookup(text, strlen(text), "PPSA99010.zip", sha) == 1 && !strcmp(sha, SHA_A));
-    snprintf(text, sizeof(text), "%s  SwanStationPS5-DiscDaemon.elf\n%s  XPPSA99010.zip\n", SHA_B, SHA_A);
-    CHECK(release_sums_lookup(text, strlen(text), "PPSA99010.zip", sha) == 0);
-    CHECK(release_sums_lookup("", 0, "PPSA99010.zip", sha) == 0);
-    snprintf(text, sizeof(text), "%s  PPSA99010.zip\n%s  PPSA99010.zip\n", SHA_A, SHA_B);
-    CHECK(release_sums_lookup(text, strlen(text), "PPSA99010.zip", sha) == -1);
-    snprintf(text, sizeof(text), "4def0fd2  PPSA99010.zip\n");
-    CHECK(release_sums_lookup(text, strlen(text), "PPSA99010.zip", sha) == -1);
-    snprintf(text, sizeof(text), "%.63sg  PPSA99010.zip\n", SHA_A);
-    CHECK(release_sums_lookup(text, strlen(text), "PPSA99010.zip", sha) == -1);
-    snprintf(text, sizeof(text), "%s PPSA99010.zip\n", SHA_A); /* one space */
-    CHECK(release_sums_lookup(text, strlen(text), "PPSA99010.zip", sha) == -1);
+    snprintf(text, sizeof(text), "%s  PPSA75483.zip\n", SHA_A);
+    CHECK(release_sums_lookup(text, strlen(text), "PPSA75483.zip", sha) == 1 && !strcmp(sha, SHA_A));
+    snprintf(text, sizeof(text), "%s *PPSA75483.zip", SHA_A);
+    CHECK(release_sums_lookup(text, strlen(text), "PPSA75483.zip", sha) == 1 && !strcmp(sha, SHA_A));
+    snprintf(text, sizeof(text), "%s  SwanStationPS5-DiscDaemon.elf\r\n%s  PPSA75483.zip\r\n", SHA_B, SHA_A);
+    CHECK(release_sums_lookup(text, strlen(text), "PPSA75483.zip", sha) == 1 && !strcmp(sha, SHA_A));
+    snprintf(text, sizeof(text), "4DEF0FD289A935CB37B5DF04BF19DBC3523C8A2DE8C7B1F92020EA0D63C77BCA  PPSA75483.zip\n");
+    CHECK(release_sums_lookup(text, strlen(text), "PPSA75483.zip", sha) == 1 && !strcmp(sha, SHA_A));
+    snprintf(text, sizeof(text), "%s  SwanStationPS5-DiscDaemon.elf\n%s  XPPSA75483.zip\n", SHA_B, SHA_A);
+    CHECK(release_sums_lookup(text, strlen(text), "PPSA75483.zip", sha) == 0);
+    CHECK(release_sums_lookup("", 0, "PPSA75483.zip", sha) == 0);
+    snprintf(text, sizeof(text), "%s  PPSA75483.zip\n%s  PPSA75483.zip\n", SHA_A, SHA_B);
+    CHECK(release_sums_lookup(text, strlen(text), "PPSA75483.zip", sha) == -1);
+    snprintf(text, sizeof(text), "4def0fd2  PPSA75483.zip\n");
+    CHECK(release_sums_lookup(text, strlen(text), "PPSA75483.zip", sha) == -1);
+    snprintf(text, sizeof(text), "%.63sg  PPSA75483.zip\n", SHA_A);
+    CHECK(release_sums_lookup(text, strlen(text), "PPSA75483.zip", sha) == -1);
+    snprintf(text, sizeof(text), "%s PPSA75483.zip\n", SHA_A); /* one space */
+    CHECK(release_sums_lookup(text, strlen(text), "PPSA75483.zip", sha) == -1);
 }
 
 static void test_file_sha256(const char *dir)
@@ -573,13 +573,13 @@ static void test_eclipse_ordering(void)
     CHECK(evaluate(one, "2.0.0", &r) == RELEASE_NOT_PUBLISHED);
     free(one);
 
-    /* the package's own identity: PPSA99010 and 02.000.000 for 2.0.0, nothing else */
-    const char *ok = "{\"titleId\":\"PPSA99010\",\"contentVersion\":\"02.000.000\"}";
-    CHECK(release_payload_identity(ok, strlen(ok), "PPSA99010", "2.0.0"));
-    const char *stale = "{\"titleId\":\"PPSA99010\",\"contentVersion\":\"00.002.013\"}";
-    CHECK(!release_payload_identity(stale, strlen(stale), "PPSA99010", "2.0.0"));
+    /* the package's own identity: PPSA75483 and 02.000.000 for 2.0.0, nothing else */
+    const char *ok = "{\"titleId\":\"PPSA75483\",\"contentVersion\":\"02.000.000\"}";
+    CHECK(release_payload_identity(ok, strlen(ok), "PPSA75483", "2.0.0"));
+    const char *stale = "{\"titleId\":\"PPSA75483\",\"contentVersion\":\"00.002.013\"}";
+    CHECK(!release_payload_identity(stale, strlen(stale), "PPSA75483", "2.0.0"));
     const char *other = "{\"titleId\":\"PPSA99011\",\"contentVersion\":\"02.000.000\"}";
-    CHECK(!release_payload_identity(other, strlen(other), "PPSA99010", "2.0.0"));
+    CHECK(!release_payload_identity(other, strlen(other), "PPSA75483", "2.0.0"));
 }
 
 /* The real package metadata (sce_sys/param.json) and the app's NP_VERSION/NP_TITLE_ID agree, and NP_VERSION is
@@ -595,7 +595,7 @@ static void test_package_identity(const char *param)
     fclose(f);
     CHECK(length > 0 && length < sizeof(json) - 1);
     CHECK(release_payload_identity(json, length, NP_TITLE_ID, NP_VERSION));
-    CHECK(!strcmp(NP_TITLE_ID, "PPSA99010"));
+    CHECK(!strcmp(NP_TITLE_ID, "PPSA75483"));
     CHECK(release_version_compare(NP_VERSION, "0.2.13") > 0);
     Release r;
     char *installed_again = ours(NP_VERSION, PUBLISHED);

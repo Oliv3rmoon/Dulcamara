@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[1]
 ANCHORS=re.findall(r'^    "([^"]+)",$',(ROOT/'src/update_payload.h').read_text(),re.M)
 REQUIRED={p:b'fixture '+p.encode() for p in ANCHORS}
 REQUIRED['eboot.bin']=b'new executable'
-REQUIRED['sce_sys/param.json']=b'{"titleId":"PPSA99010","contentVersion":"02.000.000"}'
+REQUIRED['sce_sys/param.json']=b'{"titleId":"PPSA75483","contentVersion":"02.000.000"}'
 def manifested(entries):
  entries=dict(entries)
  entries['eclipse-payload.sha256']=('DULCAMARA-ECLIPSE-PAYLOAD-1\n'+''.join(f'{hashlib.sha256(b).hexdigest()} {len(b)} {p}\n' for p,b in entries.items())).encode()
@@ -30,7 +30,7 @@ class UpdateStorageTest(unittest.TestCase):
  def tearDown(self): self.tmpcase.cleanup()
  def payload(self,entries=None):
   with zipfile.ZipFile(self.zip,'w',zipfile.ZIP_DEFLATED) as z:
-   for p,b in manifested(entries or REQUIRED).items(): z.writestr('PPSA99010/'+p,b)
+   for p,b in manifested(entries or REQUIRED).items(): z.writestr('PPSA75483/'+p,b)
  def run_install(self,mode='ok',success=True):
   r=subprocess.run([str(self.exe),str(self.app),str(self.zip),mode],text=True,capture_output=True,timeout=30)
   self.assertEqual(r.returncode,0 if success else 1,r.stdout+r.stderr);self.assertEqual((self.app/'untouched').read_bytes(),b'user data');return r.stdout
@@ -42,8 +42,14 @@ class UpdateStorageTest(unittest.TestCase):
   cases=[{'eboot.bin':b'only executable'},dict(REQUIRED,**{'../escape':b'x'}),dict(REQUIRED,**{'eboot.bin.eclipse-stage':b'x'}),dict(REQUIRED,**{'EBOOT.BIN':b'x'}),dict(REQUIRED,**{'eboot.bin/child':b'x'})]
   for entries in cases:
    self.payload(entries);self.run_install(success=False);self.assertEqual((self.app/'eboot.bin').read_bytes(),b'old executable')
+ def test_legacy_vkquake_archive_root_is_rejected(self):
+  with zipfile.ZipFile(self.zip, 'w') as archive:
+   for path, contents in manifested(REQUIRED).items():
+    archive.writestr('PPSA99010/' + path, contents)
+  self.run_install(success=False)
+  self.assertEqual((self.app/'eboot.bin').read_bytes(), b'old executable')
  def test_identity_must_match_numeric_offer_and_title(self):
-  for param in [b'{"titleId":"PPSA99999","contentVersion":"02.000.000"}',b'{"titleId":"PPSA99010","contentVersion":"00.002.013"}',b'{"titleId":"PPSA99010","contentVersion":"02.000.000","titleId":"PPSA99010"}']:
+  for param in [b'{"titleId":"PPSA99010","contentVersion":"02.000.000"}',b'{"titleId":"PPSA99999","contentVersion":"02.000.000"}',b'{"titleId":"PPSA75483","contentVersion":"00.002.013"}',b'{"titleId":"PPSA75483","contentVersion":"02.000.000","titleId":"PPSA75483"}']:
    self.payload(dict(REQUIRED,**{'sce_sys/param.json':param}));self.run_install(success=False)
    self.assertEqual((self.app/'eboot.bin').read_bytes(),b'old executable')
  def test_manifest_completeness_digests_and_records(self):
@@ -57,7 +63,7 @@ class UpdateStorageTest(unittest.TestCase):
   unknown=dict(valid);unknown['eclipse-payload.sha256']+=b'0'*64+b' 1 unknown\n';cases.append(unknown)
   for entries in cases:
    with zipfile.ZipFile(self.zip,'w',zipfile.ZIP_DEFLATED) as z:
-    for p,b in entries.items():z.writestr('PPSA99010/'+p,b)
+    for p,b in entries.items():z.writestr('PPSA75483/'+p,b)
    self.run_install(success=False);self.assertEqual((self.app/'eboot.bin').read_bytes(),b'old executable')
  def test_source_sized_expansion_admitted_only_with_rollback_space(self):
   # A small fixture claims a 910 MiB source member. We constrain actual statvfs
@@ -66,8 +72,8 @@ class UpdateStorageTest(unittest.TestCase):
   entries=manifested(data);claimed=910*1024*1024
   entries['eclipse-payload.sha256']=entries['eclipse-payload.sha256'].replace(b' 6 '+name.encode()+b'\n',f' {claimed} {name}\n'.encode())
   with zipfile.ZipFile(self.zip,'w') as z:
-   for p,b in entries.items():z.writestr('PPSA99010/'+p,b)
-  raw=bytearray(self.zip.read_bytes());full=('PPSA99010/'+name).encode()
+   for p,b in entries.items():z.writestr('PPSA75483/'+p,b)
+  raw=bytearray(self.zip.read_bytes());full=('PPSA75483/'+name).encode()
   for sig,name_offset,size_offset in [(b'PK\x03\x04',30,22),(b'PK\x01\x02',46,24)]:
    at=0
    while True:
@@ -81,8 +87,8 @@ class UpdateStorageTest(unittest.TestCase):
  def test_truncation_crc_and_duplicate_entries(self):
   self.payload();raw=self.zip.read_bytes();self.zip.write_bytes(raw[:-20]);self.run_install(success=False)
   self.payload()
-  with self.assertWarnsRegex(UserWarning, r"Duplicate name: 'PPSA99010/eboot.bin'"):
-   with zipfile.ZipFile(self.zip,'a') as z:z.writestr('PPSA99010/eboot.bin',b'duplicate')
+  with self.assertWarnsRegex(UserWarning, r"Duplicate name: 'PPSA75483/eboot.bin'"):
+   with zipfile.ZipFile(self.zip,'a') as z:z.writestr('PPSA75483/eboot.bin',b'duplicate')
   self.run_install(success=False)
   self.payload();raw=bytearray(self.zip.read_bytes());at=raw.find(b'PK\x03\x04');length,extra=struct.unpack_from('<HH',raw,at+26);raw[at+30+length+extra]^=0x7f;self.zip.write_bytes(raw);self.run_install(success=False)
  def test_generator_rejects_interrupted_old_temporary(self):
@@ -106,7 +112,7 @@ class UpdateStorageTest(unittest.TestCase):
   self.assertIn(b'source/CorrespondingSource.tar.gz',manifest)
   with zipfile.ZipFile(self.zip,'w') as z:
    for p in tree.rglob('*'):
-    if p.is_file():z.write(p,'PPSA99010/'+p.relative_to(tree).as_posix())
+    if p.is_file():z.write(p,'PPSA75483/'+p.relative_to(tree).as_posix())
   self.run_install()
  def test_space_write_and_writer_exclusion(self):
   for mode in ['space','write','apply-write','runtime','restore']:

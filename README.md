@@ -22,7 +22,7 @@ The test build includes the itch.io Shelf, support for compiled Python packages 
 
 Eclipse 2.1.2 can keep the interface readable with a missing fonts folder and use the title’s own storage if the console denies the shared library. [Storage and font repair notes](docs/releases/2.1.2.md)
 
-The two reported Summertime Saga startup failures have host regression tests. Gameplay, controller input on hardware, and encrypted installation still need PS5 testing. The release includes the application ZIP, corresponding source and checksums. [Download the PS5 test build](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/v2.1.2)
+The two reported Summertime Saga startup failures have host regression tests. Gameplay, controller input on hardware, and encrypted installation still need PS5 testing. The release includes the application ZIP, corresponding source and checksums. [Download the PS5 test build](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/v2.1.3)
 
 ## Why Dulcamara
 
@@ -31,7 +31,7 @@ The two reported Summertime Saga startup failures have host regression tests. Ga
 - **A library that finds your games.** Copy a game's folder (or a `.zip` / `.easyrpg` of it) and it shows up with its title and its own title screen as the cover. Sort by title or by the last played; Square looks for new games without restarting.
 - **Made for the controller.** Cross confirms, Circle cancels, Triangle opens the game's menu, and every button can be mapped again in Settings. The touchpad opens Dulcamara's menu at any time. Hold R2 (or press it once) to fast-forward from x2 to x8, for grinding and long cutscenes.
 - **CRT and LCD shaders.** CRT Royale, CRT Lottes, CRT Pi, Newpixie, Hyllian NTSC, Mattias, NTSC signals, LCD3x, zfast LCD and Game Boy LCD, or sharp square pixels, whole-number scaling and the game's own shape.
-- **Updates from its own releases.** It asks this repository for a newer release and installs it, after checking `PPSA99010.zip` against the release's `SHA256SUMS`.
+- **Updates from its own releases.** It asks this repository for a newer release and installs it, after checking `PPSA75483.zip` against the release's `SHA256SUMS`.
 - **Free software, no bundled games.** Dulcamara remains under the GPL and includes no ads. Copy your own games or use the optional itch.io Shelf to download free Ren’Py titles. New insider builds require an eligible account; archived public builds keep their existing behavior.
 
 ## nightly insider
@@ -46,7 +46,7 @@ Join [nightly on Discord](https://discord.gg/pSqgRU3YP9), complete verification 
 
 ## Install the PS5 test build
 
-Extract the release ZIP and install the `PPSA99010` application folder using your existing Dulcamara homebrew installation method. The default library is `/data/dulcamara`. An accessible USB drive can host a separate library when its `dulcamara` folder contains a regular file named `portable.txt`. The release page has the console test steps and matching source.
+Extract the complete `PPSA75483.zip` and install the enclosed `PPSA75483` folder beside any existing `PPSA99010` folder. Versions through 2.1.2 shared the latter ID with vkQuake. Keep both applications and their data in separate folders. Install 2.1.3 manually the first time. The shared and USB libraries keep their existing locations. [Install and save details](docs/releases/2.1.3.md)
 
 ## Docs
 

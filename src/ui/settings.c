@@ -248,6 +248,7 @@ static const Row ABOUT[] = {
      K_ACTION, 0, NULL, 0, NULL, A_COMMUNITY, -1},
     {NP_TITLE " " NP_VERSION ", a Nightshade app by Oliv3rmoon. Free software: GPL-3.0-or-later.", NULL, K_INFO, 0, NULL, 0, NULL,
      A_NONE, -1},
+    {"PS5 title ID " NP_TITLE_ID, NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
     {"Games run on EasyRPG Player (GPL-3.0-or-later) and liblcf (MIT), by the EasyRPG team.", NULL, K_INFO, 0, NULL,
      0, NULL, A_NONE, -1},
     {"Ren'Py games run on Ren'Py 8.5 (MIT) by Tom Rothamel and its contributors, in Python 3.12 (PSF), with FFmpeg "

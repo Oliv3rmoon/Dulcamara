@@ -46,5 +46,5 @@ def generate(root):
 
  return output
 if __name__=='__main__':
- if len(sys.argv)!=2:raise SystemExit('usage: update_payload.py <assembled PPSA99010 directory>')
+ if len(sys.argv)!=2:raise SystemExit('usage: update_payload.py <assembled PPSA75483 directory>')
  print(generate(sys.argv[1]))

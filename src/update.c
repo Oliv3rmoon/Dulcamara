@@ -6,10 +6,10 @@
  * Checks api.github.com for the repository's latest release (not a draft or a pre-release), or,
  * with Settings > System > Test builds on, for its 20 most recent releases, test builds
  * (pre-releases) among them, so that testers needn't install each test build by hand;
- * update_release.c decides which is offered: a newer X.Y.Z tag carrying PPSA99010.zip and
+ * update_release.c decides which is offered: a newer X.Y.Z tag carrying PPSA75483.zip and
  * SHA256SUMS, both this repository's own files, the newest such of the list with Test builds on
  * (never a draft). Either way, the same checks. Installing downloads the ZIP, checks it against
- * the SHA-256 that SHA256SUMS gives it, and writes the PPSA99010 folder inside it over the
+ * the SHA-256 that SHA256SUMS gives it, and writes the PPSA75483 folder inside it over the
  * installed app through verified staging and a durable rollback journal. The executable
  * is replaced last, and launch remains locked until the process restarts.
  */
@@ -256,7 +256,7 @@ void update_check(void)
 }
 
 /* Where the running app is stored. The update has to land there, whether it's in /data/homebrew or
- * on an extended or USB drive (/mnt/ext1/homebrew/PPSA99010 ...). The mount the app runs from
+ * on an extended or USB drive (/mnt/ext1/homebrew/PPSA75483 ...). The mount the app runs from
  * (/app0, or the ShadowMountPlus one) is matched to a folder on disk by its eboot.bin: same size
  * and modification time. */
 static bool same_eboot(const char *dir, const struct stat *running)

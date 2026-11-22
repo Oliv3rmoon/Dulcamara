@@ -40,7 +40,7 @@ class UpdateReleaseTest(unittest.TestCase):
     def test_the_app_asks_only_dulcamaras_releases(self):
         header = (ROOT / "src/update_release.h").read_text(encoding="utf-8")
         self.assertIn('#define UPDATE_REPO "Oliv3rmoon/Dulcamara"', header)
-        self.assertIn('#define UPDATE_ZIP "PPSA99010.zip"', header)
+        self.assertIn('#define UPDATE_ZIP "PPSA75483.zip"', header)
         self.assertIn('#define UPDATE_LIST_URL "https://api.github.com/repos/" UPDATE_REPO '
                       '"/releases?per_page=20"', header)
         update = (ROOT / "src/update.c").read_text(encoding="utf-8")

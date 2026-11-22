@@ -5,7 +5,7 @@
 """Builds tests/net_download_check.c with src/net.c and the host's libcurl (CC names the compiler, default clang),
 with a stall limit of 3 seconds in place of NET_STALL_SECONDS, and runs it against a server on 127.0.0.1:
 
-* an update-sized download (75.8 MB, as 0.2.11's PPSA99010.zip) at 2.5 MB/s, about 29 seconds, completes: until 0.2.13
+* an update-sized download (75.8 MB, as 0.2.11's PPSA75483.zip) at 2.5 MB/s, about 29 seconds, completes: until 0.2.13
   net_download gave up on any download after 25 seconds all told, and the tester's update ended in curl 28 three times
   in a row ("The download failed") on a phone's hotspot;
 * GitHub's redirect from the release's address to the file is followed;
@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FLAGS = ["-std=c11", "-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
          "-fno-omit-frame-pointer", "-Wall", "-Wextra", "-Werror", "-UNDEBUG", "-D_POSIX_C_SOURCE=200809L"]
 STALL_SECONDS = 3
-UPDATE_SIZE = 75_775_079       # 0.2.11's PPSA99010.zip ...
+UPDATE_SIZE = 75_775_079       # 0.2.11's PPSA75483.zip ...
 SLOW_RATE = 2_621_440          # ... at 2.5 MiB a second: about 29 seconds, longer than the old 25-second limit
 WHOLE = bytes((i * 7 + i // 251) % 256 for i in range(3 * 1024 * 1024))  # 3 MiB, no two halves alike
 
@@ -72,26 +72,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return int(match.group(1)) if match else None
 
     def do_GET(self):
-        if self.path == "/slow/PPSA99010.zip":
+        if self.path == "/slow/PPSA75483.zip":
             self.headers_for(200, len(SLOW))
             chunk = SLOW_RATE // 10
             for at in range(0, len(SLOW), chunk):
                 self.wfile.write(SLOW[at:at + chunk])
                 time.sleep(0.1)
-        elif self.path == "/releases/download/0.2.13/PPSA99010.zip":
+        elif self.path == "/releases/download/0.2.13/PPSA75483.zip":
             self.send_response(302)
-            self.send_header("Location", "/assets/PPSA99010.zip")
+            self.send_header("Location", "/assets/PPSA75483.zip")
             self.send_header("Content-Length", "0")
             self.end_headers()
-        elif self.path == "/assets/PPSA99010.zip":
+        elif self.path == "/assets/PPSA75483.zip":
             self.headers_for(200, len(WHOLE))
             self.wfile.write(WHOLE)
-        elif self.path == "/stall/PPSA99010.zip":
+        elif self.path == "/stall/PPSA75483.zip":
             self.headers_for(200, len(WHOLE))
             self.wfile.write(WHOLE[:262_144])
             self.wfile.flush()
             time.sleep(30)  # nothing more arrives; the client gives up first
-        elif self.path == "/flaky/PPSA99010.zip":
+        elif self.path == "/flaky/PPSA75483.zip":
             # The first request gets half and the connection drops; the next is answered from its Range.
             start = self.range_start()
             Handler.flaky_requests.append(self.headers.get("Range", ""))
@@ -105,7 +105,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.headers_for(206, len(WHOLE) - start,
                                  [("Content-Range", f"bytes {start}-{len(WHOLE) - 1}/{len(WHOLE)}")])
                 self.wfile.write(WHOLE[start:])
-        elif self.path == "/norange/PPSA99010.zip":
+        elif self.path == "/norange/PPSA75483.zip":
             self.headers_for(200, len(WHOLE))  # whatever the Range, the whole file
             try:
                 self.wfile.write(WHOLE)
@@ -166,14 +166,14 @@ class NetDownloadTest(unittest.TestCase):
 
     def test_downloads(self):
         # The update-sized slow one runs while the others are checked: together they take its 29 seconds.
-        slow, slow_dest = self.start("/slow/PPSA99010.zip", "slow.zip")
+        slow, slow_dest = self.start("/slow/PPSA75483.zip", "slow.zip")
 
-        code, fields, dest = self.run_one("/releases/download/0.2.13/PPSA99010.zip", "redirected.zip")
+        code, fields, dest = self.run_one("/releases/download/0.2.13/PPSA75483.zip", "redirected.zip")
         self.assertEqual(code, 0, fields["out"])
         self.assertEqual(dest.read_bytes(), WHOLE)
         self.assertEqual(fields["progress"], f"{len(WHOLE)}/{len(WHOLE)}", fields["out"])
 
-        code, fields, dest = self.run_one("/stall/PPSA99010.zip", "stalled.zip")
+        code, fields, dest = self.run_one("/stall/PPSA75483.zip", "stalled.zip")
         self.assertEqual(fields["result"], 2, fields["out"])  # NET_UNAVAILABLE
         self.assertLess(fields["seconds"], STALL_SECONDS + 10, fields["out"])
         self.assertEqual(fields["why"], f"the connection stalled (under 1 KB/s for {STALL_SECONDS} seconds)",
@@ -185,10 +185,10 @@ class NetDownloadTest(unittest.TestCase):
 
         # A dropped connection: half is kept, and the next call asks for the rest and finishes the file.
         Handler.flaky_requests.clear()
-        code, fields, dest = self.run_one("/flaky/PPSA99010.zip", "flaky.zip")
+        code, fields, dest = self.run_one("/flaky/PPSA75483.zip", "flaky.zip")
         self.assertEqual(fields["result"], 2, fields["out"])
         self.assertEqual(Path(str(dest) + ".part").stat().st_size, len(WHOLE) // 2)
-        code, fields, dest = self.run_one("/flaky/PPSA99010.zip", "flaky.zip")
+        code, fields, dest = self.run_one("/flaky/PPSA75483.zip", "flaky.zip")
         self.assertEqual(code, 0, fields["out"])
         self.assertEqual(Handler.flaky_requests, ["", f"bytes={len(WHOLE) // 2}-"])
         self.assertIn(f"going on from {len(WHOLE) // 2} bytes", fields["out"])
@@ -199,7 +199,7 @@ class NetDownloadTest(unittest.TestCase):
         # A server that ignores Range: the .part is dropped and the file taken whole from the start.
         stale = Path(self.directory.name) / "norange.zip.part"
         stale.write_bytes(WHOLE[:1000])
-        code, fields, dest = self.run_one("/norange/PPSA99010.zip", "norange.zip")
+        code, fields, dest = self.run_one("/norange/PPSA75483.zip", "norange.zip")
         self.assertEqual(code, 0, fields["out"])
         self.assertIn("from the start", fields["out"])
         self.assertEqual(dest.read_bytes(), WHOLE)
