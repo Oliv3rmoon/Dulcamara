@@ -2376,7 +2376,7 @@ static bool soft_make(int w, int h, char *error, size_t size)
     return true;
 }
 
-bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitch_px)
+bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitch_px, bool fresh)
 {
     if (!V.device || !V.swapchain || V.soft_failed || !xrgb || width <= 0 || height <= 0 || width > 4096 ||
         height > 4096)
@@ -2389,15 +2389,26 @@ bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitc
         char error[160];
         if (!soft_make(width, height, error, sizeof(error)))
         {
-            np_log("vulkan: %s; the game is drawn without its shader", error);
+            np_log("vulkan: %s; falling back to UI texture path", error);
             soft_free();
             V.soft_failed = true;
             return false;
         }
-        np_log("vulkan: game image %dx%d for the shaders", width, height);
+        np_log("vulkan: persistent game image %dx%d ready", width, height);
     }
-    V.soft_pixels = xrgb;
-    V.soft_pitch = pitch_px;
+    if (fresh || !V.soft_ready)
+    {
+        V.soft_pixels = xrgb;
+        V.soft_pitch = pitch_px;
+    }
+    else
+    {
+        /* Repeated frame: reuse V.soft_image directly with zero staging copy and zero GPU stall. */
+        V.soft_pixels = NULL;
+        V.game_image = V.soft_image;
+        V.game_view = V.soft_view;
+        V.game_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    }
     return true;
 }
 
@@ -2653,9 +2664,9 @@ void vkp_show_game(float x, float y, float w, float h, float crop, int shader, i
 
 #else
 
-bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitch_px)
+bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitch_px, bool fresh)
 {
-    (void)xrgb, (void)width, (void)height, (void)pitch_px;
+    (void)xrgb, (void)width, (void)height, (void)pitch_px, (void)fresh;
     return false;
 }
 

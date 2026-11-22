@@ -32,14 +32,19 @@ static bool sdl_background;
 #if defined(__PROSPERO__)
 #include "../drives.h"
 #include "blit.h"
+#if defined(NP_MANAGED_STORAGE)
 #include <dirent.h>
 #include <errno.h>
+#else
+#include "ps5_unlock.h"
+#endif
 #include "ps5_video.h"
 #include "vk/vk_present.h"
 #include <sys/mman.h>
 #include <sys/stat.h>
 int sceKernelSendNotificationRequest(uint32_t device, void *request, size_t size, int blocking);
 int sceSystemServiceHideSplashScreen(void);
+int np_elevate(const char **route); /* elevation_shim.cpp */
 #else
 static bool init_desktop_window(void);
 #if defined(NP_PREVIEW)
@@ -514,26 +519,171 @@ void plat_default_root(char *out, size_t size)
 #endif
 }
 
-/* What a still-sandboxed SwanStationPS5 can do with its data folder, for the log. */
-static char sandbox_probe[96] = "not probed";
+/* What storage unlock and selection found, for the log and Settings > About. */
+static char sandbox_probe[160] = "not probed";
 
 const char *plat_sandbox_probe(void)
 {
     return sandbox_probe;
 }
 
+/* Settings > System > "Unlock /data with etaHEN": stored as a marker file so
+ * it can be read before any unlock (paths that may work while sandboxed). */
+static const char *const NO_UNLOCK_MARKERS[] = {"/download0/dulcamara_no_unlock", NP_DATA "/no_unlock"};
+
+bool plat_unlock_disabled(void)
+{
+    for (size_t i = 0; i < 2; ++i)
+        if (path_exists(NO_UNLOCK_MARKERS[i]))
+            return true;
+    return false;
+}
+
+void plat_set_unlock_disabled(bool disabled)
+{
+    for (size_t i = 0; i < 2; ++i)
+    {
+        if (disabled)
+        {
+            FILE *f = fopen(NO_UNLOCK_MARKERS[i], "w");
+            if (f)
+                fclose(f);
+        }
+        else
+            remove(NO_UNLOCK_MARKERS[i]);
+    }
+}
+
+#if defined(__PROSPERO__) && !defined(NP_MANAGED_STORAGE)
+/* How the storage was unlocked, remembered between starts: the way that worked last time goes first. */
+enum { UNLOCK_ROUTE_NONE, UNLOCK_ROUTE_HEN, UNLOCK_ROUTE_LAPY };
+#define UNLOCK_ROUTE_FILE NP_DATA "/cache/unlock-route"
+
+static int unlock_route_remembered(void)
+{
+    char word[16] = "";
+    FILE *f = fopen(UNLOCK_ROUTE_FILE, "r");
+    if (!f)
+        return UNLOCK_ROUTE_NONE;
+    if (!fgets(word, sizeof(word), f))
+        word[0] = 0;
+    fclose(f);
+    return strncmp(word, "lapy", 4) == 0 ? UNLOCK_ROUTE_LAPY : strncmp(word, "hen", 3) == 0 ? UNLOCK_ROUTE_HEN : UNLOCK_ROUTE_NONE;
+}
+
+static void unlock_route_remember(int route)
+{
+    if (route == UNLOCK_ROUTE_NONE)
+    {
+        remove(UNLOCK_ROUTE_FILE);
+        return;
+    }
+    if (unlock_route_remembered() == route)
+        return;
+    mkdir(NP_DATA, 0777); /* the folders may not exist yet at the very first start */
+    mkdir(NP_DATA "/cache", 0777);
+    FILE *f = fopen(UNLOCK_ROUTE_FILE, "w");
+    if (!f)
+        return;
+    fputs(route == UNLOCK_ROUTE_LAPY ? "lapy\n" : "hen\n", f);
+    fclose(f);
+}
+#endif
+
+#if defined(__PROSPERO__) && !defined(NP_MANAGED_STORAGE)
+static bool unlock_attempted;
+static char unlock_status[64] = "";
+static char unlock_detail[128] = "";
+
+static void ps5_unlock_startup_once(void)
+{
+    if (unlock_attempted)
+        return;
+    unlock_attempted = true;
+    unlock_status[0] = '\0';
+    unlock_detail[0] = '\0';
+    if (ps5_data_listable())
+    {
+        str_copy(unlock_status, sizeof(unlock_status), "unlocked at launch");
+        return;
+    }
+    if (plat_unlock_disabled())
+    {
+        str_copy(unlock_status, sizeof(unlock_status), "sandboxed (unlock disabled)");
+        str_copy(unlock_detail, sizeof(unlock_detail), "unlock turned off in Settings");
+        return;
+    }
+    /* The way that worked at the last start goes first, so a console that always answers the same way does not wait
+     * for the others to stay silent (each takes a second or more). If it fails, the usual order runs. */
+    const bool lapy_first = unlock_route_remembered() == UNLOCK_ROUTE_LAPY;
+    const char *route = "none";
+    int status = -1;
+    bool lapy_tried = false;
+    if (lapy_first)
+    {
+        /* a loaded LegacyJB / etaHEN answers a short request at once, and is faster than the helper */
+        if (ps5_unlock_quick() == UNLOCK_OK)
+        {
+            unlock_route_remember(UNLOCK_ROUTE_HEN);
+            str_copy(unlock_status, sizeof(unlock_status), "unlocked via HEN");
+            return;
+        }
+        status = np_elevate(&route);
+        lapy_tried = true;
+        if (status == 0 && ps5_data_listable())
+        {
+            str_copy(unlock_status, sizeof(unlock_status), "unlocked via Lapy");
+            return;
+        }
+    }
+    /* 1. etaHEN / LegacyJB / OnionHEN jailbreak-on-demand. */
+    UnlockResult hen = ps5_unlock_etahen();
+    if (hen == UNLOCK_ALREADY)
+    {
+        str_copy(unlock_status, sizeof(unlock_status), "unlocked at launch");
+        return;
+    }
+    if (hen == UNLOCK_OK)
+    {
+        unlock_route_remember(UNLOCK_ROUTE_HEN);
+        str_copy(unlock_status, sizeof(unlock_status), "unlocked via HEN");
+        return;
+    }
+    /* 2. Packaged Lapy helper (/app0/lapy.elf) through elfldr on 127.0.0.1:9021. One request per process. */
+    if (!lapy_tried)
+    {
+        status = np_elevate(&route);
+        if (status == 0 && ps5_data_listable())
+        {
+            unlock_route_remember(UNLOCK_ROUTE_LAPY);
+            str_copy(unlock_status, sizeof(unlock_status), "unlocked via Lapy");
+            return;
+        }
+    }
+    unlock_route_remember(UNLOCK_ROUTE_NONE); /* nothing answered: forget the old way */
+    str_copy(unlock_status, sizeof(unlock_status), "sandboxed");
+    snprintf(unlock_detail, sizeof(unlock_detail), "%s; Lapy code %d via %s", ps5_unlock_describe(hen), status, route);
+}
+#endif
+
 bool plat_prepare_storage(char *root, size_t capacity, char *error, size_t size)
 {
 #if defined(__PROSPERO__)
-    /* The same USB drive can be visible through its app mount and its /mnt name. */
-    const char *mounts[DRIVE_USB_COUNT * 2] = {"/usb0", "/usb1", "/usb2", "/usb3", "/usb4", "/usb5", "/usb6", "/usb7"};
-    for (int i = 0; i < DRIVE_USB_COUNT; ++i)
-        mounts[DRIVE_USB_COUNT + i] = drive_paths[DRIVE_EXT_COUNT + i];
+#if !defined(NP_MANAGED_STORAGE)
+    ps5_unlock_startup_once();
+#endif
+    /* Probe portable libraries (dulcamara/portable.txt) on app USB mounts, global USB mounts, and extended drives.
+     * Identical mount targets are deduplicated by st_dev/st_ino in storage_portable_root(). */
+    const char *mounts[DRIVE_USB_COUNT + DRIVE_COUNT] = {"/usb0", "/usb1", "/usb2", "/usb3",
+                                                         "/usb4", "/usb5", "/usb6", "/usb7"};
+    for (int i = 0; i < DRIVE_COUNT; ++i)
+        mounts[DRIVE_USB_COUNT + i] = drive_paths[i];
     int portable = storage_portable_root(root, capacity, mounts, sizeof(mounts) / sizeof(mounts[0]));
     const char *app_root = portable ? NULL : "/download0/dulcamara";
     if (portable < 0)
     {
-        str_copy(error, size, "Several USB libraries are marked. Connect just the one you want to use.");
+        str_copy(error, size, "Several portable libraries are marked. Connect just the one you want to use.");
+        str_copy(sandbox_probe, sizeof(sandbox_probe), "multiple portable libraries marked");
         return false;
     }
 #else
@@ -542,15 +692,33 @@ bool plat_prepare_storage(char *root, size_t capacity, char *error, size_t size)
     if (sandboxed && *sandboxed)
     {
         str_copy(error, size, sandboxed);
+        snprintf(sandbox_probe, sizeof(sandbox_probe), "sandboxed (%s)", sandboxed);
         return false;
     }
     if (!path_is_dir(root))
         make_dirs(root);
 #endif
-    if (!storage_select_root(root, capacity, app_root, error, size))
-        return false;
-    str_copy(sandbox_probe, sizeof(sandbox_probe), "the games folder is readable and its data root is writable");
-    return true;
+    const bool ok = storage_select_root(root, capacity, app_root, error, size);
+#if defined(__PROSPERO__) && !defined(NP_MANAGED_STORAGE)
+    if (unlock_detail[0] && error[0])
+    {
+        char combined[512];
+        snprintf(combined, sizeof(combined), "%s Unlock: %s.", error, unlock_detail);
+        str_copy(error, size, combined);
+    }
+    if (ok)
+        snprintf(sandbox_probe, sizeof(sandbox_probe), "%s (%s)", unlock_status[0] ? unlock_status : "ready", root);
+    else if (unlock_detail[0])
+        snprintf(sandbox_probe, sizeof(sandbox_probe), "sandboxed (%s)", unlock_detail);
+    else
+        snprintf(sandbox_probe, sizeof(sandbox_probe), "storage unavailable (%s)", root);
+#else
+    if (ok)
+        snprintf(sandbox_probe, sizeof(sandbox_probe), "writable (%s)", root);
+    else
+        snprintf(sandbox_probe, sizeof(sandbox_probe), "storage unavailable (%s)", root);
+#endif
+    return ok;
 }
 
 /* ---------------------------------------------------------------- input */
@@ -1602,7 +1770,8 @@ void plat_upload_game(const void *pixels, int width, int height, size_t pitch, i
         }
         else
             prescale_sharp(src, width, height, pitch_px, out, k);
-        grade_pixels(out, width * (k > 1 ? k : 1), height * (k > 1 ? k : 1), (size_t)width * (k > 1 ? k : 1));
+        if (!gpu_ui)
+            grade_pixels(out, width * (k > 1 ? k : 1), height * (k > 1 ? k : 1), (size_t)width * (k > 1 ? k : 1));
         game_image = out;
         game_image_new = true;
         game_image_w = width * (k > 1 ? k : 1);
@@ -1726,10 +1895,13 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
     static const uint8_t scan_strength[] = {0, 110, 200};
     uint8_t scan = scan_strength[settings->crt % 3];
 #if defined(__PROSPERO__)
-    /* Dulcamara: a CPU core's picture goes through Vulkan too when a shader is chosen, so the shader
-     * applies to it; without one it is the interface's texture, below */
-    const bool soft_vk = !game_gpu && game_image && gpu_ui && settings->shader &&
-                         vkp_set_soft_frame(game_image, game_image_w, game_image_h, game_image_pitch);
+    /* Dulcamara: route ALL CPU-rendered frames (Ren'Py and EasyRPG) through the persistent Vulkan ring-buffered
+     * image even when Shader is Off, avoiding per-frame VkImage re-creation and vkQueueWaitIdle stalls (black
+     * flashes/bars on 1080p Ren'Py scenes). Repeated frames reuse V.soft_image with zero copy. */
+    const bool soft_vk = !game_gpu && game_image && gpu_ui &&
+                         vkp_set_soft_frame(game_image, game_image_w, game_image_h, game_image_pitch, game_image_new);
+    if (soft_vk)
+        game_image_new = false;
     if ((game_gpu && vkp_game_image_ready()) || soft_vk)
     {
         /* the CPU canvas: a hole where the GPU draws the picture; its alpha darkens the picture for the menus

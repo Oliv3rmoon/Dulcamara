@@ -27,6 +27,11 @@ app_source_dir=${APP_SOURCE_DIR:-src}
 app_param=${APP_PARAM:-sce_sys/param.json}
 app_sce_sys=${APP_SCE_SYS:-sce_sys}
 app_assets=${APP_ASSETS-assets}
+app_lapy_helper=${APP_LAPY_HELPER:-0}
+managed_storage=${APP_MANAGED_STORAGE:-0}
+if [[ $managed_storage == 1 ]]; then
+    app_lapy_helper=0
+fi
 for path in "$app_source_dir" "$app_param" "$app_sce_sys"; do
     [[ $path =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$ ]] || {
         echo "invalid application input path: $path" >&2
@@ -44,6 +49,10 @@ if [[ -n $app_assets ]]; then
         exit 2
     }
 fi
+[[ $app_lapy_helper == 0 || $app_lapy_helper == 1 ]] || {
+    echo "APP_LAPY_HELPER must be 0 or 1" >&2
+    exit 2
+}
 
 param="$root/$app_param"
 title_id=$(python3 - "$param" <<'PY'
@@ -122,6 +131,11 @@ mapfile -d '' -t source_paths < <(
 )
 sources=()
 for source in "${source_paths[@]}"; do
+    if [[ $managed_storage == 1 ]]; then
+        case "${source#"$root/$app_source_dir/"}" in
+            platform/ps5_unlock.c|platform/elevation_shim.cpp|platform/elevation/*) continue ;;
+        esac
+    fi
     sources+=("${source#"$root/"}")
 done
 (( ${#sources[@]} > 0 )) || { echo "src/ has no C or C++ sources" >&2; exit 2; }
@@ -134,6 +148,7 @@ pacbrew_packages=()
 pacbrew_includes=()
 pacbrew_archives=()
 [[ -z ${APP_DEFINITIONS:-} ]] || read -r -a definitions <<< "$APP_DEFINITIONS"
+[[ $managed_storage != 1 ]] || definitions+=("NP_MANAGED_STORAGE=1")
 [[ -z ${APP_INCLUDE_PATHS:-} ]] || read -r -a includes <<< "$APP_INCLUDE_PATHS"
 includes+=("build/generated")
 [[ -z ${APP_STATIC_ARCHIVES:-} ]] || read -r -a archives <<< "$APP_STATIC_ARCHIVES"
@@ -374,6 +389,23 @@ for source in "${root_files[@]}"; do
     }
     cp "$root/$source" "$app/${source##*/}"
 done
+
+if [[ $app_lapy_helper == 1 ]]; then
+    helper="$build/lapy-helper/$title_id"
+    python3 "$root/tools/build-lapy-helper.py" "$title_id" "$helper"
+    cp "$helper/lapy.elf" "$app/lapy.elf"
+    cp "$helper/lapy-manifest.json" "$app/lapy-manifest.json"
+    mkdir -p "$app/licenses"
+    cp "$helper/Lapy-MIT.txt" "$app/licenses/Lapy-MIT.txt"
+    python3 - "$app" <<'PY'
+import hashlib, json, pathlib, sys
+app = pathlib.Path(sys.argv[1])
+manifest = json.loads((app / "lapy-manifest.json").read_text())
+actual = hashlib.sha256((app / "lapy.elf").read_bytes()).hexdigest()
+assert manifest["elf_sha256"] == actual
+assert manifest["target_title"] == app.name and manifest["mode"] == "elf-helper"
+PY
+fi
 
 # Licences of Dulcamara and what it's built from (GPL: the texts travel with it).
 mkdir -p "$app/licenses"

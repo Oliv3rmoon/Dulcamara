@@ -62,6 +62,13 @@ void update_poll(UpdateStatus *out)
     *out = status;
     pthread_mutex_unlock(&status_lock);
 }
+bool update_recovery_pending(void)
+{
+    pthread_mutex_lock(&status_lock);
+    bool pending = startup_pending;
+    pthread_mutex_unlock(&status_lock);
+    return pending;
+}
 int update_state(void)
 {
     pthread_mutex_lock(&status_lock);
@@ -274,7 +281,6 @@ static const char *app_dir(void)
     static bool done;
     if (done)
         return found;
-    done = true;
     str_copy(found, sizeof(found), APP_DIR_DEFAULT);
     static const char *const running_dirs[] = {"/app0", "/system_ex/app/" NP_TITLE_ID};
     const char *roots[1 + DRIVE_COUNT] = {"/data"};
@@ -300,6 +306,7 @@ static const char *app_dir(void)
         if (same_eboot(dir, &running))
         {
             str_copy(found, sizeof(found), dir);
+            done = true;
             np_log("update: the app is in %s", found);
             return found;
         }
@@ -317,6 +324,7 @@ static const char *app_dir(void)
             if (same_eboot(dir, &running))
             {
                 str_copy(found, sizeof(found), dir);
+                done = true;
                 closedir(d);
                 np_log("update: the app is in %s", found);
                 return found;
@@ -498,6 +506,11 @@ static int install_thread(void *arg)
 void update_install(void)
 {
     update_state();
+    if (app.sandboxed || !installation[0])
+    {
+        fail("Storage is unavailable: retry storage in the library or install " UPDATE_ZIP " manually");
+        return;
+    }
     pthread_mutex_lock(&status_lock);
     if (startup_pending ||
         (status.state != UPDATE_AVAILABLE && !(status.state == UPDATE_FAILED && status.can_retry)))

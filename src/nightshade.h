@@ -19,7 +19,7 @@
 #define NP_CODENAME "Eclipse"
 #define NP_TITLE NP_NAME " " NP_CODENAME /* what is shown on screen: "Dulcamara Eclipse" */
 #define NP_TITLE_ID "PPSA75483"
-#define NP_VERSION "2.1.4"
+#define NP_VERSION "2.1.5"
 #define NP_DATA "/data/dulcamara" /* the data folder on the console */
 #define NP_PATH_MAX 512
 

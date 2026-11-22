@@ -612,3 +612,33 @@ class PreviewTest(unittest.TestCase):
             self.assertTrue(all(c>40 for c in counts[True]),counts)
             self.assertTrue(all(c<5 for c in counts[False]),counts)
             print('Story watermark: marked build shows the mark on home/status/backups %r; unmarked %r'%(counts[True],counts[False]))
+
+    def test_test_builds_toggle_saves_immediately_without_circle(self):
+        """Toggling Settings > System > Test builds writes settings.ini immediately without needing Circle to leave."""
+        with tempfile.TemporaryDirectory(prefix='eclipse-toggle-save-') as td:
+            root=Path(td);(root/'games').mkdir()
+            (root/'settings.ini').write_text('update_check = 0\nupdate_test_builds = 0\ncommunity_seen = 1\n')
+            # Tabs: 0 Picture, 1 Playing, 2 Controls, 3 Ren'Py, 4 Library, 5 System.
+            # System rows: 0 Still background, 1 Automatic local backups, 2 Check at start, 3 Test builds.
+            steps=['wait 40','press start','assert screen settings'] + ['press r1']*5 + ['press down']*3 + [
+                'press cross','wait 10','quit']
+            code,output=run_preview(root,steps)
+            self.assertEqual(code,0,output[-4000:])
+            self.assertNotIn('ASSERT FAIL',output)
+            saved=(root/'settings.ini').read_text()
+            self.assertIn('update_test_builds = 1',saved,saved)
+            print('Immediate settings save: Test builds persisted without Circle/leave')
+
+    def test_sandboxed_deferred_recovery_and_storage_diagnostics(self):
+        """When storage is unavailable, recovery defers cleanly instead of permanently locking Check for updates now."""
+        with tempfile.TemporaryDirectory(prefix='eclipse-sandbox-defer-') as td:
+            root=Path(td)
+            # Dismiss startup notice, open Settings -> System -> Check for updates now (row 4 when insider disabled).
+            steps=['wait 30','press cross','press start','assert screen settings'] + ['press r1']*5 + [
+                'press down']*4 + ['press cross','wait 30','quit']
+            code,output=run_preview(root,steps,env_extra={'NP_SANDBOXED':'Simulated EPERM on /data'})
+            self.assertEqual(code,0,output[-4000:])
+            self.assertNotIn('ASSERT FAIL',output)
+            self.assertIn('deferring save and update recovery until storage works',output)
+            self.assertNotIn('Waiting for startup recovery',output)
+            print('Sandboxed startup: recovery deferred cleanly without locking update check')

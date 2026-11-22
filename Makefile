@@ -39,6 +39,8 @@ APP_PARAM ?=
 APP_SCE_SYS ?=
 APP_ASSETS ?= assets
 APP_ROOT_FILES ?=
+# Lapy elevation: needed to list /data/dulcamara under ShadowMountPlus.
+APP_LAPY_HELPER ?= 1
 PACBREW_PACKAGES ?= sdl2 libcurl
 PACBREW_INCLUDE_PATHS ?=
 # The library reads game titles in Shift-JIS and the Windows code pages (src/rpgmaker.c): GNU libiconv. The core
@@ -74,6 +76,7 @@ export BUILD_JOBS USE_CCACHE
 export HOST_CC HOST_CXX HOST_TEST_CFLAGS HOST_TEST_CXXFLAGS HOST_TEST_LDFLAGS
 export APP_VULKAN APP_DEFINITIONS APP_INCLUDE_PATHS APP_STATIC_ARCHIVES APP_RUNTIME_MODULES APP_WRAP_SYMBOLS
 export APP_SOURCE_DIR APP_PARAM APP_SCE_SYS APP_ASSETS APP_ROOT_FILES
+export APP_LAPY_HELPER APP_MANAGED_STORAGE
 export INSIDER_URL
 export PACBREW_PACKAGES PACBREW_INCLUDE_PATHS PACBREW_STATIC_ARCHIVES
 export PS5_HOST FTP_PORT DEPLOY_FORMAT PS5_FTP_USER PS5_FTP_PASSWORD DEPLOY_DRY_RUN
@@ -125,6 +128,15 @@ test-net-download:
 test-insider:
 	@python3 -m unittest tests.test_insider -v
 
+.PHONY: test-elevation
+test-elevation:
+	@bash tools/setup-native-dependencies.sh >/dev/null
+	@mkdir -p build/tests
+	@$(HOST_CXX) $(HOST_TEST_CXXFLAGS) -idirafter .deps/native/ps5-payload-sdk/target/include \
+		tests/test_elevation.cpp $(HOST_TEST_LDFLAGS) -o build/tests/test_elevation
+	@build/tests/test_elevation
+	@printf '%s\n' 'Resident/one-shot Lapy client, exchange, and proof checks passed.'
+
 test-update-check:
 	@mkdir -p build/tests
 	@$(HOST_CXX) $(HOST_TEST_CXXFLAGS) -g -fsanitize=address,undefined -fno-sanitize-recover=all \
@@ -136,7 +148,8 @@ test-deps:
 	@bash tools/setup-test-dependencies.sh >/dev/null
 
 test-unit:
-	@printf '%s\n' '==> [test-unit] Running the standalone update-check suite'
+	@printf '%s\n' '==> [test-unit] Running the standalone C/C++ elevation and update-check suites'
+	@$(MAKE) --no-print-directory test-elevation
 	@$(MAKE) --no-print-directory test-update-check
 
 test-integration:

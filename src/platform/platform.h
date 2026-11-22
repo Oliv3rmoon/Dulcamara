@@ -18,6 +18,9 @@ void plat_release(void);
 bool plat_prepare_storage(char *root, size_t capacity, char *error, size_t size);
 /* Result of the startup directory check. */
 const char *plat_sandbox_probe(void);
+/* Optional marker-file override disabling startup sandbox unlock (PS5). */
+bool plat_unlock_disabled(void);
+void plat_set_unlock_disabled(bool disabled);
 /* Default application data root. */
 void plat_default_root(char *out, size_t size);
 

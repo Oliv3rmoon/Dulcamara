@@ -47,6 +47,7 @@ enum Action
     A_DEFAULT_BUTTONS,
     A_RESCAN,
     A_LIBRARY_PATH,
+    A_STORAGE_STATUS,
     A_CHECK_UPDATE,
     A_CLOSE_APP,
     A_COMMUNITY,    /* nightly's card: its QR code (community.h) */
@@ -261,9 +262,10 @@ static const Row ABOUT[] = {
      NULL, 0, NULL, A_NONE, -1},
     {"Built on Mandrake (formerly Nightshade Station): darkxex's SwanStationPS5 on BlackBearReloaded's boilerplate.", NULL, K_INFO,
      0, NULL, 0, NULL, A_NONE, -1},
-    {"Games go in the selected library’s games folder. For a USB library, create dulcamara/portable.txt on one drive.",
+    {"Games go in the selected library’s games folder. For a portable library, create dulcamara/portable.txt on one USB or extended drive.",
      NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
     {"Active games folder", NULL, K_INFO, 0, NULL, 0, NULL, A_LIBRARY_PATH, -1},
+    {"Storage status", NULL, K_INFO, 0, NULL, 0, NULL, A_STORAGE_STATUS, -1},
     {"The library has rtp/2000 and rtp/2003. RPG Maker saves stay in each game’s folder. Ren’Py saves use saves/renpy.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
     {"Licences and credits: the licenses folder of the app, and THIRD_PARTY_NOTICES.md on GitHub.", NULL, K_INFO, 0,
      NULL, 0, NULL, A_NONE, -1},
@@ -293,6 +295,7 @@ static const Tab TABS[] = {
 static int tab, row, top;
 static float bar_y = -1.0f;
 static bool community_open;  /* nightly's card is up, over the page */
+static bool settings_dirty;  /* changed while storage was unavailable: retry on leave */
 static int controls_pick;    /* outside a game, whose buttons Controls shows (CORE_*) */
 static char keys_pick[24];   /* the Ren'Py tab's game for Keys and Sounds for a game: its id (the library's order
                                 * changes) */
@@ -344,6 +347,7 @@ void settings_opened(void)
     top = 0;
     bar_y = -1.0f;
     community_open = false;
+    settings_dirty = false;
     /* Controls' buttons and Ren'Py's keys start at the game the app is at: the running one, else the shelf's */
     const int at = app.game >= 0 ? app.game : app.settings.last_game;
     if (at >= 0 && at < app.library.count)
@@ -455,6 +459,15 @@ static void changed(const Row *r)
     if (r->field == FIELD(sort_mode) && r->kind == K_CHOICE && r->button < 0)
         app_rescan(); /* sorted again, the covers with it */
     app_apply_settings();
+    app_save_settings();
+    settings_dirty = app.storage_error[0] != '\0';
+    if (r->kind == K_TOGGLE && r->field == FIELD(update_test_builds) && app.settings.update_test_builds &&
+        app.settings.update_check && (!insider_enabled() || insider_has_code()))
+    {
+        const int st = update_state();
+        if (st == UPDATE_IDLE || st == UPDATE_NONE || st == UPDATE_FAILED)
+            update_check();
+    }
 }
 
 static void run_action(int action)
@@ -463,6 +476,8 @@ static void run_action(int action)
     {
     case A_DEFAULT_BUTTONS:
         config_default_buttons(&app.settings, controls_core());
+        app_save_settings();
+        settings_dirty = app.storage_error[0] != '\0';
         app_toast("The buttons are back to their defaults.");
         break;
     case A_RESCAN:
@@ -471,11 +486,14 @@ static void run_action(int action)
             app_toast("Looking for games...");
         break;
     case A_CHECK_UPDATE:
-        if (update_state() != UPDATE_CHECKING && update_state() != UPDATE_INSTALLING)
+        if (update_recovery_pending())
+            app_toast("Waiting for startup recovery to finish; try again in a moment.");
+        else if (update_state() != UPDATE_CHECKING && update_state() != UPDATE_INSTALLING)
             update_check();
         break;
     case A_CLOSE_APP:
-        app_save_settings();
+        if (!app.storage_error[0])
+            app_save_settings();
         app.quit_requested = true;
         break;
     case A_INSTALL_SHELF: links_ui_install_shelf(); break;
@@ -597,7 +615,9 @@ static void draw_community(void)
 
 static void leave(void)
 {
-    app_save_settings();
+    if (settings_dirty && !app.storage_error[0])
+        app_save_settings();
+    settings_dirty = false;
     app_apply_settings();
     sfx_play(SFX_BACK);
     if (app.settings_return == SCREEN_MENU && app.game >= 0)
@@ -767,7 +787,12 @@ void settings_screen(uint32_t pressed)
         const bool on = i == row && selectable(it);
         if (it->kind == K_INFO)
         {
-            const char *info = it->action == A_LIBRARY_PATH ? app.paths.games : tr(it->label);
+            char storage_line[200];
+            if (it->action == A_STORAGE_STATUS)
+                snprintf(storage_line, sizeof(storage_line), "Storage: %s", plat_sandbox_probe());
+            const char *info = it->action == A_LIBRARY_PATH     ? app.paths.games
+                               : it->action == A_STORAGE_STATUS ? storage_line
+                                                                : tr(it->label);
             if (text_width(26, FONT_REGULAR, info) > w - 56)
             {
                 char first[1024];

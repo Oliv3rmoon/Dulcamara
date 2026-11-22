@@ -284,9 +284,20 @@ void app_apply_settings(void)
     host_set_volume(app_game_settings()->game_volume);
 }
 
+static bool unsaved_settings_warned;
+
 void app_save_settings(void)
 {
-    if (!app.storage_error[0] && !config_save(&app.settings, app.paths.config))
+    if (app.storage_error[0])
+    {
+        if (!unsaved_settings_warned)
+        {
+            unsaved_settings_warned = true;
+            app_toast("Storage unavailable: settings cannot be saved yet");
+        }
+        return;
+    }
+    if (!config_save(&app.settings, app.paths.config))
     {
         np_log("settings: could not write %s", app.paths.config);
         config_defaults(&app.settings);
@@ -1097,14 +1108,19 @@ static void select_storage(void)
 
 static void start_recovery(void)
 {
+    if (app.sandboxed)
+    {
+        np_log("startup: storage unavailable; deferring save and update recovery until storage works");
+        return;
+    }
     maintenance_recovery_begin(MAINT_RECOVER_SAVES | MAINT_RECOVER_UPDATE);
     saves_set_update_recovery(update_recover_startup, NULL);
     const bool update_ready = update_init(NULL);
     ps5_crash_step("startup: save recovery start");
-    const bool saves_ready = !app.sandboxed && saves_init(app.paths.root);
+    const bool saves_ready = saves_init(app.paths.root);
     np_log("startup: update recovery %s, save recovery %s", update_ready ? "set up" : "has no usable app folder path",
            saves_ready ? "started" : "could not start");
-    if (!saves_ready && !app.sandboxed)
+    if (!saves_ready)
         app_message_box("Save recovery could not start. Game launches remain locked.");
 }
 
@@ -1127,6 +1143,7 @@ void app_retry_storage(void)
     select_storage();
     if (!app.sandboxed)
     {
+        unsaved_settings_warned = false;
         config_defaults(&app.settings);
         config_load(&app.settings, app.paths.config);
         user_metadata_load(&app.metadata, app.paths.metadata);

@@ -38,10 +38,11 @@ void vkp_want_high_refresh(bool on);  /* before vkp_open: the 120 Hz mode */
 bool vkp_set_mode(int width, int height, char *error, size_t size); /* the TV's mode, at once (with the GPU interface); the screen's objects are made again */
 void vkp_want_size(int width, int height); /* before vkp_open: the screen's mode (the canvas's size when the TV has none like it) */
 void vkp_show_game(float x, float y, float w, float h, float crop, int shader, int tex_w, int tex_h, int lines);
-/* Dulcamara: a core that draws on the CPU hands its frame (XRGB8888) here; the next present copies it into a
- * GPU image that is drawn as a Vulkan core's picture, with the shaders (vkp_show_game). The pixels must stay as they
- * are until then. False when the image can't be made: the caller draws the picture itself. */
-bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitch_px);
+/* Dulcamara: a core that draws on the CPU hands its frame (XRGB8888) here; when fresh is true (or on the
+ * first frame at this resolution), the next present copies it into a persistent GPU image that is drawn as
+ * a Vulkan core's picture with zero per-frame stalls. When fresh is false and an image is already uploaded,
+ * the existing GPU image is reused directly with zero copy. False when the image can't be made. */
+bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitch_px, bool fresh);
 
 /* The interface drawn by the GPU instead of the CPU canvas (vk_ui.inc). Coordinates are canvas pixels. */
 typedef struct

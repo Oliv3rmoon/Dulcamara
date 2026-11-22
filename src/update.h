@@ -41,6 +41,7 @@ bool update_init(const char *installed);
 /* Narrow save-worker callback; caller holds MAINT_RECOVERY. */
 bool update_recover_startup(void *unused, bool *restart, char *error, size_t size);
 void update_poll(UpdateStatus *out);
+bool update_recovery_pending(void);
 void update_check(void); /* in the background */
 /* In the background; needs UPDATE_AVAILABLE, or UPDATE_FAILED after an install that failed
  * (update_can_retry()), which it tries again. */

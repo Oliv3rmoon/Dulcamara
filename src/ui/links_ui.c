@@ -40,6 +40,11 @@ static bool can_start(void)
         app_toast("Links are already being added.");
         return false;
     }
+    if (app.sandboxed)
+    {
+        app_message_box("Library storage is unavailable. Press Square in the library to retry storage, then try again.");
+        return false;
+    }
     if (!maintenance_ready())
     {
         app_message_box("Wait for save recovery, a backup, a restore or an update to finish, then try again.");
