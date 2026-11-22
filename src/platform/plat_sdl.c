@@ -17,6 +17,7 @@
 #include "../ui/story.h"
 #endif
 
+#include "../storage.h"
 #include "focus.h"
 static bool sdl_background;
 #include "../i18n.h"
@@ -29,6 +30,7 @@ static bool sdl_background;
 #include <time.h>
 
 #if defined(__PROSPERO__)
+#include "../drives.h"
 #include "blit.h"
 #include <dirent.h>
 #include <errno.h>
@@ -514,29 +516,28 @@ const char *plat_sandbox_probe(void)
     return sandbox_probe;
 }
 
-bool plat_prepare_storage(char *error, size_t size)
+bool plat_prepare_storage(char *root, size_t capacity, char *error, size_t size)
 {
 #if defined(__PROSPERO__)
-    /* Use only the directory access already available to this process. */
-    DIR *data = opendir(NP_DATA);
-    if (!data && errno == ENOENT && (mkdir(NP_DATA, 0755) == 0 || errno == EEXIST))
-        data = opendir(NP_DATA);
-    if (!data) {
-        snprintf(error, size, "Cannot open " NP_DATA " (%s)", strerror(errno));
+    if (storage_portable_root(root, capacity, drive_paths + DRIVE_EXT_COUNT, DRIVE_USB_COUNT) < 0)
+    {
+        str_copy(error, size, "Several USB libraries are marked. Connect just the one you want to use.");
         return false;
     }
-    closedir(data);
-    str_copy(sandbox_probe, sizeof(sandbox_probe), "application data folder is available");
-    return true;
 #else
-    /* The desktop build: NP_SANDBOXED=<a reason> starts it as the PS5 does when nothing unlocks /data, to see that. */
+    (void)capacity;
     const char *sandboxed = SDL_getenv("NP_SANDBOXED");
     if (sandboxed && *sandboxed)
     {
-        snprintf(error, size, "%s", sandboxed);
+        str_copy(error, size, sandboxed);
         return false;
     }
+    if (!path_is_dir(root))
+        make_dirs(root);
 #endif
+    if (!storage_check_library(root, error, size))
+        return false;
+    str_copy(sandbox_probe, sizeof(sandbox_probe), "the games folder is readable and its data root is writable");
     return true;
 }
 

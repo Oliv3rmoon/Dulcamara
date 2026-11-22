@@ -119,11 +119,11 @@ bool make_dirs(const char *path)
         if (*p != '/')
             continue;
         *p = '\0';
-        if (mkdir(tmp, 0777) != 0 && errno != EEXIST)
+        if (!path_is_dir(tmp) && mkdir(tmp, 0777) != 0 && (errno != EEXIST || !path_is_dir(tmp)))
             return false;
         *p = '/';
     }
-    return mkdir(tmp, 0777) == 0 || errno == EEXIST;
+    return path_is_dir(tmp) || mkdir(tmp, 0777) == 0 || (errno == EEXIST && path_is_dir(tmp));
 }
 
 bool file_copy(const char *from, const char *to)

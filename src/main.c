@@ -379,7 +379,8 @@ extern int sceSystemServiceLoadExec(const char *path, const char **arguments);
  * exit does. Does not return. */
 static void start_again(void)
 {
-    if (saves_busy() || !maintenance_restart_ready())
+    /* In storage-error mode no recovery or game can start. Square can reopen the app to retry. */
+    if (saves_busy() || (!app.sandboxed && !maintenance_restart_ready()))
     {
         app_message_box("Wait for save recovery or maintenance to finish before restarting.");
         return;
@@ -1082,17 +1083,6 @@ static void make_folders(void)
                           app.paths.cache};
     for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); ++i)
         make_dirs(dirs[i]);
-    char probe[NP_PATH_MAX];
-    path_join(probe, sizeof(probe), app.paths.root, ".write-test");
-    FILE *f = fopen(probe, "w");
-    if (f)
-    {
-        fclose(f);
-        remove(probe);
-    }
-    else
-        snprintf(app.storage_error, sizeof(app.storage_error), "%s isn't writable. Is the HEN running? (%s)",
-                 app.paths.root, app.sandbox_reason[0] ? app.sandbox_reason : "no reason given");
 }
 
 int main(int argc, char **argv)
@@ -1104,19 +1094,23 @@ int main(int argc, char **argv)
     (void)argv;
     char root[NP_PATH_MAX];
     plat_default_root(root, sizeof(root));
+    app.sandboxed = !plat_prepare_storage(root, sizeof(root), app.sandbox_reason, sizeof(app.sandbox_reason));
     config_paths(&app.paths, root);
-    /* Unlock before SDL starts any thread: the HEN changes this process's credentials. */
-    app.sandboxed = !plat_prepare_storage(app.sandbox_reason, sizeof(app.sandbox_reason));
+    if (app.sandboxed)
+        str_copy(app.storage_error, sizeof(app.storage_error), app.sandbox_reason);
     /* The folders, the log and the crash report come first, before the screen, the font and the startup recovery:
      * candidate ecl200-n5 stopped at launch on the console and left nothing at all, so each step now says it has
      * begun, and a crash in any of them is written down. */
-    make_folders();
+    if (!app.sandboxed)
+        make_folders();
     char log_path[NP_PATH_MAX];
     path_join(log_path, sizeof(log_path), app.paths.logs, "dulcamara.log");
-    np_log_open(log_path);
+    if (!app.sandboxed)
+        np_log_open(log_path);
     np_log(NP_TITLE " %s starting, data folder %s", NP_VERSION, app.paths.root);
     np_log(app.sandboxed ? "storage: sandboxed (%s)" : "storage: unlocked%s", app.sandboxed ? app.sandbox_reason : "");
-    ps5_crash_install(log_path);
+    if (!app.sandboxed)
+        ps5_crash_install(log_path);
     ps5_crash_step("startup: screen");
     np_log("startup: screen");
     setenv("PS5_VIDEOOUT_PARAM_JSON", "/nonexistent", 1);
@@ -1147,10 +1141,10 @@ int main(int argc, char **argv)
     saves_set_update_recovery(update_recover_startup, NULL);
     const bool update_ready = update_init(NULL);
     ps5_crash_step("startup: save recovery start");
-    const bool saves_ready = saves_init(app.paths.root);
+    const bool saves_ready = !app.sandboxed && saves_init(app.paths.root);
     np_log("startup: update recovery %s, save recovery %s", update_ready ? "set up" : "has no usable app folder path",
            saves_ready ? "started" : "could not start");
-    if (!saves_ready)
+    if (!saves_ready && !app.sandboxed)
         app_message_box("Save recovery could not start. Game launches remain locked.");
     ps5_crash_step("startup");
     np_log("screen: %s", plat_screen_info());
@@ -1163,7 +1157,8 @@ int main(int argc, char **argv)
         CORES[i].get_system_info(&info);
         np_log("core: %s %s for %s", CORES[i].name, info.library_version ? info.library_version : "", CORES[i].runs);
     }
-    vk_probe(app.paths.root);
+    if (!app.sandboxed)
+        vk_probe(app.paths.root);
 
     config_defaults(&app.settings);
     config_load(&app.settings, app.paths.config);

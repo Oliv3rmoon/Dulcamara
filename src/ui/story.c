@@ -585,9 +585,9 @@ static void draw_empty_card(void)
     char reason[260];
     snprintf(reason, sizeof(reason), "Why: %s.", app.sandbox_reason[0] ? app.sandbox_reason : "not known");
     const char *sandboxed[] = {"Dulcamara could not open its data folder at startup. Check",
-                               NP_DATA "/games. Your games and saves are still there.", reason,
-                               "Check that the app has access to its data folder.",
-                               "Press {Square} to restart and check again."};
+                               "the folder shown below.", reason,
+                               "USB library: place portable.txt in the drive’s dulcamara folder.",
+                               "Press {Square} to reopen Dulcamara after checking storage."};
     const char *matches[] = {"No game matches the search and filters.", "{L2} edits the search.",
                              "{R2} changes or clears the filters."};
     const char *const *lines = app.sandboxed ? sandboxed : app.library.count ? matches : empty;
@@ -795,7 +795,7 @@ void story_screen(uint32_t pressed)
         choices = (Choices){NULL, 0, 0, NULL};
         if (app.sandboxed)
             snprintf(text, sizeof(text), "Dulcamara couldn't open the games folder at startup. "
-                                         "Press {Square} to restart and check again.");
+                                         "Press {Square} to reopen Dulcamara after checking storage.");
         else if (app.scan_status.state == LIBRARY_SCAN_RUNNING)
             snprintf(text, sizeof(text), "Looking for games...");
         else if (app.scan_status.state == LIBRARY_SCAN_ERROR)

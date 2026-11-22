@@ -20,7 +20,7 @@
 
 The test build includes the itch.io Shelf, support for compiled Python packages in Ren’Py 8 game archives, and the older Ren’Py 7 save API used by some games. Open **Settings → Library → Install itch.io Shelf**, then open the shelf from your library. This build uses the console’s existing access to `/data/dulcamara`.
 
-The two reported Summertime Saga startup failures have host regression tests. Gameplay, controller input on hardware, and encrypted installation still need PS5 testing. The release includes the application ZIP, corresponding source and checksums. [Download the PS5 test build](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/eclipse-v2.1.0-test.1)
+The two reported Summertime Saga startup failures have host regression tests. Gameplay, controller input on hardware, and encrypted installation still need PS5 testing. The release includes the application ZIP, corresponding source and checksums. [Download the PS5 test build](https://github.com/Oliv3rmoon/Dulcamara/releases/tag/v2.1.1)
 
 ## Why Dulcamara
 
@@ -44,7 +44,7 @@ Join [nightly on Discord](https://discord.gg/pSqgRU3YP9), complete verification 
 
 ## Install the PS5 test build
 
-Extract the release ZIP and install the `PPSA99010` application folder using your existing Dulcamara homebrew installation method. Your homebrew environment must already grant the app access to `/data/dulcamara`. Existing games and saves use the same locations. The release page has the console test steps and matching source.
+Extract the release ZIP and install the `PPSA99010` application folder using your existing Dulcamara homebrew installation method. The default library is `/data/dulcamara`. An accessible USB drive can host a separate library when its `dulcamara` folder contains a regular file named `portable.txt`. The release page has the console test steps and matching source.
 
 ## Docs
 

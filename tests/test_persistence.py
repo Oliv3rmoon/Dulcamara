@@ -28,7 +28,7 @@ class PersistenceTest(unittest.TestCase):
             subprocess.run([cc, *FLAGS, "-I" + str(ROOT / "src"),
                             "-I" + str(ROOT / "third_party/easyrpg-player/builds/libretro/libretro-common/include"),
                             *[str(ROOT / s) for s in sources], str(miniz), *libs, "-o", str(executable)], check=True)
-            for case in ["storage", "history", "profiles", "metadata", "selection"]:
+            for case in ["storage", "portable", "history", "profiles", "metadata", "selection"]:
                 with self.subTest(case=case), tempfile.TemporaryDirectory() as data:
                     result = subprocess.run([str(executable), data, case], capture_output=True, text=True, timeout=120)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

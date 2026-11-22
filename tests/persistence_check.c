@@ -35,6 +35,39 @@ static void expect_text(const char *path, const char *wanted)
     assert(fclose(f) == 0);
     assert(!strcmp(buffer, wanted));
 }
+static void portable_library(const char *dir)
+{
+    char library[NP_PATH_MAX], root[NP_PATH_MAX] = "/data/dulcamara";
+    char marker[NP_PATH_MAX], probe[NP_PATH_MAX], games[NP_PATH_MAX], error[256] = "";
+    const char *mounts[] = {dir};
+    path_join(library, sizeof(library), dir, "dulcamara");
+    assert(mkdir(library, 0700) == 0);
+    assert(storage_portable_root(root, sizeof(root), mounts, 1) == 0);
+    assert(!strcmp(root, "/data/dulcamara"));
+    path_join(marker, sizeof(marker), library, "portable.txt");
+    put(marker, "");
+    assert(storage_portable_root(root, sizeof(root), mounts, 1) == 1 && !strcmp(root, library));
+    path_join(probe, sizeof(probe), root, ".write-test");
+    put(probe, "existing file");
+    assert(storage_check_library(root, error, sizeof(error)));
+    path_join(games, sizeof(games), root, "games");
+    assert(path_is_dir(games));
+    assert(chmod(root, 0300) == 0);
+    assert(storage_check_library(root, error, sizeof(error)));
+    assert(chmod(root, 0700) == 0);
+    expect_text(probe, "existing file");
+    assert(rmdir(games) == 0);
+    put(games, "existing data");
+    assert(!storage_check_library(root, error, sizeof(error)) && strstr(error, games));
+    expect_text(games, "existing data");
+    assert(unlink(marker) == 0 && symlink(probe, marker) == 0);
+    assert(storage_portable_root(root, sizeof(root), mounts, 1) == 0);
+    assert(unlink(marker) == 0);
+    put(marker, "");
+    const char *conflict[] = {dir, dir};
+    assert(storage_portable_root(root, sizeof(root), conflict, 2) == -1);
+}
+
 static void checked_storage(const char *dir)
 {
     char path[NP_PATH_MAX], child[NP_PATH_MAX], temporary[NP_PATH_MAX];
@@ -378,6 +411,8 @@ int main(int argc, char **argv)
     assert(argc == 3);
     if (!strcmp(argv[2], "storage"))
         checked_storage(argv[1]);
+    else if (!strcmp(argv[2], "portable"))
+        portable_library(argv[1]);
     else if (!strcmp(argv[2], "history"))
         history(argv[1]);
     else if (!strcmp(argv[2], "profiles"))

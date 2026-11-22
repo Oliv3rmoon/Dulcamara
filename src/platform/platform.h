@@ -15,7 +15,7 @@ void plat_shutdown(void);
 void plat_release(void);
 
 /* Check that the process can open its application data directory. */
-bool plat_prepare_storage(char *error, size_t size);
+bool plat_prepare_storage(char *root, size_t capacity, char *error, size_t size);
 /* Result of the startup directory check. */
 const char *plat_sandbox_probe(void);
 /* Default application data root. */

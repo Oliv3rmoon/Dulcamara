@@ -296,11 +296,11 @@ static void draw_sandboxed(void)
     char reason[260];
     snprintf(reason, sizeof(reason), tr("Why: %s."), app.sandbox_reason[0] ? app.sandbox_reason : tr("not known"));
     const char *lines[] = {
-        "Dulcamara could not open " NP_DATA "/games.",
-        "Your games and saves are still there.",
+        "Dulcamara could not open the selected library.",
+        "The library needs a readable games folder and writable storage.",
         reason,
-        "Check that the app has access to its data folder.",
-        "Press Square to restart and check again.",
+        "USB library: place portable.txt in the drive’s dulcamara folder.",
+        "Press Square to reopen Dulcamara after checking storage.",
     };
     float ly = y + 160;
     for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); ++i, ly += 48)

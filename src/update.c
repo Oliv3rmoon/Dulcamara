@@ -287,6 +287,8 @@ static const char *app_dir(void)
         char file[NP_PATH_MAX];
         path_join(file, sizeof(file), running_dirs[i], "eboot.bin");
         have = stat(file, &running) == 0;
+        if (have)
+            str_copy(found, sizeof(found), running_dirs[i]);
     }
     if (!have)
         return found;

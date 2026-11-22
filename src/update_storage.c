@@ -15,6 +15,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 typedef struct
@@ -108,7 +109,17 @@ bool update_storage_recover(const char *installed, bool *restart, char *error, s
         /* A previous cleanup may have removed the workspace but failed its final
          * parent fsync. Certify that absence durably on every recovery retry. */
         if (!lstat(root, &st))
-            return S_ISDIR(st.st_mode) && mt_sync_dir(root);
+        {
+            if (!S_ISDIR(st.st_mode))
+                return false;
+            if (mt_sync_dir(root))
+                return true;
+            /* A mounted read-only app has no outstanding journal here and cannot stage writes. */
+            struct statvfs fs;
+            if (statvfs(root, &fs) == 0 && (fs.f_flag & ST_RDONLY))
+                return true;
+            return fail(error, size, "Cannot finish checking the installed app folder");
+        }
         return errno == ENOENT;
     }
     *restart = true;

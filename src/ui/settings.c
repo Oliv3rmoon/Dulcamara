@@ -190,7 +190,7 @@ static const Row RENPY_ROWS[] = {
      NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
     {"Dulcamara's menu: {Options} held for 0.6 s. A short press of {Options} is the game's menu.", NULL, K_INFO, 0,
      NULL, 0, NULL, A_NONE, -1},
-    {"Saves: " NP_DATA "/saves/renpy. Ren'Py 8 games run on Ren'Py 8.5, Ren'Py 7 and 6 games on 7.8; a second one "
+    {"Saves: saves/renpy in the selected library. Ren'Py 8 games run on Ren'Py 8.5, Ren'Py 7 and 6 games on 7.8; a second one "
      "starts the app again.",
      NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
 };
@@ -202,12 +202,12 @@ static const Row LIBRARY_ROWS[] = {
      N(UI_SOUNDS), NULL, A_NONE, -1},
     {"Interface volume", "How loud those clicks are.", K_CHOICE, FIELD(ui_volume), UI_VOLUMES, N(UI_VOLUMES), NULL,
      A_NONE, -1},
-    {"Look for games again", "Reads " NP_DATA "/games again, for games copied while the app was open.", K_ACTION, 0,
+    {"Look for games again", "Reads the current library’s games folder again.", K_ACTION, 0,
      NULL, 0, NULL, A_RESCAN, -1},
     {"Add game from link", "Type a direct link to a game's .zip. Direct downloads only: no logins, store or download "
                            "pages, launchers or patchers.",
      K_ACTION, 0, NULL, 0, NULL, A_LINK_TYPE, -1},
-    {"Add games from links.txt", "Downloads each new direct link in " NP_DATA "/links.txt (one https:// link a line, "
+    {"Add games from links.txt", "Downloads each new direct link in the library’s links.txt (one https:// link a line, "
                                  "copied over FTP) and adds its ZIP's game.",
      K_ACTION, 0, NULL, 0, NULL, A_LINKS_FILE, -1},
     {"View", "Story: the library as an RPG menu with a text box. Shelf: the row of covers, as before; choose it if "
@@ -254,10 +254,9 @@ static const Row ABOUT[] = {
      NULL, 0, NULL, A_NONE, -1},
     {"Built on Mandrake (formerly Nightshade Station): darkxex's SwanStationPS5 on BlackBearReloaded's boilerplate.", NULL, K_INFO,
      0, NULL, 0, NULL, A_NONE, -1},
-    {"Games: " NP_DATA "/games, one folder (or .zip, .easyrpg) each. A Ren'Py game is its folder with game/ in it.",
+    {"Games go in the selected library’s games folder. For a USB library, create dulcamara/portable.txt on one drive.",
      NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
-    {"RTP: " NP_DATA "/rtp/2000 and rtp/2003. RPG Maker saves stay in each game's folder; Ren'Py's are in "
-     NP_DATA "/saves/renpy.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
+    {"The library has rtp/2000 and rtp/2003. RPG Maker saves stay in each game’s folder. Ren’Py saves use saves/renpy.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
     {"Licences and credits: the licenses folder of the app, and THIRD_PARTY_NOTICES.md on GitHub.", NULL, K_INFO, 0,
      NULL, 0, NULL, A_NONE, -1},
     {"No games come with Dulcamara: copy your own.", NULL, K_INFO, 0, NULL, 0, NULL, A_NONE, -1},
