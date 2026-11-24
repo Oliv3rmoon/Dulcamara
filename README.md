@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases/tag/v2.1.5"><img src="https://img.shields.io/github/v/release/Oliv3rmoon/Dulcamara?include_prereleases&color=e61e3a&label=eclipse" alt="Latest release"></a>
+  <a href="https://github.com/Oliv3rmoon/Dulcamara/releases/tag/v2.1.5"><img src="https://img.shields.io/github/v/release/Oliv3rmoon/Dulcamara?color=e61e3a&label=eclipse" alt="Latest release"></a>
   <a href="https://discord.gg/pSqgRU3YP9"><img src="https://img.shields.io/badge/discord-nightly-5865F2?logo=discord&logoColor=white" alt="Discord: nightly"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-222222" alt="License: GPL-3.0-or-later"></a>
   <a href="https://buymeacoffee.com/oliv3rmoon"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-e5484d?logo=buymeacoffee&logoColor=white" alt="Buy me a coffee"></a>
@@ -22,11 +22,11 @@
 ---
 
 <p align="center">
-  <img src="docs/images/eclipse-2.1.5-promo.jpg" width="100%" alt="Dulcamara Eclipse 2.1.5 — Sandbox unlocked, zero-stall Vulkan rendering, instant updates, USB and extended storage">
+  <img src="docs/images/eclipse-2.1.5-public-release.jpg" width="100%" alt="Dulcamara Eclipse 2.1.5 Public Release — PS5 PPSA75483, Ren'Py 7 & 8, RPG Maker, HD Scaling, USB & Extended Storage">
 </p>
 
 > [!NOTE]
-> **Dulcamara Eclipse 2.1.5 (`PPSA75483`) — Updated** is out as a PS5 test build. Alongside restored `/data` unlock (`PPSA75483` `lapy.elf` helper), instant settings saves, and extended-storage portable libraries (`/mnt/ext0`–`/mnt/ext1`), this refresh adds PS5 Control Center/close-app GPU quiesce, fixes the auto-relaunch loop, fixes `ENOSYS` save backups and itch.io Shelf downloads, fixes *Champion of Realms* (`freebsd` → `linux` platform metadata), and double-buffers Vulkan game frames. Grab **[PPSA75483.zip](https://github.com/Oliv3rmoon/Dulcamara/releases/download/v2.1.5/PPSA75483.zip)** (with [matching source](https://github.com/Oliv3rmoon/Dulcamara/releases/download/v2.1.5/Dulcamara-Eclipse-2.1.5-source.tar.zst) and [SHA-256 sums](https://github.com/Oliv3rmoon/Dulcamara/releases/download/v2.1.5/SHA256SUMS)) and share console reports in [nightly](https://discord.gg/pSqgRU3YP9).
+> **Dulcamara Eclipse 2.1.5 (`PPSA75483`)** is now out as a public release. Restores PS5 `/data` unlock (`PPSA75483` `lapy.elf` helper), instant settings saves, and USB/extended-storage portable libraries (`/mnt/ext0`–`/mnt/ext1`), and adds PS5 Control Center/force-close Vulkan teardown, auto-relaunch handoff cleanup, `ENOSYS` save backup & itch.io Shelf download compatibility, Ren'Py HD bilinear scaling & letterboxing fixes, HTTPS socket-deadline recovery for parallel updaters (*Champion of Realms*), non-blocking mixer-lock audio top-ups with an adaptive cushion, and triple-buffered Vulkan game frames. Grab **[PPSA75483.zip](https://github.com/Oliv3rmoon/Dulcamara/releases/download/v2.1.5/PPSA75483.zip)** (with [matching source](https://github.com/Oliv3rmoon/Dulcamara/releases/download/v2.1.5/Dulcamara-Eclipse-2.1.5-source.tar.zst) and [SHA-256 sums](https://github.com/Oliv3rmoon/Dulcamara/releases/download/v2.1.5/SHA256SUMS)) and share console feedback in [nightly](https://discord.gg/pSqgRU3YP9).
 
 <p align="center">
   <img src="docs/images/eclipse-2.1.5-story.jpg" width="32.5%" alt="Dulcamara Eclipse 2.1.5 Story mode library">
