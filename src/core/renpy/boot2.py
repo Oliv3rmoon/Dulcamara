@@ -42,6 +42,11 @@ def _ps5_socket_deadlines(socket_module, ssl_module, thread_module, clock, sleep
             sleep(every)
             now = clock()
             with lock:
+                if not watched:
+                    # idle: Python's stop waits for every interpreter thread, raw _thread ones too, so a watchdog
+                    # that never ended would keep the game from stopping; the next guarded call starts it again
+                    running[0] = False
+                    return
                 late = [entry for entry in watched.values() if not entry[2] and now >= entry[1]]
                 for entry in late:
                     entry[2] = True

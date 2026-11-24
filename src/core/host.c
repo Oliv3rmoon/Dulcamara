@@ -798,9 +798,11 @@ void host_feed_audio(double seconds, bool grows)
         }
     }
     const size_t want = (size_t)(rate * audio_cushion);
-    /* each call gives a frame's worth (800 at 48 kHz): a few a refresh keep the queue up, and a game whose amount kept
-     * ahead grows refills it in a pass or two after a stall (24: 0.4 s) */
-    const int most = grows ? 24 : 6;
+    /* each call gives a frame's worth (800 at 48 kHz): a few a refresh keep the queue up. A game whose amount kept
+     * ahead grows may pull a few more, 8 (0.13 s) at most: a sound just started has some 0.18 s decoded, and Ren'Py's
+     * mixer takes an empty decode queue for the sound's end (renpysound_core.c, media_read_audio), so a bigger burst
+     * right after a stall could cut a sound short; the queue refills over a few passes instead */
+    const int most = grows ? 8 : 6;
     for (int i = 0; i < most && plat_audio_queued_frames() < want; ++i)
         audio_cb.callback();
     audio_fed_us = now;

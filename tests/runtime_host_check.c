@@ -250,8 +250,9 @@ static void check_audio_cushion(Game *game)
     with_sound = true;
     start_game(game);
     now = 1000000;
-    /* a Ren'Py game's sound kept 0.15 s ahead (7200 frames), filled in one pass */
-    assert(pass(0.15, true) == 9 && queued == 7200);
+    /* a Ren'Py game's sound kept 0.15 s ahead (7200 frames), filled in two passes: 8 calls at most a pass */
+    assert(pass(0.15, true) == 8 && queued == 6400);
+    assert(pass(0.15, true) == 2 && queued == 7200);
     for (int i = 0; i < 30; ++i)
         assert(pass(0.15, true) == 1 && queued >= 7200 && queued < 8000);
     assert(underruns() == 0 && ran_out_lines == 0);
@@ -264,16 +265,18 @@ static void check_audio_cushion(Game *game)
     assert(strstr(last_ran_out, "underrun 1 this game") && strstr(last_ran_out, "nothing queued, 16.7 ms after the last "
                                                                                  "top-up, which left 16.7 ms queued") &&
            strstr(last_ran_out, "now kept 300 ms ahead (was 150)"));
-    /* refilled in one pass once the core gives sound again: 0.3 s (14400 frames), 18 calls */
+    /* refilled over three passes once the core gives sound again: 0.3 s (14400 frames), 8 calls at most a pass */
     sound_busy = false;
-    assert(pass(0.15, true) == 18 && queued >= 14400 && queued < 15200);
+    assert(pass(0.15, true) == 8 && pass(0.15, true) == 8 && pass(0.15, true) == 4);
+    assert(queued >= 14400 && queued < 15200);
     /* another underrun within the second: counted and grown to the most, 0.4 s, not logged */
     sound_busy = true;
     for (int i = 0; i < 20; ++i)
         pass(0.15, true);
     assert(underruns() == 2 && ran_out_lines == 1);
     sound_busy = false;
-    assert(pass(0.15, true) == 24 && queued == 19200);
+    assert(pass(0.15, true) == 8 && pass(0.15, true) == 8 && pass(0.15, true) == 8 && pass(0.15, true) == 3);
+    assert(queued == 19200);
     /* the next, more than a second after the last line: logged; 0.4 s stays the most */
     for (int i = 0; i < 30; ++i)
         assert(pass(0.15, true) == 1);
@@ -286,7 +289,8 @@ static void check_audio_cushion(Game *game)
     /* a pause (Dulcamara's menu: no top-ups for 2 s) runs the queue down: not an underrun */
     play(2000000);
     assert(queued == 0);
-    pass(0.15, true);
+    for (int i = 0; i < 4; ++i)
+        pass(0.15, true);
     assert(underruns() == 3 && queued == 19200);
     /* the first 20 of a game are logged, a second apart at least */
     for (int k = 0; k < 25; ++k)
@@ -302,7 +306,7 @@ static void check_audio_cushion(Game *game)
     host_request_stop();
     assert(host_poll() == HOST_IDLE);
     start_game(game);
-    assert(pass(0.15, true) == 9 && queued == 7200);
+    assert(pass(0.15, true) == 8 && queued == 6400);
     sound_busy = true;
     for (int i = 0; i < 12; ++i)
         pass(0.15, true);

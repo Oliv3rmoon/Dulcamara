@@ -565,6 +565,63 @@ class Ps5UpdaterSocketTests(unittest.TestCase):
         with urlopen(base + "2", context=self.client_ctx) as response:
             self.assertEqual(len(response.read()), 65536)
 
+    def test_the_watchdog_thread_ends_when_no_call_is_watched(self):
+        """Python's stop waits for every interpreter thread, raw _thread ones too (python_runtime.inc,
+        wait_for_interpreter_threads): a watchdog that never ended would keep a game from stopping after its first
+        timed HTTPS call (Champion of Realms' launcher makes one at start-up: the app then says the game did not
+        stop). Both boot scripts' copies; the thread is started again by the next guarded call."""
+        import _thread
+        import socket
+        import ssl
+        from urllib.request import urlopen
+
+        class Threads:
+            allocate_lock = staticmethod(_thread.allocate_lock)
+
+            def __init__(self):
+                self.lock = _thread.allocate_lock()
+                self.started = self.live = 0
+
+            def start_new_thread(self, function, args):
+                with self.lock:
+                    self.started += 1
+                    self.live += 1
+
+                def run():
+                    try:
+                        function(*args)
+                    finally:
+                        with self.lock:
+                            self.live -= 1
+
+                return _thread.start_new_thread(run, ())
+
+        def settled(threads, live):
+            deadline = time.monotonic() + 3
+            while threads.live != live and time.monotonic() < deadline:
+                time.sleep(0.01)
+            return threads.live
+
+        tree = ast.parse((ROOT / "src/core/renpy/boot.py").read_text(encoding="utf-8"))
+        funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_ps5_socket_deadlines"]
+        ns = {}
+        exec(compile(ast.Module(body=funcs, type_ignores=[]), "src/core/renpy/boot.py", "exec"), ns)
+        for name, deadlines in (("boot.py", ns["_ps5_socket_deadlines"]), ("boot2.py", load_boot2_socket_deadlines())):
+            with self.subTest(name):
+                for op_name, op in self.saved.items():  # each copy wraps the pristine methods
+                    setattr(ssl.SSLSocket, op_name, op)
+                threads = Threads()
+                deadlines(socket, ssl, threads, time.monotonic, time.sleep, 1.0, 0.02)
+                base = self.serve()
+                with urlopen(base + "1", context=self.client_ctx, timeout=self.TIMEOUT) as response:
+                    self.assertEqual(len(response.read()), 65536)
+                self.assertEqual(threads.started, 1)
+                self.assertEqual(settled(threads, 0), 0, "the watchdog thread is still running with nothing watched")
+                with urlopen(base + "2", context=self.client_ctx, timeout=self.TIMEOUT) as response:
+                    self.assertEqual(len(response.read()), 65536)
+                self.assertEqual(threads.started, 2, "the next guarded call starts the watchdog again")
+                self.assertEqual(settled(threads, 0), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
