@@ -31,6 +31,7 @@
 #include "ui/update_popup.h"
 #include "update.h"
 #include "restart.h"
+#include "storage.h"
 #include "saves.h"
 #include "profile.h"
 #include "links.h"
@@ -41,6 +42,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #define AUDIO_RATE 48000 /* EasyRPG's, and the interface sounds' */
@@ -420,9 +422,12 @@ static void restart_for(const Game *g)
     char eboot[NP_PATH_MAX];
     plat_asset_path(eboot, sizeof(eboot), "../eboot.bin");
     app_save_settings();
+    plat_quiesce(true);
     fflush(NULL);
     int rc = sceSystemServiceLoadExec(eboot, NULL);
+    plat_quiesce(false);
     np_log("game: relaunch returned 0x%x for %s", (unsigned)rc, g->title);
+    storage_remove(file); /* never leave a stale handoff to auto-launch on a future manual open */
     app_message_box("Close and reopen Dulcamara to start the selected Ren'Py game.");
 }
 #endif
@@ -506,20 +511,36 @@ bool app_save_sounds(int index, const struct SoundList *sounds)
     return false;
 }
 
-/* At start: the game a restart was for, if any (and the file gone, so it opens once). */
+/* At start: the game a restart was for, if any (always consumed once, and ignored if stale so a normal
+ * relaunch never auto-opens the last played game). */
 static void open_restart_game(void)
 {
     char file[NP_PATH_MAX], id[64] = "";
     restart_file(file, sizeof(file));
-    if (!restart_read(file, id, sizeof(id)))
+    struct stat st;
+    if (stat(file, &st) != 0)
         return;
+    if (!restart_read(file, id, sizeof(id)))
+    {
+        storage_remove(file);
+        return;
+    }
+    const time_t now = time(NULL);
+    if (now > 0 && st.st_mtime > 0 && (now - st.st_mtime > 60 || st.st_mtime - now > 60))
+    {
+        np_log("game: ignoring stale restart handoff for %s", id);
+        storage_remove(file);
+        return;
+    }
+    /* Consume the handoff BEFORE deferring app_start_game() (which sets pending_start, not app.game),
+     * so a subsequent relaunch always lands on the library instead of looping into the last game. */
+    if (!restart_acknowledge(file, id))
+        storage_remove(file);
     for (int i = 0; i < app.library.count; ++i)
         if (!strcmp(app.library.games[i].id, id))
         {
             np_log("game: opening %s, which the app started again for", app.library.games[i].title);
             app_start_game(i);
-            if (app.game == i)
-                restart_acknowledge(file, id);
             return;
         }
 }
@@ -1277,7 +1298,8 @@ int main(int argc, char **argv)
                 in_background = true;
                 privacy_armed = privacy_resuming = false;
                 previously_active = false;
-                np_log("app: another app has the screen: the game, drawing and sound stop");
+                np_log("app: another app or system UI has the screen: pausing game, GPU and sound");
+                plat_quiesce(true);
                 reset_transient();
             }
             host_poll(); /* finish stops, but keep startup checkpoints held in the background */
@@ -1289,6 +1311,7 @@ int main(int argc, char **argv)
         {
             in_background = false;
             np_log("app: the screen is the app's again");
+            plat_quiesce(false);
             last = last_frame_start = plat_ticks_us();
             app.dt = 0;
             reset_transient();
@@ -1552,9 +1575,16 @@ int main(int argc, char **argv)
     extern int sceSystemServiceLoadExec(const char *path, const char **arguments);
     if (!host_owns_runtime())
     {
+        library_scanner_destroy(app.scanner);
+        app.scanner = NULL;
+        covers_stop();
         icons_shutdown();
         text_shutdown();
         plat_release();
+    }
+    else
+    {
+        plat_quiesce(true);
     }
     fflush(NULL);
     for (;;)

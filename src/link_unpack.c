@@ -4,7 +4,9 @@
  * is held in memory; the game is unpacked into a hidden staging folder and renamed into games/ under a name nothing has.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
+#if !defined(__PROSPERO__)
 #define _XOPEN_SOURCE 700
+#endif
 #define _DARWIN_C_SOURCE 1
 #include "link_internal.h"
 #include "maintenance.h"
@@ -21,6 +23,9 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#if defined(__PROSPERO__)
+#include <sys/mount.h>
+#endif
 #include <unistd.h>
 
 #define NAME_MAX_BYTES 255
@@ -320,10 +325,22 @@ static bool sync_tree(const char *path, int depth)
 
 static uint64_t free_bytes(const char *path)
 {
+#if defined(__PROSPERO__)
+    int fd = open(path, O_RDONLY);
+    if (fd < 0)
+        return 0;
+    struct statfs fs;
+    memset(&fs, 0, sizeof(fs));
+    extern int link_unpack_ps5_fstatfs(int, struct statfs *) __asm__("_fstatfs");
+    int rc = link_unpack_ps5_fstatfs(fd, &fs);
+    close(fd);
+    return rc == 0 && fs.f_bavail > 0 ? (uint64_t)fs.f_bavail * (uint64_t)fs.f_bsize : 0;
+#else
     struct statvfs s;
     if (statvfs(path, &s))
         return 0;
     return (uint64_t)s.f_bavail * (s.f_frsize ? s.f_frsize : s.f_bsize);
+#endif
 }
 
 bool link_unpack(const char *games, const char *staging, const char *zip, const char *tag, const char *name_hint,
@@ -643,7 +660,7 @@ bool link_unpack(const char *games, const char *staging, const char *zip, const 
         const mz_zip_error error = written ? MZ_ZIP_NO_ERROR : mz_zip_get_last_error(&z);
         if (written && (o.written != e->size || ftruncate(o.fd, (off_t)o.written)))
             written = false, o.io = o.io || o.written == e->size;
-        if (written && fsync(o.fd))
+        if (written && fsync(o.fd) && errno != ENOSYS && errno != EINVAL && errno != ENOTSUP)
             written = false, o.no_space = errno == ENOSPC || errno == EDQUOT, o.io = !o.no_space;
         if (close(o.fd) && written)
             written = false, o.no_space = errno == ENOSPC || errno == EDQUOT, o.io = !o.no_space;

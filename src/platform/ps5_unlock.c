@@ -63,7 +63,8 @@ static bool publish(const char *path, int pid)
     fchmod(fd, 0666);
     char body[32];
     int n = snprintf(body, sizeof(body), "{\"PID\":%d}\n", pid);
-    bool ok = write(fd, body, (size_t)n) == n && fsync(fd) == 0;
+    bool ok = write(fd, body, (size_t)n) == n &&
+              (fsync(fd) == 0 || errno == ENOSYS || errno == EINVAL || errno == ENOTSUP);
     close(fd);
     if (!ok || rename(staged, path) != 0)
     {

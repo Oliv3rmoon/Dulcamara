@@ -15,6 +15,7 @@ bool vkp_open(int canvas_w, int canvas_h, char *error, size_t size);
 /* Uploads the canvas (R,G,B,A bytes), draws it over the game picture (none
  * yet), presents, and waits for the TV's refresh. */
 void vkp_present(const uint32_t *pixels, size_t pitch_bytes);
+void vkp_wait_idle(void);
 void vkp_close(void);
 /* "1920x1080 @ 59.94 Hz" once open */
 const char *vkp_describe(void);

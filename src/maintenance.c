@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+#if !defined(__PROSPERO__)
 #define _XOPEN_SOURCE 700
+#endif
 #define _DARWIN_C_SOURCE 1
 #include "maintenance.h"
 #include "../examples/self-update/self_update_sha256.h"
@@ -13,7 +15,18 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#if defined(__PROSPERO__)
+#include <sys/mount.h>
+extern int mt_ps5_fstatfs(int, struct statfs *) __asm__("_fstatfs");
+#endif
 #include <unistd.h>
+
+static bool fsync_supported_ok(int fd)
+{
+    if (fsync(fd) == 0)
+        return true;
+    return errno == ENOSYS || errno == EINVAL || errno == ENOTSUP;
+}
 
 /* The SDK exports this BSD API but hides its declaration under _XOPEN_SOURCE. */
 extern void arc4random_buf(void *, size_t);
@@ -177,7 +190,7 @@ bool mt_sync_dir(const char *p)
     int fd = open(p, O_RDONLY | O_DIRECTORY);
     if (fd < 0)
         return false;
-    bool ok = fsync(fd) == 0;
+    bool ok = fsync_supported_ok(fd);
     int e = errno;
     if (close(fd))
         ok = false;
@@ -301,7 +314,7 @@ bool mt_copy(const char *src, const char *dst, const MtObserver *o)
     ok = ok && n == 0 && !mt_cancelled(o);
     if (out >= 0)
     {
-        if (fsync(out))
+        if (!fsync_supported_ok(out))
             ok = false;
         if (close(out))
             ok = false;
@@ -324,9 +337,42 @@ bool mt_space(const char *path, uint64_t bytes)
     char b[MT_PATH_MAX];
     if (!mt_canonical(path, b))
         return false;
+#if defined(__PROSPERO__)
+    for (;;)
+    {
+        int fd = open(b, O_RDONLY);
+        if (fd >= 0)
+        {
+            struct statfs fs;
+            memset(&fs, 0, sizeof(fs));
+            int rc = mt_ps5_fstatfs(fd, &fs);
+            int e = errno;
+            close(fd);
+            if (rc == 0)
+            {
+                uint64_t block = (uint64_t)fs.f_bsize;
+                if (!block)
+                    return false;
+                if (fs.f_bavail <= 0)
+                    return bytes == 0;
+                return bytes / block + (bytes % block != 0) <= (uint64_t)fs.f_bavail;
+            }
+            errno = e;
+            return e == ENOSYS || e == ENOTSUP;
+        }
+        if (errno != ENOENT)
+            return false;
+        char *p = strrchr(b, '/');
+        if (!p || p == b)
+            return false;
+        *p = 0;
+    }
+#else
     struct statvfs s;
     while (statvfs(b, &s))
     {
+        if (errno == ENOSYS || errno == ENOTSUP)
+            return true;
         if (errno != ENOENT)
             return false;
         char *p = strrchr(b, '/');
@@ -338,6 +384,7 @@ bool mt_space(const char *path, uint64_t bytes)
     if (!block)
         return false;
     return bytes / block + (bytes % block != 0) <= (uint64_t)s.f_bavail;
+#endif
 }
 bool mt_atomic(const char *path, const void *data, size_t size)
 {
@@ -367,7 +414,7 @@ bool mt_atomic(const char *path, const void *data, size_t size)
         }
         at += (size_t)w;
     }
-    if (fsync(fd))
+    if (!fsync_supported_ok(fd))
         ok = false;
     if (close(fd))
         ok = false;
@@ -799,7 +846,7 @@ static bool filesystem_names_disjoint(const char *dir, const Record *r, uint32_t
             ok = false;
         else
         {
-            ok = write(fd, &plan, sizeof(plan)) == sizeof(plan) && !fsync(fd);
+            ok = write(fd, &plan, sizeof(plan)) == sizeof(plan) && fsync_supported_ok(fd);
             if (close(fd))
                 ok = false;
         }
@@ -972,7 +1019,7 @@ static bool durable_mode(const char *path, uint32_t mode)
     int fd = open(path, O_RDONLY | O_NOFOLLOW);
     if (fd < 0)
         return false;
-    bool ok = fsync(fd) == 0;
+    bool ok = fsync_supported_ok(fd);
     if (close(fd))
         ok = false;
     return ok;

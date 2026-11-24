@@ -12,12 +12,21 @@ queue as Queue."""
 import imp
 import locale
 import os
+import platform
 import runpy
 import sys
 import thread
 import time
 
 import Queue
+
+if sys.platform.startswith("freebsd"):
+    sys.platform = "linux2"
+    os.environ.setdefault("RENPY_PLATFORM", "linux-x86_64")
+    _real_uname = platform.uname
+    platform.system = lambda: "Linux"
+    platform.platform = lambda aliased=0, terse=0: "Linux-x86_64" if terse else "Linux-6.0-x86_64"
+    platform.uname = lambda: ("Linux",) + _real_uname()[1:]
 
 sys.setdefaultencoding("utf-8")  # still there: site.py, which deletes it, did not run
 locale.getpreferredencoding = lambda do_setlocale=True: "utf-8"

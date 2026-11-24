@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Read itch.io's public catalogue and the anonymous download choices on a creator's page."""
 import contextlib
+import errno
 import fcntl
 import http.cookiejar
 import json
@@ -10,6 +11,7 @@ import shutil
 import socket
 import ssl
 import stat
+import sys
 import zipfile
 from html.parser import HTMLParser
 from pathlib import Path
@@ -191,8 +193,17 @@ class Project:
         return Session(cdn).open(answer["url"])
 
 
+_UNSUPPORTED_ERRNOS = (errno.ENOSYS, errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", errno.ENOTSUP))
+
+
 def free_space(path, required):
-    if shutil.disk_usage(path).free < required + RESERVE:
+    try:
+        free = shutil.disk_usage(path).free
+    except OSError as exc:
+        if exc.errno in _UNSUPPORTED_ERRNOS:
+            return
+        raise
+    if free < required + RESERVE:
         raise ShelfError("The games drive needs more free space.")
 
 
@@ -241,6 +252,9 @@ def staging(shelf_dir):
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise ShelfError("Another shelf download is running.") from None
+        except OSError as exc:
+            if exc.errno not in _UNSUPPORTED_ERRNOS:
+                raise
         stage = shelf_dir / ".itch-install"
         if stage.is_symlink():
             raise ShelfError("The staging folder cannot be a shortcut.")
@@ -342,6 +356,7 @@ def error_message(exc):
     if isinstance(exc, (zipfile.BadZipFile, NotImplementedError)):
         return "This ZIP is damaged or uses an unsupported format."
     if isinstance(exc, OSError):
+        sys.stderr.write("itch-shelf: OSError errno=%r: %s\n" % (getattr(exc, "errno", None), exc))
         return "Could not read or write the download. Check storage and retry."
     return "Could not read the creator’s download information."
 

@@ -3,7 +3,7 @@
 The preview is built from the current sources first (tools/build-desktop.sh preview, incremental), so a stale
 binary is never what these tests exercise. The only skips are a missing cmake or missing SDL2 development files.
 """
-import csv, json, os, shutil, statistics, subprocess, tempfile, threading, unittest
+import csv, json, os, shutil, statistics, subprocess, tempfile, threading, time, unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 PREVIEW=ROOT/'build/desktop-preview/dulcamara'
@@ -642,3 +642,29 @@ class PreviewTest(unittest.TestCase):
             self.assertIn('deferring save and update recovery until storage works',output)
             self.assertNotIn('Waiting for startup recovery',output)
             print('Sandboxed startup: recovery deferred cleanly without locking update check')
+
+    def test_restart_handoff_consumed_once_and_stale_ignored(self):
+        """Fresh restart-game.txt is consumed immediately before deferred launch; stale handoff is deleted without opening."""
+        with tempfile.TemporaryDirectory(prefix='eclipse-restart-handoff-') as td:
+            root=Path(td);games=root/'games';games.mkdir()
+            (root/'settings.ini').write_text('update_check = 0\ncommunity_seen = 1\n')
+            gdir=games/'AlphaGame';(gdir/'game').mkdir(parents=True)
+            (gdir/'game/script.rpy').write_text('label start:\n    return\n')
+            # First run to learn the game's canonical library id from cache/library.index or simply write a valid id.
+            # Write a stale restart-game.txt (2 hours old) and verify it is ignored and removed.
+            handoff=root/'restart-game.txt'
+            handoff.write_text('0123456789abcdef\n')
+            old=time.time()-7200
+            os.utime(handoff,(old,old))
+            code,output=run_preview(root,['wait 40','assert screen library','quit'])
+            self.assertEqual(code,0,output[-4000:])
+            self.assertNotIn('ASSERT FAIL',output)
+            self.assertFalse(handoff.exists(),'stale restart-game.txt must be deleted')
+            self.assertIn('ignoring stale restart handoff',output)
+
+            # Now write a fresh restart-game.txt with a valid hex id and confirm it is consumed on startup even if deferred.
+            handoff.write_text('0123456789abcdef\n')
+            code2,output2=run_preview(root,['wait 40','quit'])
+            self.assertEqual(code2,0,output2[-4000:])
+            self.assertFalse(handoff.exists(),'fresh restart-game.txt must be consumed immediately on startup')
+            print('Restart handoff: stale ignored and deleted; fresh consumed once')

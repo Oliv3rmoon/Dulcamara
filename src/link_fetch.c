@@ -6,7 +6,9 @@
  * checked as soon as the size is known and every 16 MiB.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
+#if !defined(__PROSPERO__)
 #define _XOPEN_SOURCE 700
+#endif
 #define _DARWIN_C_SOURCE 1
 #include "link_internal.h"
 #include "maintenance.h"
@@ -20,6 +22,9 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#if defined(__PROSPERO__)
+#include <sys/mount.h>
+#endif
 #include <unistd.h>
 
 #if defined(NP_HAVE_CURL)
@@ -56,10 +61,22 @@ typedef struct
 
 static uint64_t free_bytes(const char *path)
 {
+#if defined(__PROSPERO__)
+    int fd = open(path, O_RDONLY);
+    if (fd < 0)
+        return 0;
+    struct statfs fs;
+    memset(&fs, 0, sizeof(fs));
+    extern int link_fetch_ps5_fstatfs(int, struct statfs *) __asm__("_fstatfs");
+    int rc = link_fetch_ps5_fstatfs(fd, &fs);
+    close(fd);
+    return rc == 0 && fs.f_bavail > 0 ? (uint64_t)fs.f_bavail * (uint64_t)fs.f_bsize : 0;
+#else
     struct statvfs s;
     if (statvfs(path, &s))
         return 0;
     return (uint64_t)s.f_bavail * (s.f_frsize ? s.f_frsize : s.f_bsize);
+#endif
 }
 
 static bool space_for(Fetch *f, uint64_t bytes)
@@ -473,7 +490,7 @@ bool link_download(const char *url, const char *dest, const char *space_root, co
         }
         curl_easy_cleanup(f.easy);
         f.easy = NULL;
-        if (fsync(f.fd) && rc == CURLE_OK)
+        if (fsync(f.fd) && errno != ENOSYS && errno != EINVAL && errno != ENOTSUP && rc == CURLE_OK)
             f.write_error = true;
         if (close(f.fd) && rc == CURLE_OK)
             f.write_error = true;

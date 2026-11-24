@@ -137,6 +137,28 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(shelf.cdn("http://cdn.itch.zone/file"))
         self.assertTrue(shelf.cdn("https://cdn.itch.zone/file"))
 
+    def test_ps5_enosys_disk_usage_and_flock_do_not_block_install(self):
+        import errno as _errno
+
+        def enosys(*_args, **_kwargs):
+            raise OSError(_errno.ENOSYS, "Function not implemented")
+
+        with patch.object(shelf.shutil, "disk_usage", side_effect=enosys), \
+                patch.object(shelf.fcntl, "flock", side_effect=enosys):
+            list(self.install())
+        self.assertTrue((self.dest / "game/script.rpy").is_file())
+
+    def test_real_io_error_still_fails_closed(self):
+        import errno as _errno
+
+        def eio(*_args, **_kwargs):
+            raise OSError(_errno.EIO, "Input/output error")
+
+        with patch.object(shelf.shutil, "disk_usage", side_effect=eio):
+            with self.assertRaises(OSError):
+                list(self.install())
+        self.assertFalse(self.dest.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

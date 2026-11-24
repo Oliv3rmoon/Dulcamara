@@ -14,14 +14,14 @@ const char *plat_screen_info(void);
 void plat_shutdown(void);
 void plat_release(void);
 
-/* Verify ordinary library access; a successful fallback retains the primary error for display. */
+/* Select and verify a writable library. A successful fallback returns the primary error
+ * for display. Safe to retry on the library screen before any storage worker has started. */
 bool plat_prepare_storage(char *root, size_t capacity, char *error, size_t size);
-/* Result of the startup directory check. */
+/* "sandboxed read ok, write no, list no": measured before unlocking (PS5). */
 const char *plat_sandbox_probe(void);
-/* Optional marker-file override disabling startup sandbox unlock (PS5). */
+/* Settings > System > Unlock /data with etaHEN (PS5); takes effect next launch. */
 bool plat_unlock_disabled(void);
 void plat_set_unlock_disabled(bool disabled);
-/* Default application data root. */
 void plat_default_root(char *out, size_t size);
 
 /* Reads controllers. `quit` is set when the desktop window is closed. */
@@ -145,6 +145,8 @@ void plat_sleep_us(uint32_t us);
 /* Whether another app has the console's screen (the PS5 switched to it, or to its home screen): the app is not to run
  * its game, draw or present until it is back. Always false on the desktop. */
 bool plat_in_background(void);
+/* Drain in-flight GPU work and pause audio when entering background/system UI; resume audio when returning. */
+void plat_quiesce(bool background);
 void plat_notify(const char *message); /* PS5 system notification; desktop log */
 
 #endif

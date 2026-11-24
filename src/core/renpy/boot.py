@@ -6,15 +6,71 @@
 on Ren'Py's thread waits by it, giving control back meanwhile. Its output goes to Dulcamara's log, its errors are
 logged in full before it shows them (dulcamara_errors), and its saves go where the core says."""
 
+import errno
+import fcntl
 import io
 import os
+import platform
 import runpy
+import shutil
 import sys
 import threading
 import time
 
 import _dulcamara
 import dulcamara_errors
+
+
+def _apply_ps5_compat():
+    """Normalize PS5 FreeBSD platform metadata and ENOSYS syscall gaps for PC Ren'Py games."""
+    if not sys.platform.startswith("freebsd"):
+        return
+    unsupported = (errno.ENOSYS, errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", errno.ENOTSUP))
+    sys.platform = "linux"
+    os.environ.setdefault("RENPY_PLATFORM", "linux-x86_64")
+
+    real_uname = platform.uname
+
+    def ps5_system():
+        return "Linux"
+
+    def ps5_platform(aliased=False, terse=False):
+        return "Linux-x86_64" if terse else "Linux-6.0-x86_64"
+
+    def ps5_uname():
+        u = real_uname()
+        return platform.uname_result("Linux", u.node, u.release, u.version, u.machine)
+
+    platform.system = ps5_system
+    platform.platform = ps5_platform
+    platform.uname = ps5_uname
+
+    real_disk_usage = shutil.disk_usage
+
+    def ps5_disk_usage(path):
+        try:
+            return real_disk_usage(path)
+        except OSError as exc:
+            if exc.errno in unsupported:
+                return shutil._ntuple_diskusage(1 << 40, 0, 1 << 40)
+            raise
+
+    shutil.disk_usage = ps5_disk_usage
+
+    real_flock = fcntl.flock
+
+    def ps5_flock(fd, operation):
+        try:
+            return real_flock(fd, operation)
+        except OSError as exc:
+            if exc.errno in unsupported:
+                return None
+            raise
+
+    fcntl.flock = ps5_flock
+
+
+_apply_ps5_compat()
 
 engine, game, saves = sys.argv[1:4]
 _dulcamara.step("the boot script's modules imported")

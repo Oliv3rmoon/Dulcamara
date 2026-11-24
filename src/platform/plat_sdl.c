@@ -473,13 +473,19 @@ static bool init_desktop_window(void)
 #endif
 
 #if defined(__PROSPERO__)
+static SDL_Joystick *joys[NP_MAX_PADS];
+
 void plat_release(void)
 {
     plat_audio_close();
     np_log("shutdown: audio closed");
     for (int i = 0; i < NP_MAX_PADS; ++i)
+    {
         if (controllers[i])
             SDL_GameControllerClose(controllers[i]), controllers[i] = NULL;
+        if (joys[i])
+            SDL_JoystickClose(joys[i]), joys[i] = NULL;
+    }
     np_log("shutdown: controllers closed");
     if (game_texture)
         SDL_DestroyTexture(game_texture), game_texture = NULL;
@@ -488,7 +494,10 @@ void plat_release(void)
     np_log("shutdown: renderer destroyed");
 #if defined(NP_VULKAN)
     if (use_vulkan)
+    {
+        vkp_wait_idle();
         vkp_close();
+    }
     np_log("shutdown: Vulkan closed");
 #endif
 }
@@ -756,7 +765,7 @@ static void order_pads(PadState pads[NP_MAX_PADS])
  * so buttons came out wrong (Triangle acted as Circle). Read the raw
  * joystick in the driver's order instead. The driver has no Create button
  * (slot 5); SwanStationPS5 turns a touchpad tap into Select. */
-static SDL_Joystick *joys[NP_MAX_PADS];
+/* joys[NP_MAX_PADS] is declared above plat_release(). */
 static int pad_uid[NP_MAX_PADS] = {-1, -1, -1, -1}; /* the PS5 user of each */
 static int pad_h[NP_MAX_PADS] = {-1, -1, -1, -1};   /* its scePad handle */
 static bool motion_on, touch_on, motion_set[NP_MAX_PADS];
@@ -2540,10 +2549,32 @@ bool plat_in_background(void)
 #if defined(__PROSPERO__)
     SystemStatus status;
     memset(&status, 0, sizeof(status));
-    return (sceSystemServiceGetStatus(&status) == 0 && status.in_background) || sdl_background;
+    return (sceSystemServiceGetStatus(&status) == 0 && (status.in_background || status.system_ui_overlaid)) ||
+           sdl_background;
 #else
     return sdl_background;
 #endif
+}
+
+void plat_quiesce(bool background)
+{
+    if (background)
+    {
+#if defined(__PROSPERO__) && defined(NP_VULKAN)
+        if (use_vulkan)
+            vkp_wait_idle();
+#endif
+        if (audio_device)
+        {
+            SDL_PauseAudioDevice(audio_device, 1);
+            SDL_ClearQueuedAudio(audio_device);
+        }
+    }
+    else
+    {
+        if (audio_device && !audio_private)
+            SDL_PauseAudioDevice(audio_device, 0);
+    }
 }
 
 void plat_notify(const char *message)

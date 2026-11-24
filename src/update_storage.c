@@ -482,7 +482,7 @@ bool update_storage_apply(const char *zip, const char *installed, const char *ex
              mz_zip_reader_extract_to_callback(&z, e->index, extract, &fd, 0);
         if (fd >= 0)
         {
-            if (fsync(fd))
+            if (fsync(fd) && errno != ENOSYS && errno != EINVAL && errno != ENOTSUP)
                 ok = false;
             if (close(fd))
                 ok = false;

@@ -611,7 +611,7 @@ static bool cleanup_record(const char *base, const char *name, unsigned operatio
     if (fd < 0)
         return false;
     bool ok = write(fd, &record, sizeof(record)) == sizeof(record);
-    if (fsync(fd))
+    if (fsync(fd) && errno != ENOSYS && errno != EINVAL && errno != ENOTSUP)
         ok = false;
     if (close(fd))
         ok = false;
