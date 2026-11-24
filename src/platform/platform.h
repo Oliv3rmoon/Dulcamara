@@ -145,6 +145,8 @@ void plat_sleep_us(uint32_t us);
 /* Whether another app has the console's screen (the PS5 switched to it, or to its home screen): the app is not to run
  * its game, draw or present until it is back. Always false on the desktop. */
 bool plat_in_background(void);
+/* PS5: true once the shell delivered SIGTERM/SIGHUP asking the title to close. */
+bool plat_term_requested(void);
 /* Drain in-flight GPU work and pause audio when entering background/system UI; resume audio when returning. */
 void plat_quiesce(bool background);
 void plat_notify(const char *message); /* PS5 system notification; desktop log */

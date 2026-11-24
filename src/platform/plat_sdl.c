@@ -40,11 +40,18 @@ static bool sdl_background;
 #endif
 #include "ps5_video.h"
 #include "vk/vk_present.h"
+#include <signal.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 int sceKernelSendNotificationRequest(uint32_t device, void *request, size_t size, int blocking);
 int sceSystemServiceHideSplashScreen(void);
 int np_elevate(const char **route); /* elevation_shim.cpp */
+static volatile sig_atomic_t term_signal_received;
+static void on_term_signal(int sig)
+{
+    (void)sig;
+    term_signal_received = 1;
+}
 #else
 static bool init_desktop_window(void);
 #if defined(NP_PREVIEW)
@@ -194,6 +201,12 @@ static bool init_ps5_screen(void)
 bool plat_init(void)
 {
 #if defined(__PROSPERO__)
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = on_term_signal;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGHUP, &sa, NULL);
     sceSystemServiceHideSplashScreen();
     if (SDL_Init(SDL_INIT_EVENTS) != 0)
         return init_failed("SDL");
@@ -876,10 +889,13 @@ void plat_poll(PadState pads[NP_MAX_PADS], bool *quit)
     while (SDL_PollEvent(&event))
     {
         sdl_background = plat_focus_event(sdl_background, &event);
+        if (event.type == SDL_QUIT && quit)
+            *quit = true;
         if (event.type == SDL_JOYDEVICEADDED || event.type == SDL_JOYDEVICEREMOVED)
             devices_changed = true;
     }
-    (void)quit;
+    if (term_signal_received && quit)
+        *quit = true;
     static bool first = true;
     if (devices_changed || first)
     {
@@ -1903,6 +1919,9 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
     game_rect[3] = dh;
     static const uint8_t scan_strength[] = {0, 110, 200};
     uint8_t scan = scan_strength[settings->crt % 3];
+    /* RPG Maker (240p) defaults to sharp nearest pixels; HD frames (Ren'Py >= 480p) use bilinear
+     * filtering so non-integer scaling to 1080p/4K does not drop text columns or alias UI art. */
+    const bool smooth = settings->smooth || game_src_h >= 480;
 #if defined(__PROSPERO__)
     /* Dulcamara: route ALL CPU-rendered frames (Ren'Py and EasyRPG) through the persistent Vulkan ring-buffered
      * image even when Shader is Off, avoiding per-frame VkImage re-creation and vkQueueWaitIdle stalls (black
@@ -1959,8 +1978,8 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
         int shader = settings->shader;
         if (!shader && settings->supersampling && (game_src_w > dw || game_src_h > dh))
             shader = 99; /* supersampling: its own shader, not one of the settings' choices */
-        /* "Smooth final scaling" off: sharp pixels (the shaders need the bilinear sampler) */
-        vkp_set_game_nearest(!settings->smooth && !shader);
+        /* "Smooth final scaling" off: sharp pixels for pixel art (HD cores and shaders use bilinear) */
+        vkp_set_game_nearest(!smooth && !shader);
         vkp_show_game((float)hole.x, (float)hole.y, (float)hole.w, (float)hole.h, crop, shader, game_src_w,
                                       game_src_h, lines);
         return;
@@ -1977,7 +1996,7 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
          * was made 60 times a second for a 1920x1080 Ren'Py game's 16 to 22 pictures, and its tester saw black bars
          * whenever the app ran below 60. */
         bool fresh = game_image_new;
-        if (soft_tex < 0 || soft_w != game_image_w || soft_h != game_image_h || soft_smooth != settings->smooth)
+        if (soft_tex < 0 || soft_w != game_image_w || soft_h != game_image_h || soft_smooth != smooth)
         {
             fresh = true;
             if (soft_tex >= 0)
@@ -1988,11 +2007,11 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
             if (rgba)
             {
                 memset(rgba, 255, (size_t)game_image_w * game_image_h * 4);
-                soft_tex = vkp_ui_texture_create(rgba, game_image_w, game_image_h, settings->smooth, false, true);
+                soft_tex = vkp_ui_texture_create(rgba, game_image_w, game_image_h, smooth, false, true);
             }
             soft_w = game_image_w;
             soft_h = game_image_h;
-            soft_smooth = settings->smooth;
+            soft_smooth = smooth;
         }
         if (soft_tex >= 0 && rgba && fresh)
         {
@@ -2044,15 +2063,15 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
         BlitJob job = {src, src_w, src_h,
                        game_image_pitch,
                        (uint32_t *)canvas->pixels, (size_t)canvas->pitch / 4,
-                       bx, by, bw, bh, settings->smooth, dim,
+                       bx, by, bw, bh, smooth, dim,
                        scan, lines};
         blit_scaled(&job);
         return;
     }
 #endif
 #if SDL_VERSION_ATLEAST(2, 0, 12)
-    SDL_SetTextureScaleMode(game_texture, settings->smooth ? SDL_ScaleModeLinear
-                                                           : SDL_ScaleModeNearest);
+    SDL_SetTextureScaleMode(game_texture, smooth ? SDL_ScaleModeLinear
+                                                 : SDL_ScaleModeNearest);
 #endif
     SDL_SetTextureColorMod(game_texture, dim, dim, dim);
     SDL_SetTextureBlendMode(game_texture, SDL_BLENDMODE_NONE); /* opaque: no per-pixel blend */
@@ -2542,15 +2561,42 @@ typedef struct
 } SystemStatus;
 
 int sceSystemServiceGetStatus(SystemStatus *status);
+typedef struct
+{
+    uint32_t event_type;
+    uint8_t data[16380]; /* oversized buffer for PS5 SceSystemServiceEvent payload */
+} SystemEvent;
+int sceSystemServiceReceiveEvent(SystemEvent *event);
 #endif
+
+bool plat_term_requested(void)
+{
+#if defined(__PROSPERO__)
+    return term_signal_received != 0;
+#else
+    return false;
+#endif
+}
 
 bool plat_in_background(void)
 {
 #if defined(__PROSPERO__)
     SystemStatus status;
     memset(&status, 0, sizeof(status));
-    return (sceSystemServiceGetStatus(&status) == 0 && (status.in_background || status.system_ui_overlaid)) ||
-           sdl_background;
+    if (sceSystemServiceGetStatus(&status) == 0)
+    {
+        for (int i = 0; i < status.event_count && i < 8; ++i)
+        {
+            static SystemEvent ev;
+            memset(&ev, 0, sizeof(ev));
+            if (sceSystemServiceReceiveEvent(&ev) != 0)
+                break;
+            np_log("system: event 0x%x", (unsigned)ev.event_type);
+        }
+        if (status.in_background || status.system_ui_overlaid)
+            return true;
+    }
+    return sdl_background;
 #else
     return sdl_background;
 #endif

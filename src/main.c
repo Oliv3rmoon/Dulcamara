@@ -1304,6 +1304,11 @@ int main(int argc, char **argv)
             }
             host_poll(); /* finish stops, but keep startup checkpoints held in the background */
             plat_poll(pads, &quit);
+            if (quit || plat_term_requested())
+            {
+                quit = true;
+                break;
+            }
             plat_sleep_us(50000);
             continue;
         }
@@ -1354,8 +1359,10 @@ int main(int argc, char **argv)
         }
 
         plat_poll(pads, &quit);
-        if (app.quit_requested)
+        if (app.quit_requested || plat_term_requested())
             quit = true;
+        if (quit)
+            break;
         for (int p = 0; p < NP_MAX_PADS; ++p)
             if (pads[p].connected != app.pads[p].connected)
                 reset_transient();
@@ -1540,21 +1547,32 @@ int main(int argc, char **argv)
 #endif
     /* Only the desktop build gets here; the PS5 shell closes the title. */
     ps5_crash_step("shutdown");
-    np_log("shutdown: leaving the main loop");
-    if (app.game >= 0)
-        app_stop_game();
-    while (host_state() == HOST_STOPPING || saves_busy() || pre_backup || post_backup ||
-           (stop_pending && host_owns_runtime() && host_state() != HOST_FAILURE))
+    const bool forced_close = plat_term_requested();
+    np_log("shutdown: leaving the main loop%s", forced_close ? " (system termination signal)" : "");
+    if (forced_close)
     {
-        if (pending_stop)
-        {
-            pending_stop = false;
-            host_request_stop();
-        }
-        runtime_tick();
-        plat_sleep_us(10000);
+        /* PS5 Shell force-close (SIGTERM): do not wake a parked Ren'Py thread or launch
+         * post-backup workers or wait on unbounded scanner/cover joins; quiesce and release
+         * frontend audio, pads, and RADV Vulkan immediately to beat SceShellCore's SIGKILL. */
+        plat_quiesce(true);
     }
-    app_save_settings();
+    else
+    {
+        if (app.game >= 0)
+            app_stop_game();
+        while (host_state() == HOST_STOPPING || saves_busy() || pre_backup || post_backup ||
+               (stop_pending && host_owns_runtime() && host_state() != HOST_FAILURE))
+        {
+            if (pending_stop)
+            {
+                pending_stop = false;
+                host_request_stop();
+            }
+            runtime_tick();
+            plat_sleep_us(10000);
+        }
+        app_save_settings();
+    }
 #if !defined(__PROSPERO__)
     if (host_owns_runtime())
     {
@@ -1573,19 +1591,18 @@ int main(int argc, char **argv)
 #else
     /* The system closes the title: exit()/_exit() raise SIGSYS on the console. LoadExec "exit" ends it normally. */
     extern int sceSystemServiceLoadExec(const char *path, const char **arguments);
-    if (!host_owns_runtime())
+    if (!host_owns_runtime() && !forced_close)
     {
         library_scanner_destroy(app.scanner);
         app.scanner = NULL;
         covers_stop();
         icons_shutdown();
         text_shutdown();
-        plat_release();
     }
-    else
-    {
-        plat_quiesce(true);
-    }
+    /* Always release frontend audio, controllers, and RADV Vulkan (VK_KHR_display / VideoOut) cleanly
+     * even on force-close or when an embedded Python core remained parked: plat_release() only
+     * tears down frontend-owned handles and prevents PS5 kernel panics on abrupt SIGKILL. */
+    plat_release();
     fflush(NULL);
     for (;;)
     {

@@ -22,7 +22,7 @@ import dulcamara_errors
 
 
 def _apply_ps5_compat():
-    """Normalize PS5 FreeBSD platform metadata and ENOSYS syscall gaps for PC Ren'Py games."""
+    """Normalize PS5 FreeBSD platform metadata, ENOSYS syscall gaps, and thread limits for PC Ren'Py games."""
     if not sys.platform.startswith("freebsd"):
         return
     unsupported = (errno.ENOSYS, errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", errno.ENOTSUP))
@@ -68,6 +68,74 @@ def _apply_ps5_compat():
             raise
 
     fcntl.flock = ps5_flock
+
+    # PS5 caps concurrent pthreads (~31 total across Ren'Py, OpenGL, FFmpeg, and Python) and
+    # reserves a 2 MB flexible-memory stack per thread (ps5_threads.c). PC in-game updaters
+    # that spawn 60+ parallel download threads otherwise exhaust threads/memory mid-download.
+    try:
+        max_pool_workers = max(1, int(os.environ.get("DULCAMARA_PS5_MAX_WORKERS", "4")))
+    except ValueError:
+        max_pool_workers = 4
+
+    try:
+        import concurrent.futures as _cf
+
+        real_tpe_init = _cf.ThreadPoolExecutor.__init__
+
+        def ps5_tpe_init(self, max_workers=None, *args, **kwargs):
+            if max_workers is None or max_workers > max_pool_workers:
+                max_workers = max_pool_workers
+            return real_tpe_init(self, max_workers, *args, **kwargs)
+
+        _cf.ThreadPoolExecutor.__init__ = ps5_tpe_init
+    except Exception:
+        pass
+
+    import threading as _threading
+    import time as _time
+
+    real_sleep = _time.sleep
+    real_thread_start = _threading.Thread.start
+    real_bootstrap_inner = _threading.Thread._bootstrap_inner
+    burst_threshold = max(max_pool_workers + 4, 8)
+    burst_sem = _threading.Semaphore(max_pool_workers)
+
+    def ps5_thread_start(self):
+        if getattr(self, "_started", None) is not None and self._started.is_set():
+            return real_thread_start(self)
+        acquired = False
+        if _threading.active_count() >= burst_threshold:
+            acquired = burst_sem.acquire(timeout=15.0)
+            if acquired:
+                self._dulcamara_burst_held = True
+        try:
+            for attempt in range(8):
+                try:
+                    return real_thread_start(self)
+                except (RuntimeError, OSError) as exc:
+                    msg = str(exc).lower()
+                    is_limit = isinstance(exc, RuntimeError) and "start new thread" in msg
+                    is_eagain = isinstance(exc, OSError) and exc.errno in (errno.EAGAIN, errno.ENOMEM)
+                    if (is_limit or is_eagain) and attempt < 7:
+                        real_sleep(0.05 * (attempt + 1))
+                        continue
+                    raise
+        except BaseException:
+            if acquired and getattr(self, "_dulcamara_burst_held", False):
+                self._dulcamara_burst_held = False
+                burst_sem.release()
+            raise
+
+    def ps5_bootstrap_inner(self):
+        try:
+            return real_bootstrap_inner(self)
+        finally:
+            if getattr(self, "_dulcamara_burst_held", False):
+                self._dulcamara_burst_held = False
+                burst_sem.release()
+
+    _threading.Thread.start = ps5_thread_start
+    _threading.Thread._bootstrap_inner = ps5_bootstrap_inner
 
 
 _apply_ps5_compat()

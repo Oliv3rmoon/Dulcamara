@@ -40,6 +40,7 @@
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance instance, const char *name);
 
 #define FRAMES 2 /* frames in flight */
+#define SOFT_SLOTS 3 /* triple-buffered CPU-core game images: upload once per fresh frame, never race in-flight GPU reads */
 #define MAX_IMAGES 8
 #define SHADED_N 6 /* pipelines in shaded[] */
 #define MAXP 12    /* passes of a shader chain */
@@ -99,6 +100,7 @@ static struct
     VkImageView views[MAX_IMAGES];
     VkFramebuffer framebuffers[MAX_IMAGES];
     VkSemaphore rendered[MAX_IMAGES];
+    VkFence image_in_flight[MAX_IMAGES];
     VkRenderPass pass;
     VkPipelineLayout layout;
     VkPipeline opaque, blended;
@@ -163,19 +165,23 @@ static struct
     int fg_state;
     double core_hz, display_hz, speed;
     bool nominal;
-    /* Dulcamara: a core that draws on the CPU (Ren'Py, EasyRPG). Double-buffered per in-flight frame slot
-     * so uploading frame N never races with RADV sampling frame N-1's image. */
-    VkImage soft_image[FRAMES];
-    VkDeviceMemory soft_memory[FRAMES];
-    VkImageView soft_view[FRAMES];
+    /* Dulcamara: a core that draws on the CPU (Ren'Py, EasyRPG). Triple-buffered images and staging buffers:
+     * each fresh frame is uploaded ONCE into a guaranteed-idle slot, and subsequent repeated 60 Hz refreshes
+     * reuse that read-only image with zero copy and zero GPU race across all in-flight frames. */
+    VkImage soft_image[SOFT_SLOTS];
+    VkDeviceMemory soft_memory[SOFT_SLOTS];
+    VkImageView soft_view[SOFT_SLOTS];
     int soft_w, soft_h;
-    bool soft_ready[FRAMES]; /* slot holds a frame: layout is SHADER_READ_ONLY_OPTIMAL */
-    uint64_t soft_gen;       /* increments on every fresh CPU frame */
-    uint64_t soft_slot_gen[FRAMES];
-    bool soft_active;        /* plat asked for the soft game image on this frame */
-    VkBuffer soft_staging[FRAMES];
-    VkDeviceMemory soft_staging_memory[FRAMES];
-    void *soft_staging_map[FRAMES];
+    bool soft_ready[SOFT_SLOTS]; /* slot holds a frame: layout is SHADER_READ_ONLY_OPTIMAL */
+    uint64_t soft_gen;           /* increments on every fresh CPU frame */
+    uint64_t soft_uploaded_gen;  /* generation currently resident in soft_image[soft_cur] */
+    bool soft_have_uploaded;     /* true once at least one frame has been uploaded at soft_w x soft_h */
+    int soft_cur;                /* slot index holding soft_uploaded_gen */
+    int soft_frame_slot[FRAMES]; /* slot index referenced by in-flight command buffer f, or -1 */
+    bool soft_active;            /* plat asked for the soft game image on this frame */
+    VkBuffer soft_staging[SOFT_SLOTS];
+    VkDeviceMemory soft_staging_memory[SOFT_SLOTS];
+    void *soft_staging_map[SOFT_SLOTS];
     const uint32_t *soft_pixels; /* latest frame pixels (XRGB8888), NULL when none */
     size_t soft_pitch;           /* in pixels */
     bool soft_failed;            /* the image could not be made: the CPU path draws the picture */
@@ -559,6 +565,7 @@ static bool create_pipeline(char *error, size_t size)
         CHECK(vkCreateFramebuffer(V.device, &fb, NULL, &V.framebuffers[i]), "framebuffer");
         VkSemaphoreCreateInfo sem = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         CHECK(vkCreateSemaphore(V.device, &sem, NULL, &V.rendered[i]), "semaphore");
+        V.image_in_flight[i] = VK_NULL_HANDLE;
     }
 
     /* one texture per draw */
@@ -1891,11 +1898,17 @@ static void present_frame(bool ui, const uint32_t *pixels, size_t pitch_bytes)
                                        &index);
     if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR)
     {
+        V.soft_active = false;
+        V.game_shown = false;
         static int warned;
         if (!warned++)
             np_log("vulkan: acquire failed (%d)", (int)r);
         return;
     }
+    if (index < MAX_IMAGES && V.image_in_flight[index] && V.image_in_flight[index] != V.done[f])
+        vkWaitForFences(V.device, 1, &V.image_in_flight[index], VK_TRUE, UINT64_MAX);
+    if (index < MAX_IMAGES)
+        V.image_in_flight[index] = V.done[f];
     vkResetFences(V.device, 1, &V.done[f]);
 
     VkCommandBuffer cb = V.cmd[f];
@@ -1906,6 +1919,15 @@ static void present_frame(bool ui, const uint32_t *pixels, size_t pitch_bytes)
     soft_record(cb, f); /* a CPU core's new frame, before anything reads the game's picture */
     if (!ui)
     {
+        __atomic_thread_fence(__ATOMIC_SEQ_CST);
+        VkBufferMemoryBarrier hb = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        hb.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+        hb.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        hb.srcQueueFamilyIndex = hb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hb.buffer = V.staging[f];
+        hb.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &hb, 0,
+                             NULL);
         barrier(cb, V.canvas, V.canvas_ready ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -2255,6 +2277,7 @@ static void destroy_device_objects(void)
         V.framebuffers[i] = VK_NULL_HANDLE;
         V.views[i] = VK_NULL_HANDLE;
         V.rendered[i] = VK_NULL_HANDLE;
+        V.image_in_flight[i] = VK_NULL_HANDLE;
     }
     if (V.pass)
         vkDestroyRenderPass(V.device, V.pass, NULL);
@@ -2303,39 +2326,43 @@ static void soft_free(void)
 {
     if (!V.device)
         return;
-    for (int f = 0; f < FRAMES; ++f)
+    for (int s = 0; s < SOFT_SLOTS; ++s)
     {
-        if (V.soft_staging[f])
-            vkDestroyBuffer(V.device, V.soft_staging[f], NULL);
-        if (V.soft_staging_memory[f])
-            vkFreeMemory(V.device, V.soft_staging_memory[f], NULL);
-        V.soft_staging[f] = VK_NULL_HANDLE;
-        V.soft_staging_memory[f] = VK_NULL_HANDLE;
-        V.soft_staging_map[f] = NULL;
-        if (V.game_image == V.soft_image[f] && V.soft_image[f])
+        if (V.soft_staging[s])
+            vkDestroyBuffer(V.device, V.soft_staging[s], NULL);
+        if (V.soft_staging_memory[s])
+            vkFreeMemory(V.device, V.soft_staging_memory[s], NULL);
+        V.soft_staging[s] = VK_NULL_HANDLE;
+        V.soft_staging_memory[s] = VK_NULL_HANDLE;
+        V.soft_staging_map[s] = NULL;
+        if (V.game_image == V.soft_image[s] && V.soft_image[s])
         {
             V.game_image = VK_NULL_HANDLE;
             V.game_view = VK_NULL_HANDLE;
         }
-        if (V.soft_view[f])
-            vkDestroyImageView(V.device, V.soft_view[f], NULL);
-        if (V.soft_image[f])
-            vkDestroyImage(V.device, V.soft_image[f], NULL);
-        if (V.soft_memory[f])
-            vkFreeMemory(V.device, V.soft_memory[f], NULL);
-        V.soft_view[f] = VK_NULL_HANDLE;
-        V.soft_image[f] = VK_NULL_HANDLE;
-        V.soft_memory[f] = VK_NULL_HANDLE;
-        V.soft_ready[f] = false;
-        V.soft_slot_gen[f] = 0;
+        if (V.soft_view[s])
+            vkDestroyImageView(V.device, V.soft_view[s], NULL);
+        if (V.soft_image[s])
+            vkDestroyImage(V.device, V.soft_image[s], NULL);
+        if (V.soft_memory[s])
+            vkFreeMemory(V.device, V.soft_memory[s], NULL);
+        V.soft_view[s] = VK_NULL_HANDLE;
+        V.soft_image[s] = VK_NULL_HANDLE;
+        V.soft_memory[s] = VK_NULL_HANDLE;
+        V.soft_ready[s] = false;
     }
+    for (int f = 0; f < FRAMES; ++f)
+        V.soft_frame_slot[f] = -1;
     V.soft_w = V.soft_h = 0;
     V.soft_gen = 0;
+    V.soft_uploaded_gen = 0;
+    V.soft_have_uploaded = false;
+    V.soft_cur = 0;
     V.soft_active = false;
     V.soft_pixels = NULL;
 }
 
-/* The double-buffered images and staging buffers for a w x h frame. */
+/* The triple-buffered images and staging buffers for a w x h frame. */
 static bool soft_make(int w, int h, char *error, size_t size)
 {
     VkImageCreateInfo ii = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
@@ -2349,44 +2376,48 @@ static bool soft_make(int w, int h, char *error, size_t size)
     ii.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkMemoryRequirements req;
-    for (int f = 0; f < FRAMES; ++f)
+    for (int s = 0; s < SOFT_SLOTS; ++s)
     {
-        CHECK(vkCreateImage(V.device, &ii, NULL, &V.soft_image[f]), "game image");
-        vkGetImageMemoryRequirements(V.device, V.soft_image[f], &req);
-        if (!allocate(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &V.soft_memory[f]))
+        CHECK(vkCreateImage(V.device, &ii, NULL, &V.soft_image[s]), "game image");
+        vkGetImageMemoryRequirements(V.device, V.soft_image[s], &req);
+        if (!allocate(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &V.soft_memory[s]))
         {
             snprintf(error, size, "no GPU memory for the game image");
             return false;
         }
-        CHECK(vkBindImageMemory(V.device, V.soft_image[f], V.soft_memory[f], 0), "bind game image");
+        CHECK(vkBindImageMemory(V.device, V.soft_image[s], V.soft_memory[s], 0), "bind game image");
         VkImageViewCreateInfo view = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-        view.image = V.soft_image[f];
+        view.image = V.soft_image[s];
         view.viewType = VK_IMAGE_VIEW_TYPE_2D;
         view.format = VK_FORMAT_B8G8R8A8_UNORM;
         view.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         view.subresourceRange.levelCount = 1;
         view.subresourceRange.layerCount = 1;
-        CHECK(vkCreateImageView(V.device, &view, NULL, &V.soft_view[f]), "game image view");
+        CHECK(vkCreateImageView(V.device, &view, NULL, &V.soft_view[s]), "game image view");
         VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         bi.size = (VkDeviceSize)w * h * 4;
         bi.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        CHECK(vkCreateBuffer(V.device, &bi, NULL, &V.soft_staging[f]), "game staging buffer");
-        vkGetBufferMemoryRequirements(V.device, V.soft_staging[f], &req);
+        CHECK(vkCreateBuffer(V.device, &bi, NULL, &V.soft_staging[s]), "game staging buffer");
+        vkGetBufferMemoryRequirements(V.device, V.soft_staging[s], &req);
         if (!allocate(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                      &V.soft_staging_memory[f]))
+                      &V.soft_staging_memory[s]))
         {
             snprintf(error, size, "no memory for the game staging buffer");
             return false;
         }
-        CHECK(vkBindBufferMemory(V.device, V.soft_staging[f], V.soft_staging_memory[f], 0), "bind game staging");
-        CHECK(vkMapMemory(V.device, V.soft_staging_memory[f], 0, VK_WHOLE_SIZE, 0, &V.soft_staging_map[f]),
+        CHECK(vkBindBufferMemory(V.device, V.soft_staging[s], V.soft_staging_memory[s], 0), "bind game staging");
+        CHECK(vkMapMemory(V.device, V.soft_staging_memory[s], 0, VK_WHOLE_SIZE, 0, &V.soft_staging_map[s]),
               "map game staging");
-        V.soft_ready[f] = false;
-        V.soft_slot_gen[f] = 0;
+        V.soft_ready[s] = false;
     }
+    for (int f = 0; f < FRAMES; ++f)
+        V.soft_frame_slot[f] = -1;
     V.soft_w = w;
     V.soft_h = h;
     V.soft_gen = 1;
+    V.soft_uploaded_gen = 0;
+    V.soft_have_uploaded = false;
+    V.soft_cur = 0;
     return true;
 }
 
@@ -2408,7 +2439,7 @@ bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitc
             V.soft_failed = true;
             return false;
         }
-        np_log("vulkan: persistent double-buffered game image %dx%d ready", width, height);
+        np_log("vulkan: persistent triple-buffered game image %dx%d ready", width, height);
     }
     V.soft_pixels = xrgb;
     V.soft_pitch = pitch_px;
@@ -2418,17 +2449,31 @@ bool vkp_set_soft_frame(const uint32_t *xrgb, int width, int height, size_t pitc
     return true;
 }
 
-/* At the start of a frame's commands: upload into slot f's dedicated image only when its generation lags,
- * after V.done[f] has already completed so slot f is guaranteed idle on the GPU. */
+/* At the start of a frame's commands: upload a fresh CPU frame ONCE into a guaranteed-idle slot
+ * (never the slot currently referenced by the other in-flight command buffer or V.soft_cur),
+ * then reuse V.soft_image[V.soft_cur] read-only on all repeated 60 Hz refreshes with zero copy. */
 static void soft_record(VkCommandBuffer cb, int f)
 {
-    if (!V.soft_active || !V.soft_image[f] || !V.soft_staging_map[f])
+    if (!V.soft_active || !V.soft_image[0])
         return;
     V.soft_active = false;
-    const bool need_upload = V.soft_pixels && (!V.soft_ready[f] || V.soft_slot_gen[f] != V.soft_gen);
+    const bool need_upload = V.soft_pixels && (!V.soft_have_uploaded || V.soft_uploaded_gen != V.soft_gen);
     if (need_upload)
     {
-        uint32_t *dst = V.soft_staging_map[f];
+        const int other = (f + 1) % FRAMES;
+        const int busy_other = V.soft_frame_slot[other];
+        int s = 0;
+        for (int cand = 0; cand < SOFT_SLOTS; ++cand)
+        {
+            if (cand != busy_other && (!V.soft_have_uploaded || cand != V.soft_cur))
+            {
+                s = cand;
+                break;
+            }
+        }
+        if (!V.soft_image[s] || !V.soft_staging_map[s])
+            return;
+        uint32_t *dst = V.soft_staging_map[s];
         for (int y = 0; y < V.soft_h; ++y)
         {
             const uint32_t *src = V.soft_pixels + (size_t)y * V.soft_pitch;
@@ -2436,30 +2481,45 @@ static void soft_record(VkCommandBuffer cb, int f)
             for (int x = 0; x < V.soft_w; ++x)
                 row[x] = src[x] | 0xff000000u; /* opaque: the X byte is not alpha */
         }
-        barrier(cb, V.soft_image[f],
-                V.soft_ready[f] ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, V.soft_ready[f] ? VK_ACCESS_SHADER_READ_BIT : 0,
+        /* Publish CPU writes to HOST_COHERENT staging memory before the GPU transfer reads it. */
+        __atomic_thread_fence(__ATOMIC_SEQ_CST);
+        VkBufferMemoryBarrier hb = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        hb.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+        hb.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        hb.srcQueueFamilyIndex = hb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hb.buffer = V.soft_staging[s];
+        hb.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &hb, 0,
+                             NULL);
+        barrier(cb, V.soft_image[s],
+                V.soft_ready[s] ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, V.soft_ready[s] ? VK_ACCESS_SHADER_READ_BIT : 0,
                 VK_ACCESS_TRANSFER_WRITE_BIT,
-                V.soft_ready[f] ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                V.soft_ready[s] ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
                                 : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                 VK_PIPELINE_STAGE_TRANSFER_BIT);
         VkBufferImageCopy copy = {0};
         copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         copy.imageSubresource.layerCount = 1;
         copy.imageExtent = (VkExtent3D){(uint32_t)V.soft_w, (uint32_t)V.soft_h, 1};
-        vkCmdCopyBufferToImage(cb, V.soft_staging[f], V.soft_image[f], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-        barrier(cb, V.soft_image[f], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        vkCmdCopyBufferToImage(cb, V.soft_staging[s], V.soft_image[s], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        barrier(cb, V.soft_image[s], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                 VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        V.soft_ready[f] = true;
-        V.soft_slot_gen[f] = V.soft_gen;
-        vkp_set_game_image(V.soft_image[f], V.soft_view[f], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        V.soft_ready[s] = true;
+        V.soft_cur = s;
+        V.soft_uploaded_gen = V.soft_gen;
+        V.soft_have_uploaded = true;
+        V.soft_frame_slot[f] = s;
+        vkp_set_game_image(V.soft_image[s], V.soft_view[s], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
-    else if (V.soft_ready[f])
+    else if (V.soft_have_uploaded && V.soft_ready[V.soft_cur])
     {
-        /* Repeated frame already resident in slot f: reuse directly with zero copy and zero GPU stall. */
-        V.game_image = V.soft_image[f];
-        V.game_view = V.soft_view[f];
+        /* Repeated frame already resident in V.soft_cur: reuse read-only with zero copy and zero GPU stall. */
+        const int s = V.soft_cur;
+        V.soft_frame_slot[f] = s;
+        V.game_image = V.soft_image[s];
+        V.game_view = V.soft_view[s];
         V.game_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 }

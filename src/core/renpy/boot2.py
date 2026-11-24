@@ -27,6 +27,60 @@ if sys.platform.startswith("freebsd"):
     platform.system = lambda: "Linux"
     platform.platform = lambda aliased=0, terse=0: "Linux-x86_64" if terse else "Linux-6.0-x86_64"
     platform.uname = lambda: ("Linux",) + _real_uname()[1:]
+    try:
+        import errno as _errno
+        import threading as _threading
+
+        _real_sleep2 = time.sleep
+        _real_time2 = time.time
+        _real_start2 = _threading.Thread.start
+        _real_boot2 = _threading.Thread._Thread__bootstrap_inner
+        _burst_sem2 = _threading.Semaphore(4)
+
+        def _ps5_start2(self):
+            started = getattr(self, "_Thread__started", None)
+            if started is not None and started.is_set():
+                return _real_start2(self)
+            acquired = False
+            if _threading.active_count() >= 8:
+                deadline = _real_time2() + 15.0
+                while True:
+                    if _burst_sem2.acquire(False):
+                        acquired = True
+                        self._dulcamara_burst_held = True
+                        break
+                    if _real_time2() >= deadline:
+                        break
+                    _real_sleep2(0.05)
+            try:
+                for attempt in range(8):
+                    try:
+                        return _real_start2(self)
+                    except (RuntimeError, OSError, thread.error) as exc:
+                        msg = str(exc).lower()
+                        is_limit = "start new thread" in msg or getattr(exc, "errno", None) in (_errno.EAGAIN, _errno.ENOMEM)
+                        if is_limit and attempt < 7:
+                            _real_sleep2(0.05 * (attempt + 1))
+                            continue
+                        raise
+            except BaseException:
+                if acquired and getattr(self, "_dulcamara_burst_held", False):
+                    self._dulcamara_burst_held = False
+                    _burst_sem2.release()
+                raise
+
+        def _ps5_boot2(self):
+            try:
+                return _real_boot2(self)
+            finally:
+                if getattr(self, "_dulcamara_burst_held", False):
+                    self._dulcamara_burst_held = False
+                    _burst_sem2.release()
+
+        _threading.Thread.start = _ps5_start2
+        _threading.Thread._Thread__bootstrap_inner = _ps5_boot2
+    except Exception:
+        pass
 
 sys.setdefaultencoding("utf-8")  # still there: site.py, which deletes it, did not run
 locale.getpreferredencoding = lambda do_setlocale=True: "utf-8"
