@@ -56,6 +56,13 @@ def run_check():
     label = source[source.index('primary_ready:', start):end]
     start = source.index('      memset(resource->data, 0, size);')
     arena = source[start:source.index('#ifdef AGC_RUNTIME_DIAGNOSTICS', start)] + '\n    goto primary_ready;\n' + label + finish_initialization
+    start = source.index('   dst_resource = (struct ps5_resource *)info->dst.resource;\n   direct_tiled_dst =')
+    blit_setup = source[start:source.index('\n   }\n', start) + len('\n   }\n')]
+    blit_publish = ('   if (direct_tiled_dst)\n'
+                    '      ps5_flush_gpu_data(dst_resource->data, dst_resource->allocation_size);\n'
+                    '   else\n'
+                    '      ps5_transfer_unmap(context, dst_transfer);\n')
+    assert source.count(blit_publish) == 1
 
     code = r'''
     #include <assert.h>
@@ -70,7 +77,7 @@ def run_check():
     enum { PIPE_BUFFER, PIPE_TEXTURE_2D };
     enum { COLOR, PIPE_FORMAT_Z32_FLOAT, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT };
     enum { PIPE_MAP_READ=1, PIPE_MAP_WRITE=2, PIPE_MAP_UNSYNCHRONIZED=4,
-           PIPE_MAP_FLUSH_EXPLICIT=8, PIPE_BIND_DEPTH_STENCIL=16 };
+           PIPE_MAP_FLUSH_EXPLICIT=8, PIPE_BIND_DEPTH_STENCIL=16, PIPE_BIND_RENDER_TARGET=32 };
     struct pipe_resource { unsigned target, bind, format, width0, height0, nr_samples; };
     struct pipe_context { unsigned unused; };
     struct pipe_box { int x,y,z,width,height,depth; };
@@ -147,6 +154,32 @@ def run_check():
         (void)allocation_size;
     ''' + arena + r'''
     }
+    /* ps5_blit's software colour path into a tiled render target (copies under 64x64 texels): its actual
+     * destination setup and publication, the per-pixel loop replaced by one texel's CPU store. */
+    struct blit_info { struct { struct pipe_resource *resource; unsigned level; struct pipe_box box; } dst;
+        bool scissor_enable; };
+    static bool ps5_linear_sampled_layout(const struct pipe_resource *b) { (void)b; return false; }
+    static bool ps5_map_bounds(struct ps5_resource *r,unsigned level,const struct pipe_box *b,size_t *o) {
+        (void)r;(void)level;(void)b;*o=0;return true;
+    }
+    static void *ps5_transfer_map(struct pipe_context *c,struct pipe_resource *r,unsigned level,unsigned usage,
+                                  const struct pipe_box *b,struct pipe_transfer **t) {
+        (void)c;(void)r;(void)level;(void)usage;(void)b;(void)t;abort();
+    }
+    static void blit_one_texel(struct ps5_resource *target) {
+        struct pipe_context *context=NULL;
+        struct pipe_transfer *src_transfer=NULL,*dst_transfer=NULL;
+        struct blit_info blit={.dst={.resource=&target->base,.box={.x=1,.width=1,.height=1,.depth=1}}};
+        const struct blit_info *info=&blit;
+        struct ps5_resource *dst_resource;
+        uint8_t *dst;
+        bool direct_tiled_dst;
+    ''' + blit_setup + r'''
+        assert(direct_tiled_dst && dst==target->data);
+        cpu_store(4,0x12345678);
+    ''' + blit_publish + r'''
+        (void)src_transfer;
+    }
     static int fail(const char *s) { fprintf(stderr,"FAIL: %s\n",s); return 1; }
     int main(int argc,char **argv) {
         assert(argc==2);
@@ -185,6 +218,16 @@ def run_check():
             if(gpu_word(4)!=0x12345678)return fail("raw texture CPU update is invisible to GPU after unmap");
             if(gpu_word(0)!=0x22222222 || gpu_word(8)!=0x22222222 || gpu_word(64)!=0x22222222)
                 return fail("partial CPU update overwrites neighbouring GPU texels with stale cache bytes");
+        } else if (!strcmp(which,"blit-direct")) {
+            /* The CPU read this render target earlier (clean lines), then the GPU drew it; a small copy
+             * into it must keep the GPU's texels beside its box. */
+            r.base.bind=PIPE_BIND_RENDER_TARGET;
+            dirty[0]=dirty[1]=false;
+            memset(data,0x11,sizeof(data));memset(gpu_memory,0x22,sizeof(gpu_memory));
+            blit_one_texel(&r);
+            if(gpu_word(4)!=0x12345678)return fail("software blit texel is invisible to GPU");
+            if(gpu_word(0)!=0x22222222 || gpu_word(8)!=0x22222222 || gpu_word(64)!=0x22222222)
+                return fail("software blit writes stale cache bytes over GPU-rendered neighbours");
         } else {
             struct ps5_transfer *t=calloc(1,sizeof(*t)); assert(t);
             t->base.resource=&r.base; t->base.usage=PIPE_MAP_WRITE;
@@ -227,7 +270,7 @@ def run_check():
         subprocess.run([os.environ.get('CC', 'cc'), '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror',
                         '-fsanitize=address,undefined', str(file), '-o', str(exe)], check=True)
         failures = []
-        for case in ('buffer', 'staged', 'staged-neighbours', 'readonly', 'explicit', 'linear', 'raw-map', 'allocation', 'arena', 'stencil-init'):
+        for case in ('buffer', 'staged', 'staged-neighbours', 'readonly', 'explicit', 'linear', 'raw-map', 'allocation', 'arena', 'stencil-init', 'blit-direct'):
             result = subprocess.run([str(exe), case], text=True, capture_output=True)
             print(result.stdout + result.stderr, end='')
             if result.returncode:
@@ -255,7 +298,8 @@ class TestOpenGlCache(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         for failure in ('texture CPU write unmap does not publish',
                         'raw texture CPU update is invisible',
-                        'dirty initialization zeros overwrite GPU picture'):
+                        'dirty initialization zeros overwrite GPU picture',
+                        'software blit writes stale cache bytes over GPU-rendered neighbours'):
             self.assertIn(failure, result.stdout + result.stderr)
         self.assertIn('PASS: staged', result.stdout)
         self.assertIn('PASS: buffer', result.stdout)

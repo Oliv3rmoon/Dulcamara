@@ -19,6 +19,7 @@
 
 #include "../storage.h"
 #include "focus.h"
+#include "game_fit.h"
 static bool sdl_background;
 #include "../i18n.h"
 
@@ -1881,22 +1882,8 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
 
     float aspect = display_aspect > 0.0f ? display_aspect : 4.0f / 3.0f;
 
-    int dh = out_h, dw = (int)(out_h * aspect + 0.5f);
-    if (dw > out_w)
-    {
-        dw = out_w;
-        dh = (int)(out_w / aspect + 0.5f);
-    }
-    if (settings->integer_scale)
-    {
-        int k = dh / (lines > 0 ? lines : 240);
-        if (k < 1)
-            k = 1;
-        dh = lines * k;
-        dw = (int)(dh * aspect + 0.5f);
-        if (dw > out_w)
-            dw = out_w;
-    }
+    int dw, dh;
+    game_fit(out_w, out_h, aspect, game_src_h, settings->integer_scale, &dw, &dh);
 
     if (settings->border == 2)
     {
@@ -1922,6 +1909,24 @@ void plat_draw_game(const Settings *settings, float display_aspect, uint8_t dim)
     /* RPG Maker (240p) defaults to sharp nearest pixels; HD frames (Ren'Py >= 480p) use bilinear
      * filtering so non-integer scaling to 1080p/4K does not drop text columns or alias UI art. */
     const bool smooth = settings->smooth || game_src_h >= 480;
+    {
+        /* the picture's place on screen, in the log when it changes (canvas pixels; the screen is a multiple) */
+        static GameFitNote noted;
+        const GameFitNote now = {game_src_w, game_src_h, out_w, out_h, dx, dy, dw, dh, settings->shader,
+                                 settings->integer_scale, smooth};
+        if (game_fit_changed(&noted, &now))
+#if defined(__PROSPERO__)
+            np_log("screen: the game's %dx%d picture at %d,%d %dx%d of the %dx%d canvas (%s), integer scale %s, %s "
+                   "filtering, shader %d",
+                   now.src_w, now.src_h, dx, dy, dw, dh, out_w, out_h, vkp_describe(), now.integer_scale ? "on" : "off",
+                   smooth ? "bilinear" : "nearest", now.shader);
+#else
+            np_log("screen: the game's %dx%d picture at %d,%d %dx%d of the %dx%d canvas, integer scale %s, %s "
+                   "filtering, shader %d",
+                   now.src_w, now.src_h, dx, dy, dw, dh, out_w, out_h, now.integer_scale ? "on" : "off",
+                   smooth ? "bilinear" : "nearest", now.shader);
+#endif
+    }
 #if defined(__PROSPERO__)
     /* Dulcamara: route ALL CPU-rendered frames (Ren'Py and EasyRPG) through the persistent Vulkan ring-buffered
      * image even when Shader is Off, avoiding per-frame VkImage re-creation and vkQueueWaitIdle stalls (black

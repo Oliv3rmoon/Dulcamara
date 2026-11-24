@@ -1047,7 +1047,9 @@ static void game_screen(PadState *pads, uint32_t pressed)
         seconds = step;
     const uint64_t run_start = plat_ticks_us();
     host_run(runs, seconds);
-    host_feed_audio(0.07);
+    /* the sound queued ahead: a Ren'Py game's more, as its thread may hold the mixer a while (a sound started, a
+     * save), and more again after each time it runs out (core/host.c) */
+    host_feed_audio(skips ? 0.15 : 0.07, skips);
     game_run_us = plat_ticks_us() - run_start;
 
     /* the game's frames a second, for Show FPS */

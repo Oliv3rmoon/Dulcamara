@@ -182,6 +182,58 @@ class Editor(object):
 """
 
 
+# the game's music, and a click played six times over it (RenpyCoreTest.clicks_over_music); with
+# DULCAMARA_TEST_SLOW_READ=<ms>, each click's file (as Python's file, read through Python) waits that long at its first read
+CLICKS_LABEL = """
+init python:
+    import os, time
+    dulcamara_slow = {"reads": 0}
+
+    class DulcamaraSlowFile(object):
+        def __init__(self, f):
+            self.f, self.first = f, True
+
+        def read(self, n=-1):
+            if self.first:
+                self.first = False
+                dulcamara_slow["reads"] += 1
+                time.sleep(float(os.environ["DULCAMARA_TEST_SLOW_READ"]) / 1000.0)
+            return self.f.read(n)
+
+        def seek(self, *args):
+            return self.f.seek(*args)
+
+        def tell(self):
+            return self.f.tell()
+
+        def close(self):
+            return self.f.close()
+
+    if os.environ.get("DULCAMARA_TEST_SLOW_READ"):
+        dulcamara_load = renpy.loader.load
+
+        def dulcamara_slow_load(name, *args, **kwargs):
+            f = dulcamara_load(name, *args, **kwargs)
+            return DulcamaraSlowFile(f) if "click" in name else f
+
+        renpy.loader.load = dulcamara_slow_load
+
+label dulcamara_clicks:
+    scene expression Solid("#203040")
+    play music "audio/tone.wav"
+    $ renpy.pause(0.5, hard=True)
+    $ dulcamara_k = 0
+    while dulcamara_k < 6:
+        play audio "audio/click.wav"
+        $ renpy.pause(0.25, hard=True)
+        $ dulcamara_k += 1
+    $ renpy.pause(0.5, hard=True)
+    $ dulcamara_test("slow reads: %d" % dulcamara_slow["reads"])
+    $ dulcamara_test("clicks done")
+    $ renpy.pause(hard=True)
+"""
+
+
 class RenpyCoreTest(unittest.TestCase):
     # the build script and its host build (tests/test_renpy7_core.py runs the same tests on Ren'Py 7's)
     SCRIPT = "tools/build-renpy.sh"
@@ -799,6 +851,61 @@ class RenpyCoreTest(unittest.TestCase):
                                    env={"RENPY_HEADLESS_VERBOSE": "1", "DULCAMARA_TEST_COPIES": "1"})
             self.assertIn("DULCAMARA-TEST: copies playing: 2", output)
             self.assertRegex(output, r"plays on 3 channels at once: the copy on channel \S+ stopped \(4 so far\)")
+
+    def test_the_frontends_sound_does_not_wait_for_the_mixers_lock(self):
+        # Dulcamara's main loop tops its sound up through the core (its sound callback, audio.c's mixer) a frame at a
+        # time, ~70 ms ahead. While Ren'Py's thread held the mixer's lock (to start or stop a sound), each top-up waited
+        # with it, the loop's picture and its queue of sound too: held long, the game's music ran dry ("music gets
+        # interrupted when I click an option", a PS5 tester's). With the lock held 300 ms elsewhere, the top-ups are
+        # skipped at once instead, the frontend runs on, and the music plays again once the lock is let go.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            output = self.run_core("held", make_game(work / "Held"), work / "data",
+                                   env={"RENPY_HEADLESS_HOLD_MS": "300"})
+            held = re.search(r"held: the sound's lock held (\d+) ms by another thread: (\d+) frames ran meanwhile, "
+                             r"(\d+) top-ups, the longest ([\d.]+) ms", output)
+            self.assertIsNotNone(held, output)
+            self.assertGreaterEqual(int(held[1]), 250, output)
+            self.assertLess(float(held[4]), 20.0, "a top-up waited for the mixer's lock")
+            self.assertGreater(int(held[3]), 5, "the frontend's loop did not run on while the lock was held")
+            self.assertIn("a top-up of the frontend's sound skipped", output)
+            self.assertRegex(output, r"held: after it was let go, \d+ batches with sound in them")
+
+    def clicks_over_music(self, work, env):
+        """The test game's music, and a click sound (a tenth of a second, 880 Hz) played on Ren'Py's audio channel six
+        times, every quarter of a second, as a game plays one at each menu choice: the core's output"""
+        game = make_game(work / "Clicks")
+        write_tone(game / "game/audio/click.wav", seconds=0.1, hz=880)
+        (game / "game/clicks.rpy").write_text(CLICKS_LABEL, encoding="utf-8")
+        return self.run_core("start", game, work / "data", env={
+            "DULCAMARA_TEST_LABEL": "dulcamara_clicks", "RENPY_HEADLESS_UNTIL": "DULCAMARA-TEST: clicks done", **env})
+
+    def assert_no_long_hold(self, output):
+        holds = [float(ms) for ms in re.findall(r"the sound's lock was held ([\d.]+) ms", output)]
+        self.assertFalse([ms for ms in holds if ms >= 150], "the mixer's lock was held as a sound started:\n" + output)
+        self.assertIn("sound: playing", output)
+        self.assertRegex(output, r"top-ups: \d+, the longest [0-9]\.\d ms")
+
+    def test_a_sound_started_does_not_hold_the_mixer(self):
+        # Ren'Py's thread starts a decode thread for each sound it plays (ffmedia.c's media_start, in load_stream).
+        # RPS_play did that with the mixer's lock held (RPS_queue opens its sound first): on a console slow to start a
+        # thread, every click held the lock, and the frontend's sound with it, for as long as that took, and the
+        # game's music cut out (tools/patches/renpy-renpysound-channels.diff). Each thread here takes 300 ms to start.
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            slow = build_preloaded(work, "slow_thread_start")
+            if slow is None:
+                self.skipTest("needs a C compiler that makes a preloaded library")
+            output = self.clicks_over_music(work, {**slow, "DULCAMARA_SLOW_THREAD_START": "300"})
+            self.assert_no_long_hold(output)
+
+    def test_a_sound_read_slowly_does_not_hold_the_mixer(self):
+        # A sound's file is opened and read on its decode thread (through Python, for a file Ren'Py gives as Python's),
+        # not under the mixer's lock: the click's first read here takes 300 ms, and the lock is not held meanwhile.
+        with tempfile.TemporaryDirectory() as directory:
+            output = self.clicks_over_music(Path(directory), {"DULCAMARA_TEST_SLOW_READ": "300"})
+            self.assert_no_long_hold(output)
+            self.assertIn("DULCAMARA-TEST: slow reads: 6", output)
 
     def test_an_autosave_without_a_thread(self):
         # 0.2.10's Ren'Py 7 showed its error screen at a choice late in a session: the console refused the thread for

@@ -61,7 +61,19 @@ static void frame_time(retro_usec_t usec)
     frame_usec = usec > 0 ? usec : FRAME_USEC;
 }
 
+/* The frontend's top-up (its sound callback, on its own thread): never waits for Ren'Py's thread. While that holds the
+ * mixer's lock (starting or stopping a sound), the frontend's whole loop would wait with it, its picture and its queue
+ * of sound alike; the top-up is skipped instead, nothing pushed (no silence: the game's sound goes on where it was at
+ * the next one), and the frontend asks again. */
 static void sound(void)
+{
+    int16_t samples[SOUND_FRAMES * 2];
+    if (audio_try_render(samples, SOUND_FRAMES) && audio_batch_cb)
+        audio_batch_cb(samples, SOUND_FRAMES);
+}
+
+/* retro_run's own sound, for a frontend without the callback: a frame's worth each frame, as before */
+static void sound_each_frame(void)
 {
     int16_t samples[SOUND_FRAMES * 2];
     audio_render(samples, SOUND_FRAMES);
@@ -347,6 +359,13 @@ void retro_unload_game(void)
         return;
     if (python_stop())
         loaded = false;
+    /* what the frontend's sound met in the session: a hold of the mixer's lock long enough to run its queue down */
+    struct dr_audio_stats sound_stats;
+    audio_stats(&sound_stats);
+    log_queue(1, "renpy: the sound's lock, this session: held %.1f ms at the longest, %llu holds of 20 ms or more, %llu "
+                 "top-ups skipped as it was busy",
+              sound_stats.longest_hold_us / 1000.0, (unsigned long long)sound_stats.long_holds,
+              (unsigned long long)sound_stats.skipped);
     log_flush(emit);
 }
 
@@ -481,7 +500,7 @@ void retro_run(void)
         video_cb(picture_with_cursor(picture, w, h, fresh), w ? (unsigned)w : 1280, h ? (unsigned)h : 720,
                  (size_t)(w ? w : 1280) * sizeof(uint32_t));
     if (!sound_by_callback)
-        sound();
+        sound_each_frame();
     if (handoff_engine_ended() && !shutdown_sent)
     {
         shutdown_sent = true;

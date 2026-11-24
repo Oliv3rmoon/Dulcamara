@@ -20,6 +20,77 @@ import time
 
 import Queue
 
+
+def _ps5_socket_deadlines(socket_module, ssl_module, thread_module, clock, sleep, grace=1.0, every=0.25):
+    """Give the PS5's HTTPS sockets the timeouts Python promises. settimeout() asks the console for a non-blocking
+    socket (ioctl FIONBIO; Ren'Py 7's Python, fcntl): it says yes and the socket stays blocking (the console wants its
+    own SO_NBIO option, docs/boilerplate/CURL.md, section 8). Python waits for a timeout only after the ssl module's
+    read, write or handshake has answered "want more" (Modules/_ssl.c), which a blocking socket never does: a
+    connection that stops sending then holds its thread for good where a PC raises socket.timeout and the game
+    retries. Champion of Realms' launcher downloads 104 files with 5 threads (4 here): once each has met one such
+    connection, its download stops for good. A watchdog thread shuts down the socket of a call with a timeout that has run past
+    it (and a second's grace, where the timeout does work), and the call raises socket.timeout as on a PC. Written
+    for Python 2.7 and 3 alike: boot.py has the same function."""
+    watched = {}
+    lock = thread_module.allocate_lock()
+    running = [False]
+    timeout_error = socket_module.timeout
+    shutdown = socket_module.socket.shutdown  # the socket's own, not SSLSocket's, which also drops its TLS state
+
+    def watch():
+        while True:
+            sleep(every)
+            now = clock()
+            with lock:
+                late = [entry for entry in watched.values() if not entry[2] and now >= entry[1]]
+                for entry in late:
+                    entry[2] = True
+            for entry in late:
+                try:
+                    shutdown(entry[0], socket_module.SHUT_RDWR)
+                except Exception:
+                    pass
+
+    def guard(op):
+        def guarded(self, *args, **kwargs):
+            timeout = self.gettimeout()
+            if not timeout:
+                return op(self, *args, **kwargs)
+            entry = [self, clock() + timeout + grace, False]
+            with lock:
+                watched[id(entry)] = entry
+                start = not running[0]
+                running[0] = True
+            if start:
+                try:
+                    thread_module.start_new_thread(watch, ())
+                except Exception:
+                    with lock:
+                        running[0] = False
+            try:
+                result = op(self, *args, **kwargs)
+            except EnvironmentError:
+                if entry[2]:
+                    raise timeout_error("timed out")
+                raise
+            finally:
+                with lock:
+                    watched.pop(id(entry), None)
+            if entry[2] and not result:
+                raise timeout_error("timed out")
+            return result
+
+        guarded.__name__ = op.__name__
+        guarded.__doc__ = op.__doc__
+        guarded.dulcamara_deadline = True
+        return guarded
+
+    for name in ("read", "send", "do_handshake"):
+        op = getattr(ssl_module.SSLSocket, name)
+        if not getattr(op, "dulcamara_deadline", False):
+            setattr(ssl_module.SSLSocket, name, guard(op))
+
+
 if sys.platform.startswith("freebsd"):
     sys.platform = "linux2"
     os.environ.setdefault("RENPY_PLATFORM", "linux-x86_64")
@@ -79,6 +150,13 @@ if sys.platform.startswith("freebsd"):
 
         _threading.Thread.start = _ps5_start2
         _threading.Thread._Thread__bootstrap_inner = _ps5_boot2
+    except Exception:
+        pass
+    try:
+        import socket as _socket2
+        import ssl as _ssl2
+
+        _ps5_socket_deadlines(_socket2, _ssl2, thread, time.time, time.sleep)
     except Exception:
         pass
 

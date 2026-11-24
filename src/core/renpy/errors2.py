@@ -109,11 +109,24 @@ def physical_size_get(preferences):
             _dulcamara.log(1, "renpy: the game's %dx%d is drawn at %dx%d (DULCAMARA_PICTURE_HEIGHT)" % (
                 width_v, height_v, size[0], size[1]))
         return size
-    return preferences.__dict__.get("physical_size")
+    # A window size the game saved (on a computer, or by its own resolution option) reads as unset: Ren'Py's resize
+    # would make the picture that size whatever its shape, and pad the game inside it with black bars, which the app
+    # then fits to the TV with bars of its own. The game's own size keeps its shape; the app scales it.
+    return None
 
 
 def physical_size_set(preferences, value):
     preferences.__dict__["physical_size"] = value
+
+
+# Maximized reads as off, as Fullscreen does: a maximized window keeps a saved size's shape where Ren'Py otherwise
+# makes it the game's (select_physical_size). The game's own value is kept for a computer.
+def maximized_get(preferences):
+    return False
+
+
+def maximized_set(preferences, value):
+    preferences.__dict__["maximized"] = value
 
 
 def quit_event(interface):
@@ -1103,8 +1116,8 @@ def wrap(module):
         # display's size (3840x2160 on the console, by SDL's account) and the picture with it, and the screen went
         # black. The console's picture is the game's own size, scaled by the app.
         module.Preferences.fullscreen = property(fullscreen_get, fullscreen_set)
-        if picture_height():
-            module.Preferences.physical_size = property(physical_size_get, physical_size_set)
+        module.Preferences.maximized = property(maximized_get, maximized_set)
+        module.Preferences.physical_size = property(physical_size_get, physical_size_set)
         if os.environ.get("DULCAMARA_SKIP_UNSEEN") == "1":
             module.Preferences.skip_unseen = property(skip_unseen_get, skip_unseen_set)
         if old_volumes[0]:

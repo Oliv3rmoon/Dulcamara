@@ -55,8 +55,13 @@ bool host_core_skips(void);       /* fast-forward is the running core's own skip
 void host_set_input(const PadState *pad, const Settings *settings);
 /* Runs `times` of the core's frames, each `seconds` of the game's time (fast-forward runs several a refresh). */
 void host_run(int times, double seconds);
-/* Keeps the sound queued: asks the core for more while less than `seconds` is waiting. */
-void host_feed_audio(double seconds);
+/* Keeps the sound queued: asks the core for more while less than `seconds` is waiting. With `grows` (a Ren'Py game's),
+ * each underrun (what the last top-up, less than a second before, left queued has run out with sound expected: not a
+ * pause; counted once until the queue is refilled) doubles
+ * what is kept ahead, up to 0.4 s, for the rest of the game, and more calls a pass refill it; each underrun is logged
+ * (the first 20 of a game, a second apart at least), with the queue's state, the time since the last top-up and what is
+ * now kept ahead. */
+void host_feed_audio(double seconds, bool grows);
 void host_set_volume(int tenths); /* 0..10 */
 void host_set_fast_forward(bool on); /* what RETRO_ENVIRONMENT_GET_FASTFORWARDING answers */
 /* A core option's value from Dulcamara's Settings ("renpy_skip_unseen", "on"), kept across loads: what

@@ -43,3 +43,11 @@
 +      return;
 +   }
     const int x = box ? box->x : 0;
+@@ -8282,4 +8296,7 @@
+          return;
+       }
+       dst = dst_resource->data;
++      /* Graphics writes leave gpu_written unset, so the drains above did not
++       * invalidate. A clean pre-render line would write stale neighbours back. */
++      ps5_flush_gpu_data(dst_resource->data, dst_resource->allocation_size);
+    } else {

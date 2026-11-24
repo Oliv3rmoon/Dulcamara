@@ -33,12 +33,20 @@
  *          printed with this process's threads, open files and resident memory, as a row of a table. Each frame is
  *          RENPY_HEADLESS_FRAME_USEC of the game's time (the console's 1/60 s by default): longer, and hours of a
  *          game pass in minutes.
+ *   held   as "start", the game's music playing; then another thread takes the core's sound lock (audio.c's, which
+ *          Ren'Py's thread takes to start or stop a sound) and holds it RENPY_HEADLESS_HOLD_MS (300 by default), as
+ *          the frontend runs on: how long its top-ups took meanwhile, and whether the sound plays on once it is let go.
  *   --then a second game in the same process afterwards, as "start".
+ *
+ * Every top-up (the core's sound callback, as Dulcamara's main loop calls it) is timed: the report says how long the
+ * longest took ("top-ups: ..."), against the frontend's sound queue, which runs dry while one waits.
  */
 #include "libretro.h"
 
 #include "../../src/core/dulcamara_libretro.h"
+#include "../../src/core/renpy/audio.h" /* audio_lock and audio_unlock, for "held" */
 
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -115,7 +123,7 @@ static void core_log(enum retro_log_level level, const char *fmt, ...)
         return; /* soak_line's */
     if (getenv("RENPY_HEADLESS_VERBOSE") || strstr(line, "DULCAMARA-TEST: ") || strstr(line, "Ren'Py reported") ||
         strstr(line, ".rpy") || strstr(line, "Dulcamara starts") || strstr(line, "not stop") || strstr(line, "File \"") ||
-        strstr(line, "still running") || strstr(line, "keyboard"))
+        strstr(line, "still running") || strstr(line, "keyboard") || strstr(line, "the sound's lock"))
         printf("log: %s", line);
 }
 
@@ -321,6 +329,17 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
 
 static retro_usec_t frame_usec; /* RENPY_HEADLESS_FRAME_USEC, or the core's own (0) */
 
+static double now_ms(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6;
+}
+
+/* the top-ups: how many, the longest (ms), and how many gave no sound at all */
+static uint64_t topups, topups_empty;
+static double topup_longest;
+
 static void frame(void)
 {
     probe_tick();
@@ -328,8 +347,32 @@ static void frame(void)
         frame_time_cb.callback(frame_usec ? frame_usec : frame_time_cb.reference);
     retro_run();
     if (audio_cb_set)
+    {
+        const uint64_t before = sound_frames;
+        const double started = now_ms();
         audio_cb.callback();
+        const double took = now_ms() - started;
+        topup_longest = took > topup_longest ? took : topup_longest;
+        ++topups;
+        topups_empty += sound_frames == before;
+    }
     ++ran;
+}
+
+/* "held": the core's sound lock, taken by a thread of the frontend's own */
+static int hold_ms = 300;
+static volatile int hold_state; /* 1 taken, 2 let go */
+
+static void *hold_sound_lock(void *unused)
+{
+    (void)unused;
+    audio_lock();
+    __atomic_store_n(&hold_state, 1, __ATOMIC_SEQ_CST);
+    const struct timespec wait = {hold_ms / 1000, (long)(hold_ms % 1000) * 1000000L};
+    nanosleep(&wait, NULL);
+    audio_unlock();
+    __atomic_store_n(&hold_state, 2, __ATOMIC_SEQ_CST);
+    return NULL;
 }
 
 static bool until_logged(const char *what)
@@ -403,6 +446,8 @@ static void press(unsigned id)
 static bool load(const char *game)
 {
     with_picture = dupes = distinct = refreshes = sound_frames = sound_loud = 0;
+    topups = topups_empty = 0;
+    topup_longest = 0;
     sound_peak = 0;
     picture_hash = 0;
     shutdown_asked = false;
@@ -432,6 +477,8 @@ static void report(void)
     printf("sound: %s (%llu frames, %llu batches with sound in them, the loudest sample %d)\n",
            sound_loud > 10 ? "playing" : "silent", (unsigned long long)sound_frames, (unsigned long long)sound_loud,
            sound_peak);
+    printf("top-ups: %llu, the longest %.1f ms, %llu with no sound\n", (unsigned long long)topups, topup_longest,
+           (unsigned long long)topups_empty);
     const char *keep = getenv("RENPY_HEADLESS_PICTURE");
     FILE *f = keep && kept ? fopen(keep, "wb") : NULL;
     if (f)
@@ -850,6 +897,37 @@ int main(int argc, char **argv)
             frames(120);
         }
     }
+    else if (ok && !strcmp(mode, "held"))
+    {
+        ok = until_logged("DULCAMARA-TEST: started") && until_picture();
+        frames(120); /* the music playing */
+        if (getenv("RENPY_HEADLESS_HOLD_MS") && atoi(getenv("RENPY_HEADLESS_HOLD_MS")) > 0)
+            hold_ms = atoi(getenv("RENPY_HEADLESS_HOLD_MS"));
+        pthread_t holder;
+        ok = ok && pthread_create(&holder, NULL, hold_sound_lock, NULL) == 0;
+        while (ok && __atomic_load_n(&hold_state, __ATOMIC_SEQ_CST) == 0)
+            ;
+        sound_frames = sound_loud = topups = topups_empty = 0;
+        topup_longest = 0;
+        const double since = now_ms();
+        int during = 0;
+        while (ok && __atomic_load_n(&hold_state, __ATOMIC_SEQ_CST) == 1 && !shutdown_asked)
+        {
+            frame();
+            ++during;
+        }
+        const double held_for = now_ms() - since;
+        if (ok)
+            pthread_join(holder, NULL);
+        printf("held: the sound's lock held %.0f ms by another thread: %d frames ran meanwhile, %llu top-ups, the "
+               "longest %.1f ms, %llu frames of sound pushed\n",
+               held_for, during, (unsigned long long)topups, topup_longest, (unsigned long long)sound_frames);
+        sound_frames = sound_loud = 0;
+        sound_peak = 0;
+        frames(120);
+        printf("held: after it was let go, %llu batches with sound in them\n", (unsigned long long)sound_loud);
+        ok = ok && sound_loud > 10;
+    }
     else if (ok && !strcmp(mode, "soak"))
         ok = until_logged("DULCAMARA-TEST: started") && until_picture() && soak();
     else if (ok && !strcmp(mode, "load"))
@@ -873,8 +951,9 @@ int main(int argc, char **argv)
         const char *listen = getenv("RENPY_HEADLESS_LISTEN");
         if (ok && listen && atoi(listen) > 0)
         {
-            sound_frames = sound_loud = 0;
+            sound_frames = sound_loud = topups = topups_empty = 0;
             sound_peak = 0;
+            topup_longest = 0;
             frames(atoi(listen));
             printf("listened for %d frames\n", atoi(listen));
         }

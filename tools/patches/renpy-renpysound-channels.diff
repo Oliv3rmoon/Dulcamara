@@ -1,10 +1,20 @@
-Dulcamara: a new sound channel is made while the mixer waits.
+Dulcamara: a new sound channel is made while the mixer waits; a sound is opened before the mixer is made to wait.
 
 check_channel grows the channels (realloc) as a game first uses one, a movie's or its mask's among them, without
 the audio lock, while the mixer (callback) goes through them on its own thread: when realloc moves them, the mixer
 reads freed memory. Dulcamara's own host tests crashed on it as they made many channels at once while sound played.
-The growth now takes the audio lock (LOCK_AUDIO, SDL's: recursive). Applied to Ren'Py 8's src/renpysound_core.c and
-Ren'Py 7's module/renpysound_core.c, the same there.
+The growth now takes the audio lock (LOCK_AUDIO, SDL's: recursive).
+
+RPS_play opened its new sample (load_stream: media_open, which joins the decode threads that have ended, and
+media_start, which starts the sample's own) with the audio lock held, while RPS_queue opens its sample first and takes
+the lock only to put it in place. Dulcamara's frontend tops its sound up from its main loop through the mixer, which
+takes the same lock: as a game played a sound (a click on each menu choice), the frontend waited for the thread to
+be started, and a console slow to start one (tests/core/slow_thread_start.c) held the lock, the frontend's sound
+and its picture with it, for as long as that took: the game's music ran dry. RPS_play now opens the sample before it
+takes the lock, as RPS_queue does; the old samples are still freed, and the new one put in place, with it held, and a
+sample that does not open still leaves the channel stopped with Ren'Py's SOUND_ERROR.
+
+Applied to Ren'Py 8's src/renpysound_core.c and Ren'Py 7's module/renpysound_core.c, the same there.
 
 --- a/renpysound_core.c
 +++ b/renpysound_core.c
@@ -29,3 +39,24 @@ Ren'Py 7's module/renpysound_core.c, the same there.
      }
  
      return 0;
+@@ -669,6 +674,11 @@
+     }
+ 
+     c = &channels[channel];
++
++    /* Dulcamara: the new sample is opened before the lock is taken, as RPS_queue opens its own: media_open and
++     * media_start join the decode threads that have ended and start the new one, and the mixer (callback), which
++     * the frontend's sound waits on, must not wait for those meanwhile. */
++    MediaState *ms = load_stream(rw, ext, start, end, c->video);
+ 
+     LOCK_AUDIO();
+ 
+@@ -705,7 +715,7 @@
+ 
+     /* Allocate playing sample. */
+ 
+-    c->playing = load_stream(rw, ext, start, end, c->video);
++    c->playing = ms;
+ 
+     if (! c->playing) {
+         UNLOCK_AUDIO();

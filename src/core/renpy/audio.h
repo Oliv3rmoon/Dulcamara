@@ -26,6 +26,17 @@ void audio_close(void);
 
 /* The frontend: frames of sound, 16-bit stereo; silence while nothing is open, or while paused. */
 void audio_render(int16_t *out, size_t frames);
+/* audio_render, unless the lock is held elsewhere (Ren'Py's thread starting a sound, say): then false at once, out
+ * untouched, and counted (dr_audio_stats.skipped). The frontend's top-up (core.c), which is not to wait on Ren'Py. */
+bool audio_try_render(int16_t *out, size_t frames);
 void audio_float_to_s16(const float *in, int16_t *out, size_t samples);
+
+struct dr_audio_stats
+{
+    uint64_t longest_hold_us; /* the lock's longest hold, by any thread */
+    uint64_t long_holds;      /* holds of 20 ms or more, each logged (the first 20, then every 100th) */
+    uint64_t skipped;         /* audio_try_render's top-ups skipped, the lock busy */
+};
+void audio_stats(struct dr_audio_stats *out); /* without the lock: never waits */
 
 #endif

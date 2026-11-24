@@ -417,3 +417,40 @@ ps5_transfer_unmap(struct pipe_context *context,
    ps5_transfer_free_staging(ps5);
    free(ps5);
 }
+
+/* ps5_blit, its software colour path: the destination set up, then (after the per-pixel loop) published */
+   src = ps5_transfer_map(context, info->src.resource, info->src.level,
+                          PIPE_MAP_READ, &src_box, &src_transfer);
+   if (!src)
+      return;
+   dst_resource = (struct ps5_resource *)info->dst.resource;
+   direct_tiled_dst =
+      (dst_resource->base.bind & PIPE_BIND_RENDER_TARGET) &&
+      !ps5_linear_sampled_layout(&dst_resource->base);
+   if (direct_tiled_dst) {
+      size_t ignored_offset;
+
+      /* Linear transfers address mip levels; native tile offsets only level 0. */
+      if (info->dst.level ||
+          !ps5_map_bounds(dst_resource, info->dst.level, &info->dst.box,
+                          &ignored_offset)) {
+         ps5_transfer_unmap(context, src_transfer);
+         return;
+      }
+      dst = dst_resource->data;
+   } else {
+      dst = ps5_transfer_map(context, info->dst.resource, info->dst.level,
+                             PIPE_MAP_WRITE |
+                                (info->scissor_enable ? PIPE_MAP_READ : 0),
+                             &info->dst.box, &dst_transfer);
+      if (!dst) {
+         ps5_transfer_unmap(context, src_transfer);
+         return;
+      }
+   }
+   /* ... the box written pixel by pixel (dst) ... */
+   if (direct_tiled_dst)
+      ps5_flush_gpu_data(dst_resource->data, dst_resource->allocation_size);
+   else
+      ps5_transfer_unmap(context, dst_transfer);
+   ps5_transfer_unmap(context, src_transfer);

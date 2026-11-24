@@ -41,6 +41,25 @@ static HostCounters counters;
 static bool unsafe_stop, renpy_seen, audio_expected, input_connected;
 static uint64_t stop_deadline;
 
+/* The game's sound kept queued ahead (host_feed_audio): for a game whose kept amount grows, what it has grown to (0:
+ * the base); the last top-up (when, and what it left queued); the underruns logged this game, and when the last was */
+#define AUDIO_CUSHION_MOST 0.4   /* s: the most a game's sound is kept ahead, grown */
+#define AUDIO_FED_RECENTLY 1000000 /* us: a top-up later than this after the one before resumes a pause (Dulcamara's
+                                    * menu, a save), whose queue ran down unfed: not an underrun */
+static double audio_cushion;
+static uint64_t audio_fed_us;
+static size_t audio_left;
+static uint64_t underrun_logged_us;
+static int underruns_logged;
+
+static void reset_audio_cushion(void)
+{
+    audio_cushion = 0;
+    audio_fed_us = underrun_logged_us = 0;
+    audio_left = 0;
+    underruns_logged = 0;
+}
+
 static char system_dir[NP_PATH_MAX];
 static char assets_dir[NP_PATH_MAX];
 static char game_path[NP_PATH_MAX];
@@ -410,6 +429,7 @@ bool host_load(const Game *g, const char *system, char *error, size_t error_size
     memset(&runtime, 0, sizeof(runtime));
     memset(&last_layout, 0, sizeof(last_layout));
     memset(&counters, 0, sizeof(counters));
+    reset_audio_cushion();
     core = &CORES[g->core];
     str_copy(system_dir, sizeof(system_dir), system);
     plat_asset_path(assets_dir, sizeof(assets_dir), "");
@@ -510,6 +530,7 @@ static void finish_stop(void)
     keyboard_cb = NULL;
     plat_pad_touch(false);
     host_reset_transient();
+    reset_audio_cushion();
     lifecycle = restart ? HOST_RESTART_REQUIRED : HOST_IDLE;
 }
 
@@ -748,16 +769,42 @@ void host_run(int times, double seconds)
     }
 }
 
-void host_feed_audio(double seconds)
+void host_feed_audio(double seconds, bool grows)
 {
     if (!loaded || lifecycle != HOST_RUNNING || !audio_cb_set || !audio_enabled)
         return;
-    if (plat_audio_queued_frames() == 0 && audio_expected)
+    const uint64_t now = plat_ticks_us();
+    if (!grows || audio_cushion < seconds)
+        audio_cushion = seconds;
+    const double rate = av.timing.sample_rate > 0 ? av.timing.sample_rate : 48000.0;
+    const size_t queued = plat_audio_queued_frames();
+    /* an underrun: the queue the last top-up left (less than a second ago) has run out; once, until it is refilled */
+    const bool fed_recently = audio_fed_us && now - audio_fed_us < AUDIO_FED_RECENTLY;
+    if (queued == 0 && audio_left > 0 && audio_expected && fed_recently)
+    {
         ++counters.audio_underruns;
-    const size_t want = (size_t)(av.timing.sample_rate * seconds);
-    /* a few calls at most a refresh: each gives a frame's worth (EasyRPG: 800 at 48 kHz) */
-    for (int i = 0; i < 6 && plat_audio_queued_frames() < want; ++i)
+        const double was = audio_cushion;
+        if (grows)
+            audio_cushion = audio_cushion * 2 < AUDIO_CUSHION_MOST ? audio_cushion * 2 : AUDIO_CUSHION_MOST;
+        /* each once, the first 20 of a game, a second apart at least */
+        if (underruns_logged < 20 && (!underruns_logged || now - underrun_logged_us >= 1000000))
+        {
+            ++underruns_logged;
+            underrun_logged_us = now;
+            np_log("host: the game's sound ran out (underrun %llu this game): nothing queued, %.1f ms after the last "
+                   "top-up, which left %.1f ms queued; now kept %.0f ms ahead (was %.0f)",
+                   (unsigned long long)counters.audio_underruns, (now - audio_fed_us) / 1000.0,
+                   audio_left * 1000.0 / rate, audio_cushion * 1000.0, was * 1000.0);
+        }
+    }
+    const size_t want = (size_t)(rate * audio_cushion);
+    /* each call gives a frame's worth (800 at 48 kHz): a few a refresh keep the queue up, and a game whose amount kept
+     * ahead grows refills it in a pass or two after a stall (24: 0.4 s) */
+    const int most = grows ? 24 : 6;
+    for (int i = 0; i < most && plat_audio_queued_frames() < want; ++i)
         audio_cb.callback();
+    audio_fed_us = now;
+    audio_left = plat_audio_queued_frames();
 }
 
 void host_set_volume(int tenths)

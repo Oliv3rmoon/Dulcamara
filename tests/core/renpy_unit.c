@@ -230,6 +230,59 @@ static void check_audio(void)
     CHECK(converted[1] == 0 && converted[2] == -32768, "NaN is silence, -1 is -32768");
 }
 
+/* The frontend's top-up while another thread holds the sound's lock (Ren'Py's, starting a sound): it gives nothing,
+ * at once, and is counted; once the lock is let go, it is the mixer's again. A hold of 20 ms or more is counted. */
+static volatile int lock_holder; /* 1 holds it, 2 to let go */
+
+static void *hold_audio_lock(void *unused)
+{
+    (void)unused;
+    audio_lock();
+    __atomic_store_n(&lock_holder, 1, __ATOMIC_SEQ_CST);
+    while (__atomic_load_n(&lock_holder, __ATOMIC_SEQ_CST) != 2)
+        usleep(1000);
+    audio_unlock();
+    return NULL;
+}
+
+static void check_audio_busy(void)
+{
+    int freq = 48000;
+    uint8_t channels = 2;
+    audio_open(&freq, &channels, fake_mixer, NULL);
+    audio_pause(false);
+    mixed = 0.25f;
+    static int16_t out[800 * 2];
+    struct dr_audio_stats before, after;
+    audio_stats(&before);
+    CHECK(audio_try_render(out, 800) && out[0] == 8192 && out[1599] == 8192,
+          "with the lock free, a top-up is the mixer's (%d)", out[0]);
+    pthread_t holder;
+    lock_holder = 0;
+    CHECK(pthread_create(&holder, NULL, hold_audio_lock, NULL) == 0, "a thread to hold the lock");
+    while (__atomic_load_n(&lock_holder, __ATOMIC_SEQ_CST) != 1)
+        usleep(1000);
+    out[0] = out[1599] = 1234;
+    int64_t started = real_usec();
+    const bool given = audio_try_render(out, 800);
+    const int64_t took = real_usec() - started;
+    CHECK(!given && out[0] == 1234 && out[1599] == 1234, "with the lock held elsewhere, a top-up gives nothing");
+    CHECK(took < 5000, "and returns at once (%lld us)", (long long)took);
+    usleep(30000); /* a hold of 30 ms or so, to be counted */
+    __atomic_store_n(&lock_holder, 2, __ATOMIC_SEQ_CST);
+    pthread_join(holder, NULL);
+    CHECK(audio_try_render(out, 800) && out[0] == 8192 && out[1599] == 8192,
+          "once the lock is let go, a top-up is the mixer's again (%d)", out[0]);
+    audio_stats(&after);
+    CHECK(after.skipped == before.skipped + 1, "the top-up skipped is counted (%llu, %llu before)",
+          (unsigned long long)after.skipped, (unsigned long long)before.skipped);
+    CHECK(after.long_holds == before.long_holds + 1 && after.longest_hold_us >= 30000,
+          "the hold of 30 ms is counted (%llu holds, the longest %llu us)", (unsigned long long)after.long_holds,
+          (unsigned long long)after.longest_hold_us);
+    audio_close();
+    CHECK(audio_try_render(out, 4) && out[0] == 0, "silent once closed (%d)", out[0]);
+}
+
 /* ---------------------------------------------------------------- OpenGL */
 
 /* The read-back: a picture cleared orange, its top half then blue, comes out XRGB8888 with its top row first.
@@ -283,6 +336,7 @@ int main(void)
     check_stop();
     check_frames();
     check_audio();
+    check_audio_busy();
     check_gl();
     printf("%d checks, %d failed\n", checks, failures);
     printf(failures ? "FAIL\n" : "PASS\n");
